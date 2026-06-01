@@ -1,5 +1,5 @@
 /**
- * Seed 42 ElevateX Slot 1 test students; remove legacy EX26001–EX26015; go live 10:00 IST today.
+ * Seed 120 ElevateX Slot 1 test students; remove legacy EX26001–EX26015; go live 10:00 IST today.
  * Usage: node scripts/seed-elevatex-sample.mjs
  * Writes docs/ELEVATEX_SAMPLE_CREDENTIALS.md
  */
@@ -15,7 +15,7 @@ const EMAIL_DOMAIN = 'ramachandra.edu';
 const DEFAULT_PASSWORD = process.env.ELEVATEX_SAMPLE_PASSWORD || 'ElevateX2026';
 const MODULE_KEY = 'placement_full';
 const SLOT = 1;
-const COUNT = 42;
+const COUNT = 120;
 
 const DEPARTMENTS = [
   'Civil Engineering',

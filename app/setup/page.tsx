@@ -6,9 +6,15 @@ import { Card } from '@/components/ui/card';
 import { readJsonResponse } from '@/lib/fetch-json';
 import { studentAuthEmail } from '@/lib/college-auth';
 import {
+  ELEVATEX_SAMPLE_COUNT,
   ELEVATEX_SAMPLE_PASSWORD,
   ELEVATEX_SAMPLE_STUDENTS,
 } from '@/lib/elevatex-sample-credentials';
+
+const ELEVATEX_FIRST_ROLL = ELEVATEX_SAMPLE_STUDENTS[0]?.roll ?? 'EXS1001';
+const ELEVATEX_LAST_ROLL =
+  ELEVATEX_SAMPLE_STUDENTS[ELEVATEX_SAMPLE_STUDENTS.length - 1]?.roll ?? 'EXS1120';
+const ELEVATEX_ROLL_RANGE = `${ELEVATEX_FIRST_ROLL}–${ELEVATEX_LAST_ROLL}`;
 
 type SeedAccount = {
   roll: string;
@@ -47,7 +53,7 @@ export default function SetupPage() {
   const handleResetElevateXAttempts = async () => {
     if (
       !window.confirm(
-        'Clear ElevateX exam attempts for all 42 demo students (EXS1001–EXS1042)? They keep the same login password and can take the paper again.',
+        `Clear ElevateX exam attempts for all ${ELEVATEX_SAMPLE_COUNT} demo students (${ELEVATEX_ROLL_RANGE})? They keep the same login password and can take the paper again.`,
       )
     ) {
       return;
@@ -90,7 +96,7 @@ export default function SetupPage() {
   const handleResetElevateX = async () => {
     if (
       !window.confirm(
-        'Remove all 42 ElevateX demo logins (EXS1001–EXS1042)? Students will need to sign up again with their own password.',
+        `Remove all ${ELEVATEX_SAMPLE_COUNT} ElevateX demo logins (${ELEVATEX_ROLL_RANGE})? Students will need to sign up again with their own password.`,
       )
     ) {
       return;
@@ -164,7 +170,7 @@ export default function SetupPage() {
       setElevatexPassword(json.password ?? ELEVATEX_SAMPLE_PASSWORD);
       setElevatexAccounts(json.accounts ?? defaultElevatexAccounts);
       const parts = [
-        `Created ${json.accounts?.length ?? 42} accounts on AWS RDS project "${json.rdsProject}".`,
+        `Created ${json.accounts?.length ?? ELEVATEX_SAMPLE_COUNT} accounts (${json.rdsProject ?? 'RDS'}).`,
         json.scheduleLabel ? `Schedule: ${json.scheduleLabel}.` : null,
         json.scheduleWarning ? `Schedule note: ${json.scheduleWarning}` : null,
         json.legacyRemoved?.length
@@ -309,9 +315,11 @@ export default function SetupPage() {
           </Button>
 
           <div className="mt-6 pt-6 border-t border-gray-200 space-y-3">
-            <h2 className="font-semibold text-gray-900">ElevateX Slot 1 — 42 test logins</h2>
+            <h2 className="font-semibold text-gray-900">
+              ElevateX Slot 1 — {ELEVATEX_SAMPLE_COUNT} test logins
+            </h2>
             <p className="text-sm text-gray-600">
-              Creates <strong>EXS1001–EXS1042</strong> (replaces old EX26001–15). Password for all:{' '}
+              Creates <strong>{ELEVATEX_ROLL_RANGE}</strong> (replaces old EX26001–15). Password for all:{' '}
               <strong>ElevateX2026</strong>. Year on login: <strong>III Year</strong>.
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -324,7 +332,9 @@ export default function SetupPage() {
                 }
                 className="w-full sm:flex-1"
               >
-                {elevatexLoading ? 'Seeding ElevateX…' : 'Seed / refresh 42 ElevateX credentials'}
+                {elevatexLoading
+                  ? 'Seeding ElevateX…'
+                  : `Seed / refresh ${ELEVATEX_SAMPLE_COUNT} ElevateX credentials`}
               </Button>
               <Button
                 type="button"
@@ -335,7 +345,9 @@ export default function SetupPage() {
                 }
                 className="w-full sm:flex-1 text-amber-800 border-amber-200 hover:bg-amber-50"
               >
-                {elevatexAttemptsResetLoading ? 'Clearing attempts…' : 'Allow retake (42 students)'}
+                {elevatexAttemptsResetLoading
+                  ? 'Clearing attempts…'
+                  : `Allow retake (${ELEVATEX_SAMPLE_COUNT} students)`}
               </Button>
               <Button
                 type="button"
@@ -346,14 +358,16 @@ export default function SetupPage() {
                 }
                 className="w-full sm:flex-1 text-red-700 border-red-200 hover:bg-red-50"
               >
-                {elevatexResetLoading ? 'Resetting…' : 'Delete 42 demo logins'}
+                {elevatexResetLoading
+                  ? 'Resetting…'
+                  : `Delete ${ELEVATEX_SAMPLE_COUNT} demo logins`}
               </Button>
             </div>
             <p className="text-xs text-gray-500">
-              <strong>Allow retake</strong> keeps EXS1001–EXS1042 logins (password{' '}
+              <strong>Allow retake</strong> keeps {ELEVATEX_ROLL_RANGE} logins (password{' '}
               <code className="bg-gray-100 px-1 rounded">ElevateX2026</code>) and clears completed
               papers so students can write ElevateX again.{' '}
-              <strong>Delete 42 demo logins</strong> removes accounts for fresh signup.{' '}
+              <strong>Delete {ELEVATEX_SAMPLE_COUNT} demo logins</strong> removes accounts for fresh signup.{' '}
               <strong>Seed</strong> recreates demo accounts.
             </p>
 
@@ -376,7 +390,7 @@ export default function SetupPage() {
                   download
                   className="text-blue-600 hover:underline font-medium"
                 >
-                  Download CSV (42 rows)
+                  Download CSV ({ELEVATEX_SAMPLE_COUNT} rows)
                 </a>
                 <a href="/auth/login/student" className="text-blue-600 hover:underline font-medium">
                   Student login →

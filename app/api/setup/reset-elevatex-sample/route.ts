@@ -2,35 +2,25 @@ import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { resetElevateXSampleStudents } from '@/lib/elevatex-sample-seed';
 import { ELEVATEX_SAMPLE_COUNT } from '@/lib/elevatex-sample-credentials';
+import { assertSetupDeploymentReady } from '@/lib/setup/deployment-ready';
 
-export const maxDuration = 60;
-
-function getServiceRoleKey(): string | undefined {
-  const raw = process.env.AUTH_SECRET?.trim();
-  if (!raw || raw.includes('YOUR_')) return undefined;
-  return raw;
-}
+export const maxDuration = 120;
 
 /**
- * Deletes EXS1001–EXS1042 (and legacy EX26001–15) auth accounts and related rows
+ * Deletes EXS1001–EXS1120 (and legacy EX26001–15) auth accounts and related rows
  * so students can register again with their own passwords.
  */
 export async function POST() {
   try {
-    const rdsUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-    const serviceRoleKey = getServiceRoleKey();
-
-    if (!rdsUrl || !serviceRoleKey || !rdsUrl.includes('.db.co')) {
-      return NextResponse.json(
-        {
-          error:
-            'Set NEXT_PUBLIC_APP_URL and AUTH_SECRET (service role) for this deployment.',
-        },
-        { status: 500 },
-      );
+    const ready = assertSetupDeploymentReady();
+    if (!ready.ok) {
+      return NextResponse.json({ error: ready.error }, { status: 500 });
     }
 
     const db = getDbService();
+    if (!db) {
+      return NextResponse.json({ error: 'Database client not configured' }, { status: 500 });
+    }
 
     const result = await resetElevateXSampleStudents(db);
 

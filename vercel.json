@@ -16,13 +16,13 @@
       "maxDuration": 120
     },
     "app/api/setup/seed-elevatex-sample/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "app/api/setup/reset-elevatex-sample/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "app/api/setup/reset-elevatex-attempts/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "app/api/admin/test-reports/route.ts": {
       "maxDuration": 60

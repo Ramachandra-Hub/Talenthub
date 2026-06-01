@@ -267,12 +267,12 @@ export async function resetElevateXSampleAttempts(
 
   for (const roll of rollsFound) {
     const rollNorm = normalizeRoll(roll);
-    const { count, error } = await db
+    const { data: deletedSessions, error } = await db
       .from('student_active_sessions')
-      .delete({ count: 'exact' })
+      .delete()
       .eq('roll_number', rollNorm);
     if (error) errors.push(`session ${roll}: ${error.message}`);
-    else sessionsCleared += count ?? 0;
+    else sessionsCleared += deletedSessions?.length ?? 0;
   }
 
   for (const userId of userIds) {
@@ -405,7 +405,7 @@ export async function seedElevateXSample(
   const { deleted: legacyRemoved, errors: legacyRemoveErrors } =
     await deleteLegacySampleStudents(usersByEmail, db);
 
-  const seedResults = await mapConcurrent(ELEVATEX_SAMPLE_STUDENTS, 6, async (student) => {
+  const seedResults = await mapConcurrent(ELEVATEX_SAMPLE_STUDENTS, 10, async (student) => {
     const email = studentAuthEmail(student.roll);
     const metadata = {
       role: 'student',

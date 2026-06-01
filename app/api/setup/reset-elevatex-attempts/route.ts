@@ -1,33 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
+import {
+  ELEVATEX_SAMPLE_COUNT,
+  ELEVATEX_SAMPLE_STUDENTS,
+} from '@/lib/elevatex-sample-credentials';
 import { resetElevateXSampleAttempts } from '@/lib/elevatex-sample-seed';
-import { ELEVATEX_SAMPLE_COUNT } from '@/lib/elevatex-sample-credentials';
+import { assertSetupDeploymentReady } from '@/lib/setup/deployment-ready';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-function getServiceRoleKey(): string | undefined {
-  const raw = process.env.AUTH_SECRET?.trim();
-  if (!raw || raw.includes('YOUR_')) return undefined;
-  return raw;
-}
-
-/** Clears ElevateX attempts for EXS1001–EXS1042 so they can retake (logins unchanged). */
+/** Clears ElevateX attempts for EXS1001–EXS1120 so they can retake (logins unchanged). */
 export async function POST() {
   try {
-    const rdsUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-    const serviceRoleKey = getServiceRoleKey();
-
-    if (!rdsUrl || !serviceRoleKey || !rdsUrl.includes('.db.co')) {
-      return NextResponse.json(
-        {
-          error:
-            'Set NEXT_PUBLIC_APP_URL and AUTH_SECRET (service role) for this deployment.',
-        },
-        { status: 500 },
-      );
+    const ready = assertSetupDeploymentReady();
+    if (!ready.ok) {
+      return NextResponse.json({ error: ready.error }, { status: 500 });
     }
 
     const db = getDbService();
+    if (!db) {
+      return NextResponse.json({ error: 'Database client not configured' }, { status: 500 });
+    }
 
     const result = await resetElevateXSampleAttempts(db);
 
@@ -35,9 +28,13 @@ export async function POST() {
       return NextResponse.json({ error: result.errors.join('; '), ...result }, { status: 500 });
     }
 
+    const firstRoll = ELEVATEX_SAMPLE_STUDENTS[0]?.roll ?? 'EXS1001';
+    const lastRoll =
+      ELEVATEX_SAMPLE_STUDENTS[ELEVATEX_SAMPLE_STUDENTS.length - 1]?.roll ?? 'EXS1120';
+
     return NextResponse.json({
       success: true,
-      message: `Cleared ElevateX attempts for ${result.studentsFound} demo student(s). They can log in with EXS1001–EXS1042 and take the exam again.`,
+      message: `Cleared ElevateX attempts for ${result.studentsFound} demo student(s). They can log in with ${firstRoll}–${lastRoll} and take the exam again.`,
       expectedDemoCount: ELEVATEX_SAMPLE_COUNT,
       ...result,
       studentLogin: '/auth/login/student',

@@ -1,44 +1,38 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { ELEVATEX_SAMPLE_PASSWORD } from '@/lib/elevatex-sample-credentials';
+import {
+  ELEVATEX_SAMPLE_COUNT,
+  ELEVATEX_SAMPLE_PASSWORD,
+  ELEVATEX_SAMPLE_STUDENTS,
+} from '@/lib/elevatex-sample-credentials';
 import { writeElevateXCredentialsPublicCsv } from '@/lib/elevatex-credentials-export';
 import { seedElevateXSample } from '@/lib/elevatex-sample-seed';
+import { assertSetupDeploymentReady } from '@/lib/setup/deployment-ready';
 import path from 'node:path';
 
-/** Seeding 42 users can exceed the default 10s limit on Vercel Hobby. */
-export const maxDuration = 60;
-
-function getServiceRoleKey(): string | undefined {
-  const raw = process.env.AUTH_SECRET?.trim();
-  if (!raw || raw.includes('YOUR_')) return undefined;
-  return raw;
-}
+/** Seeding 120 users can exceed the default 10s limit on Vercel Hobby. */
+export const maxDuration = 120;
 
 /**
- * Creates 42 ElevateX Slot 1 test students (EXS1001–EXS1042), removes legacy EX26001–15,
- * and go-lives ElevateX for 10:00 AM IST today on this AWS RDS project.
+ * Creates 120 ElevateX Slot 1 test students (EXS1001–EXS1120), removes legacy EX26001–15,
+ * and go-lives ElevateX for 10:00 AM IST today.
  */
 export async function POST() {
   try {
-    const rdsUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-    const serviceRoleKey = getServiceRoleKey();
-
-    if (!rdsUrl || !serviceRoleKey || !rdsUrl.includes('.db.co')) {
-      return NextResponse.json(
-        {
-          error:
-            'Set NEXT_PUBLIC_APP_URL and AUTH_SECRET (service role) for this deployment.',
-        },
-        { status: 500 },
-      );
+    const ready = assertSetupDeploymentReady();
+    if (!ready.ok) {
+      return NextResponse.json({ error: ready.error }, { status: 500 });
     }
 
     const db = getDbService();
+    if (!db) {
+      return NextResponse.json({ error: 'Database client not configured' }, { status: 500 });
+    }
 
     const password =
       process.env.ELEVATEX_SAMPLE_PASSWORD?.trim() || ELEVATEX_SAMPLE_PASSWORD;
 
-    const result = await seedElevateXSample(db, rdsUrl, password);
+    const result = await seedElevateXSample(db, ready.appUrl, password);
 
     if ('error' in result) {
       return NextResponse.json(
@@ -49,11 +43,15 @@ export async function POST() {
 
     const csvPath = writeElevateXCredentialsPublicCsv(path.join(process.cwd()), password);
 
+    const firstRoll = ELEVATEX_SAMPLE_STUDENTS[0]?.roll ?? 'EXS1001';
+    const lastRoll =
+      ELEVATEX_SAMPLE_STUDENTS[ELEVATEX_SAMPLE_STUDENTS.length - 1]?.roll ?? 'EXS1120';
+
     return NextResponse.json({
       success: true,
-      message:
-        'ElevateX Slot 1 test students are ready (EXS1001–EXS1042). Legacy EX26001–15 removed.',
+      message: `ElevateX Slot 1 test students are ready (${firstRoll}–${lastRoll}, ${ELEVATEX_SAMPLE_COUNT} accounts). Legacy EX26001–15 removed.`,
       password: result.password,
+      appUrl: ready.appUrl,
       rdsProject: result.rdsProject,
       scheduleId: result.scheduleId,
       scheduleWarning: result.scheduleWarning,

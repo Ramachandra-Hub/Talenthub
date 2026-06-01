@@ -6,12 +6,7 @@ import {
   DEMO_FACULTY_ACCOUNT,
   DEMO_STUDENT_ACCOUNTS,
 } from '@/lib/demo-credentials';
-
-function getServiceRoleKey(): string | undefined {
-  const raw = process.env.AUTH_SECRET?.trim();
-  if (!raw || raw.includes('YOUR_')) return undefined;
-  return raw;
-}
+import { assertSetupDeploymentReady } from '@/lib/setup/deployment-ready';
 
 async function upsertAuthUser(
   db: DbServiceClient,
@@ -51,16 +46,9 @@ async function upsertAuthUser(
 
 /** Creates demo student/faculty logins for UAT (not admin). */
 export async function POST() {
-  const rdsUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const serviceRoleKey = getServiceRoleKey();
-
-  if (!rdsUrl || !serviceRoleKey || !rdsUrl.includes('.db.co')) {
-    return NextResponse.json(
-      {
-        error: 'Set NEXT_PUBLIC_APP_URL and AUTH_SECRET in .env.local',
-      },
-      { status: 500 },
-    );
+  const ready = assertSetupDeploymentReady();
+  if (!ready.ok) {
+    return NextResponse.json({ error: ready.error }, { status: 500 });
   }
 
   const db = getDbService();
