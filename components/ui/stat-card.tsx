@@ -47,39 +47,25 @@ const trendTone = {
   neutral: 'text-slate-700 bg-slate-50 border-slate-200',
 } as const;
 
-export function StatCard({
+function StatCardBody({
   label,
   value,
   hint,
   icon,
   trend,
-  accent = 'navy',
-  className,
-  onClick,
-}: StatCardProps) {
-  const clickable = Boolean(onClick);
+  accent,
+  clickable,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  icon?: React.ReactNode;
+  trend?: StatCardProps['trend'];
+  accent: NonNullable<StatCardProps['accent']>;
+  clickable: boolean;
+}) {
   return (
-    <div
-      role={clickable ? 'button' : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onClick={onClick}
-      onKeyDown={
-        clickable
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onClick?.();
-              }
-            }
-          : undefined
-      }
-      className={cn(
-        'app-stat-card',
-        clickable &&
-          'cursor-pointer transition-shadow hover:shadow-[var(--shadow-lux-lg)] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f]/40',
-        className,
-      )}
-    >
+    <>
       <div
         className={cn(
           'absolute inset-x-0 top-0 h-1 bg-gradient-to-r',
@@ -88,9 +74,7 @@ export function StatCard({
         aria-hidden
       />
       <div className="flex items-start justify-between gap-3 mb-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          {label}
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
         {icon ? (
           <span
             className={cn(
@@ -110,26 +94,83 @@ export function StatCard({
       >
         {value}
       </p>
-      {(hint || trend) && (
-        <div className="mt-2 flex items-center gap-2">
-          {trend ? (
-            <span
-              className={cn(
-                'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold',
-                trendTone[trend.tone ?? 'neutral'],
-              )}
-            >
-              {trend.value}
-            </span>
-          ) : null}
-          {hint ? (
-            <p className="text-xs text-slate-500 leading-relaxed">{hint}</p>
-          ) : null}
-          {clickable ? (
-            <p className="text-[10px] font-semibold text-[#1e3a5f]/70 mt-1">Click for full report →</p>
-          ) : null}
-        </div>
-      )}
+      <div className="mt-2 flex flex-col gap-1">
+        {(hint || trend) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {trend ? (
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                  trendTone[trend.tone ?? 'neutral'],
+                )}
+              >
+                {trend.value}
+              </span>
+            ) : null}
+            {hint ? <p className="text-xs text-slate-500 leading-relaxed">{hint}</p> : null}
+          </div>
+        )}
+        {clickable ? (
+          <p className="text-[10px] font-semibold text-[#1e3a5f]/70">Click for full report →</p>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon,
+  trend,
+  accent = 'navy',
+  className,
+  onClick,
+}: StatCardProps) {
+  const clickable = Boolean(onClick);
+  const cardClassName = cn(
+    'app-stat-card text-left w-full',
+    clickable &&
+      'cursor-pointer transition-shadow hover:shadow-[var(--shadow-lux-lg)] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f]/40',
+    className,
+  );
+
+  if (clickable) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick?.();
+        }}
+        className={cardClassName}
+      >
+        <StatCardBody
+          label={label}
+          value={value}
+          hint={hint}
+          icon={icon}
+          trend={trend}
+          accent={accent}
+          clickable={clickable}
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div className={cardClassName}>
+      <StatCardBody
+        label={label}
+        value={value}
+        hint={hint}
+        icon={icon}
+        trend={trend}
+        accent={accent}
+        clickable={clickable}
+      />
     </div>
   );
 }

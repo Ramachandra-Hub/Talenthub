@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileSpreadsheet,
   FileText,
@@ -24,12 +25,29 @@ type StatDetailReportModalProps = {
   toolbar?: ReactNode;
 };
 
+function emptyReportPayload(): TableReportPayload {
+  return {
+    title: 'Loading report…',
+    subtitle: 'Please wait',
+    generatedAt: new Date().toLocaleString(),
+    columns: [{ key: 'message', header: 'Status' }],
+    rows: [{ message: 'Preparing report data…' }],
+  };
+}
+
 export function StatDetailReportModal({
   open,
   onClose,
   report,
   fileBase,
+  toolbar,
 }: StatDetailReportModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -44,14 +62,15 @@ export function StatDetailReportModal({
     };
   }, [open, onClose]);
 
-  if (!open || !report) return null;
+  if (!open || !mounted) return null;
 
+  const displayReport = report ?? emptyReportPayload();
   const base = fileBase ?? 'dashboard-report';
-  const hasRows = report.rows.length > 0;
+  const hasRows = displayReport.rows.length > 0;
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-0 z-[110] overflow-y-auto overscroll-contain animate-in fade-in-0 duration-300"
+      className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain animate-in fade-in-0 duration-300"
       role="dialog"
       aria-modal="true"
       aria-labelledby="stat-report-title"
@@ -109,7 +128,7 @@ export function StatDetailReportModal({
                   </span>
                   {hasRows ? (
                     <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-white/90 tabular-nums">
-                      {report.rows.length} record{report.rows.length === 1 ? '' : 's'}
+                      {displayReport.rows.length} record{displayReport.rows.length === 1 ? '' : 's'}
                     </span>
                   ) : null}
                 </div>
@@ -117,15 +136,15 @@ export function StatDetailReportModal({
                   id="stat-report-title"
                   className="text-xl sm:text-2xl font-semibold tracking-tight text-white truncate"
                 >
-                  {report.title}
+                  {displayReport.title}
                 </h2>
-                {report.subtitle ? (
+                {displayReport.subtitle ? (
                   <p className="text-sm text-white/80 mt-1.5 max-w-2xl leading-relaxed">
-                    {report.subtitle}
+                    {displayReport.subtitle}
                   </p>
                 ) : null}
                 <p className="text-xs text-white/55 mt-2 font-medium tracking-wide">
-                  Generated {report.generatedAt}
+                  Generated {displayReport.generatedAt}
                 </p>
               </div>
             </div>
@@ -134,8 +153,8 @@ export function StatDetailReportModal({
               <Button
                 size="sm"
                 className="h-9 gap-2 rounded-xl border border-emerald-400/30 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white shadow-[0_4px_14px_rgba(5,150,105,0.35)] hover:from-emerald-400 hover:to-emerald-600 hover:shadow-[0_6px_20px_rgba(5,150,105,0.4)] transition-all duration-200"
-                onClick={() => downloadTableReportExcel(report, base)}
-                disabled={!hasRows}
+                onClick={() => downloadTableReportExcel(displayReport, base)}
+                disabled={!hasRows || !report}
               >
                 <FileSpreadsheet className="h-4 w-4" aria-hidden />
                 Excel
@@ -143,8 +162,8 @@ export function StatDetailReportModal({
               <Button
                 size="sm"
                 className="h-9 gap-2 rounded-xl border border-[#c4a052]/40 bg-gradient-to-b from-[#f8f4eb] to-[#e8dcc0] text-[#0c2340] shadow-[0_4px_14px_rgba(196,160,82,0.25)] hover:from-white hover:to-[#f0e6c8] transition-all duration-200 font-semibold"
-                onClick={() => downloadTableReportPdf(report, base)}
-                disabled={!hasRows}
+                onClick={() => downloadTableReportPdf(displayReport, base)}
+                disabled={!hasRows || !report}
               >
                 <FileText className="h-4 w-4" aria-hidden />
                 PDF
@@ -169,10 +188,10 @@ export function StatDetailReportModal({
         ) : null}
 
         {/* Summary KPI strip */}
-        {report.summaryLines?.length ? (
+        {displayReport.summaryLines?.length ? (
           <div className="shrink-0 border-b border-slate-200/80 bg-gradient-to-b from-[#f8fafc] to-white px-5 sm:px-8 py-4">
             <div className="flex flex-wrap gap-3">
-              {report.summaryLines.map((line) => (
+              {displayReport.summaryLines.map((line) => (
                 <div
                   key={line}
                   className="flex min-w-[140px] flex-1 items-center gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-3 shadow-[var(--shadow-lux)]"
@@ -194,7 +213,7 @@ export function StatDetailReportModal({
                 <table className="app-table w-full min-w-[640px] text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr>
-                      {report.columns.map((col) => (
+                      {displayReport.columns.map((col) => (
                         <th
                           key={col.key}
                           className={
@@ -211,12 +230,12 @@ export function StatDetailReportModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {report.rows.map((row, idx) => (
+                    {displayReport.rows.map((row, idx) => (
                       <tr
                         key={idx}
                         className={idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}
                       >
-                        {report.columns.map((col) => (
+                        {displayReport.columns.map((col) => (
                           <td
                             key={col.key}
                             className={
@@ -257,9 +276,9 @@ export function StatDetailReportModal({
                 <>
                   Showing{' '}
                   <span className="font-semibold text-[#1e3a5f] tabular-nums">
-                    {report.rows.length}
+                    {displayReport.rows.length}
                   </span>{' '}
-                  row{report.rows.length === 1 ? '' : 's'}. Use{' '}
+                  row{displayReport.rows.length === 1 ? '' : 's'}. Use{' '}
                   <span className="font-medium text-slate-600">Excel</span> or{' '}
                   <span className="font-medium text-slate-600">PDF</span> for a formatted export
                   with full styling.
@@ -274,4 +293,6 @@ export function StatDetailReportModal({
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

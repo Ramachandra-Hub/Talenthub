@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
@@ -229,9 +229,101 @@ export function AdminDashboard() {
     }
   };
 
+  const filteredStudentsForModal = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allStudents.filter((student) => {
+      if (q && !(student.full_name || student.email).toLowerCase().includes(q)) return false;
+      if (selectedTest !== 'all') {
+        const wanted = testsMap.get(selectedTest)?.name;
+        if (!wanted || student.highestTestName !== wanted) return false;
+      }
+      if (selectedCategory !== 'all') {
+        const cat = categories.find((c) => c.slug === selectedCategory);
+        if (!cat) return true;
+        const matchedTest = Array.from(testsMap.entries()).find(
+          ([, t]) => t.name === student.highestTestName,
+        );
+        if (!matchedTest) return false;
+        if (matchedTest[1].category_id !== cat.id) return false;
+      }
+      return true;
+    });
+  }, [allStudents, search, selectedTest, selectedCategory, testsMap, categories]);
+
+  const reportContextForModal = useMemo((): AdminDashboardReportContext => {
+    const categorySlugByTestId = new Map<string, string>();
+    const categoryNameByTestId = new Map<string, string>();
+    for (const [testId, test] of testsMap.entries()) {
+      const cat = categories.find((c) => c.id === test.category_id);
+      categorySlugByTestId.set(testId, cat?.slug ?? '');
+      categoryNameByTestId.set(testId, cat?.name ?? '');
+    }
+    const inactiveCount = allStudents.filter((s) => s.attempts === 0).length;
+    const attendanceRate =
+      stats.totalRegisteredUsers > 0
+        ? roundRatePercent((stats.totalStudentsAttended / stats.totalRegisteredUsers) * 100)
+        : 0;
+    const passedCount = allAttempts.filter((a) => Number(a.score ?? 0) >= 40).length;
+    const passRate =
+      allAttempts.length > 0
+        ? roundRatePercent((passedCount / allAttempts.length) * 100)
+        : 0;
+    const overallAverageScore =
+      allAttempts.length > 0
+        ? averageScorePercent(allAttempts.map((a) => Number(a.score ?? 0)))
+        : 0;
+
+    return {
+      stats,
+      students: allStudents,
+      attempts: allAttempts,
+      categories,
+      categorySlugByTestId,
+      categoryNameByTestId,
+      testsMap,
+      attendanceRate,
+      overallAverageScore,
+      passRate,
+      passedCount,
+      inactiveCount,
+    };
+  }, [stats, allStudents, allAttempts, categories, testsMap]);
+
+  const detailReportForModal = useMemo(
+    () =>
+      detailCard ? buildAdminDashboardCardReport(detailCard, reportContextForModal) : null,
+    [detailCard, reportContextForModal],
+  );
+
+  const dashboardModals = isAdmin ? (
+    <>
+      <StatDetailReportModal
+        open={detailCard != null}
+        onClose={() => setDetailCard(null)}
+        report={detailReportForModal}
+        fileBase={detailCard ? `admin-${detailCard}` : undefined}
+      />
+      <AdminTestDetailModal
+        test={selectedTestDetail}
+        open={testDetailModalOpen}
+        onOpenChange={setTestDetailModalOpen}
+        scopeUserIds={testDetailScopeUserIds}
+      />
+      <AdminAttendanceReportModal
+        open={attendanceModalOpen}
+        onClose={() => setAttendanceModalOpen(false)}
+        dateKey={attendanceDateKey}
+        onDateKeyChange={setAttendanceDateKey}
+        students={filteredStudentsForModal}
+        attempts={allAttempts}
+      />
+    </>
+  ) : null;
+
   if (loading) {
     return (
       <>
+        {dashboardModals}
         <LiveExamDashboard />
         <LoadingScreen message="Loading admin dashboard…" className="min-h-[40vh]" />
       </>
@@ -240,9 +332,12 @@ export function AdminDashboard() {
 
   if (rdsEnvMissing) {
     return (
-      <div className="lux-loading-screen min-h-[60vh] px-4">
-        <p className="text-center max-w-lg text-slate-600">{'Configure AUTH_SECRET and DATABASE_URL'}</p>
-      </div>
+      <>
+        {dashboardModals}
+        <div className="lux-loading-screen min-h-[60vh] px-4">
+          <p className="text-center max-w-lg text-slate-600">{'Configure AUTH_SECRET and DATABASE_URL'}</p>
+        </div>
+      </>
     );
   }
 
@@ -440,25 +535,6 @@ export function AdminDashboard() {
     setTestDetailModalOpen(true);
   };
 
-  const reportContext: AdminDashboardReportContext = {
-    stats,
-    students: allStudents,
-    attempts: allAttempts,
-    categories,
-    categorySlugByTestId,
-    categoryNameByTestId,
-    testsMap,
-    attendanceRate,
-    overallAverageScore,
-    passRate,
-    passedCount,
-    inactiveCount: inactiveStudents,
-  };
-
-  const detailReport = detailCard
-    ? buildAdminDashboardCardReport(detailCard, reportContext)
-    : null;
-
   const openCard = (key: AdminDashboardCardKey) => setDetailCard(key);
 
   const exportFullReportCsv = () => {
@@ -530,26 +606,7 @@ export function AdminDashboard() {
 
   return (
     <>
-      <StatDetailReportModal
-        open={detailCard != null}
-        onClose={() => setDetailCard(null)}
-        report={detailReport}
-        fileBase={detailCard ? `admin-${detailCard}` : undefined}
-      />
-      <AdminTestDetailModal
-        test={selectedTestDetail}
-        open={testDetailModalOpen}
-        onOpenChange={setTestDetailModalOpen}
-        scopeUserIds={testDetailScopeUserIds}
-      />
-      <AdminAttendanceReportModal
-        open={attendanceModalOpen}
-        onClose={() => setAttendanceModalOpen(false)}
-        dateKey={attendanceDateKey}
-        onDateKeyChange={setAttendanceDateKey}
-        students={filteredStudents}
-        attempts={allAttempts}
-      />
+      {dashboardModals}
       <LiveExamDashboard />
       <Card className="mb-6 border-amber-200 bg-amber-50/80 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
