@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import type { FacultyExamQuestion, FacultyMcqQuestion } from '@/lib/faculty-exams';
 import { allSyllabusTagDefs, CURATED_BANK_MARKER } from '@/lib/question-bank/curated-mcqs';
 import {
   DEFAULT_SYLLABUS_QUESTIONS_PER_TOPIC,
@@ -9,6 +10,31 @@ import {
 import type { SeedCuratedBankResult } from '@/lib/question-bank/seed-curated-bank';
 
 const INSERT_BATCH = 40;
+
+function assertMcq(q: FacultyExamQuestion): FacultyMcqQuestion {
+  if (!('option_a' in q) || !('question_text' in q)) {
+    throw new Error('Curated bank seed supports MCQ items only');
+  }
+  return q;
+}
+
+function facultyMcqToPrismaCreate(q: FacultyMcqQuestion, tagSlug: string): Prisma.QuestionCreateInput {
+  return {
+    questionText: q.question_text,
+    questionType: 'MCQ',
+    type: 'MCQ',
+    difficulty: 'medium',
+    optionA: q.option_a,
+    optionB: q.option_b,
+    optionC: q.option_c,
+    optionD: q.option_d,
+    options: [q.option_a, q.option_b, q.option_c, q.option_d] as Prisma.InputJsonValue,
+    correctAnswer: q.correct_answer,
+    explanation: q.explanation ?? null,
+    tags: [CURATED_BANK_MARKER, tagSlug] as Prisma.InputJsonValue,
+    marks: 1,
+  };
+}
 
 async function upsertTagPrisma(def: { slug: string; name: string }) {
   const existing = await prisma.questionTag.findUnique({ where: { slug: def.slug } });
@@ -68,21 +94,7 @@ export async function seedCuratedQuestionBankPrisma(options?: {
       const batch = mcqs.slice(i, i + INSERT_BATCH);
       for (const q of batch) {
         const created = await prisma.question.create({
-          data: {
-            questionText: q.question,
-            questionType: 'MCQ',
-            type: 'MCQ',
-            difficulty: q.difficulty ?? 'medium',
-            optionA: q.options[0],
-            optionB: q.options[1],
-            optionC: q.options[2],
-            optionD: q.options[3],
-            options: q.options as Prisma.InputJsonValue,
-            correctAnswer: q.correctAnswer,
-            explanation: q.explanation ?? null,
-            tags: [CURATED_BANK_MARKER, tag.slug] as Prisma.InputJsonValue,
-            marks: 1,
-          },
+          data: facultyMcqToPrismaCreate(assertMcq(q), tag.slug),
           select: { id: true },
         });
 
@@ -128,21 +140,7 @@ export async function ensureSyllabusBankForSlugs(
 
     for (const q of mcqs) {
       const created = await prisma.question.create({
-        data: {
-          questionText: q.question,
-          questionType: 'MCQ',
-          type: 'MCQ',
-          difficulty: q.difficulty ?? 'medium',
-          optionA: q.options[0],
-          optionB: q.options[1],
-          optionC: q.options[2],
-          optionD: q.options[3],
-          options: q.options as Prisma.InputJsonValue,
-          correctAnswer: q.correctAnswer,
-          explanation: q.explanation ?? null,
-          tags: [CURATED_BANK_MARKER, tag.slug] as Prisma.InputJsonValue,
-          marks: 1,
-        },
+        data: facultyMcqToPrismaCreate(assertMcq(q), tag.slug),
         select: { id: true },
       });
       await prisma.questionTagLink.create({

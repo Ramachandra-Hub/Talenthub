@@ -109,6 +109,7 @@ class TableQuery {
   private filters: Filter[] = [];
   private orderBy: { col: string; ascending: boolean } | null = null;
   private limitN: number | null = null;
+  private offsetN: number | null = null;
   private insertRows: Row[] = [];
   private updatePatch: Row = {};
   private upsertConflict: string | null = null;
@@ -202,6 +203,15 @@ class TableQuery {
     return this;
   }
 
+  /** PostgREST-style inclusive range: `.range(0, 9)` → 10 rows starting at 0. */
+  range(from: number, to: number) {
+    const start = Math.max(0, Math.floor(from));
+    const end = Math.max(start, Math.floor(to));
+    this.offsetN = start;
+    this.limitN = end - start + 1;
+    return this;
+  }
+
   private buildWhere(start = 1): { clause: string; values: unknown[]; next: number } {
     const parts: string[] = [];
     const values: unknown[] = [];
@@ -251,11 +261,13 @@ class TableQuery {
       sqlText += ` ORDER BY ${quoteIdent(this.orderBy.col)} ${this.orderBy.ascending ? 'ASC' : 'DESC'}`;
     }
     if (this.limitN != null && !this.headCount) sqlText += ` LIMIT ${this.limitN}`;
+    if (this.offsetN != null && !this.headCount) sqlText += ` OFFSET ${this.offsetN}`;
 
     try {
       const rows = await db.unsafe(sqlText, values);
       if (this.headCount) {
-        return { data: null, error: null, count: rows[0]?.count ?? 0 } as DbResult<null> & {
+        const countRow = Array.isArray(rows) ? rows[0] : undefined;
+        return { data: null, error: null, count: countRow?.count ?? 0 } as DbResult<null> & {
           count?: number;
         };
       }
