@@ -115,9 +115,13 @@ export default function AdminExamSchedulesPage() {
         credentials: 'include',
         body: JSON.stringify({ action }),
       });
+      const json = (await res.json()) as { error?: string; schedule?: ExamScheduleRow };
       if (!res.ok) {
-        const json = (await res.json()) as { error?: string };
         alert(json.error ?? 'Action failed');
+        return;
+      }
+      if (action === 'go_live' && json.schedule?.status !== 'live') {
+        alert('Go live did not persist. Refresh the page and try again.');
         return;
       }
       await load();

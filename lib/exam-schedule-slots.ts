@@ -884,13 +884,12 @@ export async function goLiveExamScheduleSlotSequential(
     patch.ends_at = normalizedEnd;
   }
 
-  const { data: updated, error: updateErr } = await admin
+  const { data: rows, error: updateErr } = await admin
     .from('exam_schedules')
     .update(patch)
-    .eq('id', scheduleId)
-    .select('*')
-    .single();
+    .eq('id', scheduleId);
 
+  const updated = Array.isArray(rows) ? rows[0] : null;
   if (updateErr || !updated) {
     throw new Error(updateErr?.message ?? 'Could not go live');
   }
@@ -1023,17 +1022,6 @@ export async function goLiveExamScheduleNow(
     patch.ends_at = normalizedEnd;
   }
 
-  const { data: updated, error: updateErr } = await admin
-    .from('exam_schedules')
-    .update(patch)
-    .eq('id', scheduleId)
-    .select('*')
-    .single();
-
-  if (!updateErr && updated) {
-    return updated as ExamScheduleRow;
-  }
-
   try {
     const prismaRow = await prisma.examSchedule.update({
       where: { id: scheduleId },
@@ -1041,13 +1029,24 @@ export async function goLiveExamScheduleNow(
         status: 'live',
         startsAt: new Date(startsAtIso),
         endsAt: normalizedEnd ? new Date(normalizedEnd) : null,
-        targetDepartments: row.target_departments as Prisma.InputJsonValue,
-        targetYears: row.target_years as Prisma.InputJsonValue,
       },
     });
     return mapPrismaExamScheduleRow(prismaRow);
   } catch (prismaErr) {
-    const msg = updateErr?.message ?? (prismaErr instanceof Error ? prismaErr.message : 'Could not go live');
+    const { data: rows, error: updateErr } = await admin
+      .from('exam_schedules')
+      .update(patch)
+      .eq('id', scheduleId);
+
+    const updated = Array.isArray(rows) ? rows[0] : null;
+    if (!updateErr && updated) {
+      const out = updated as ExamScheduleRow;
+      if (out.status === 'live') return out;
+    }
+
+    const msg =
+      updateErr?.message ??
+      (prismaErr instanceof Error ? prismaErr.message : 'Could not go live');
     throw new Error(msg);
   }
 }

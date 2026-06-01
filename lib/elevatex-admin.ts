@@ -6,7 +6,7 @@ import { publishFacultyExamRequest } from '@/lib/publish-faculty-exam';
 import {
   combineDateAndTime,
   createScheduleForSlot,
-  goLiveElevateXScheduleSlot,
+  goLiveExamScheduleNow,
   parseScheduleSlotsJson,
   persistSlotRosterForSlot,
   scheduleSlotNumber,
@@ -310,7 +310,7 @@ export async function saveElevateXSlot(
   }
 
   if (input.goLiveNow && scheduleId) {
-    await goLiveElevateXScheduleSlot(admin, scheduleId);
+    await goLiveExamScheduleNow(admin, scheduleId, { openWindowNow: true });
     const allSlots = filterConfiguredScheduleSlots(merged);
     if (allSlots.length > 0) {
       await syncElevateXEvaloraModuleFromConfiguredSlots(
@@ -335,23 +335,31 @@ export async function goLiveElevateXSlot(
   admin: DbServiceClient,
   scheduleId: string,
   adminUserId: string,
-): Promise<void> {
-  const liveRow = await goLiveElevateXScheduleSlot(admin, scheduleId);
+): Promise<ExamScheduleRow> {
+  const liveRow = await goLiveExamScheduleNow(admin, scheduleId, { openWindowNow: true });
   const requestId = liveRow.faculty_exam_request_id;
-  if (!requestId) return;
+  if (!requestId) return liveRow;
 
-  const { data: request } = await admin
-    .from('faculty_exam_requests')
-    .select('schedule_slots_json')
-    .eq('id', requestId)
-    .maybeSingle();
+  try {
+    const { data: request } = await admin
+      .from('faculty_exam_requests')
+      .select('schedule_slots_json')
+      .eq('id', requestId)
+      .maybeSingle();
 
-  const configured = filterConfiguredScheduleSlots(
-    parseScheduleSlotsJson(request?.schedule_slots_json),
-  );
-  if (configured.length > 0) {
-    await syncElevateXEvaloraModuleFromConfiguredSlots(admin, configured, adminUserId);
+    const configured = filterConfiguredScheduleSlots(
+      parseScheduleSlotsJson(request?.schedule_slots_json),
+    );
+    if (configured.length > 0) {
+      await syncElevateXEvaloraModuleFromConfiguredSlots(admin, configured, adminUserId);
+    } else {
+      await syncElevateXEvaloraModuleFromSchedule(admin, liveRow, adminUserId);
+    }
+  } catch (syncErr) {
+    console.warn('[goLiveElevateXSlot] evalora module sync:', syncErr);
   }
+
+  return liveRow;
 }
 
 /** Re-create / reset AWS RDS logins from the published ElevateX roster (fixes CSV login issues). */

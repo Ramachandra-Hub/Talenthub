@@ -142,9 +142,11 @@ class TableQuery {
   }
 
   select(cols = '*', opts?: { count?: 'exact'; head?: boolean }) {
-    this.op = 'select';
-    this.columns = cols;
-    if (opts?.head && opts?.count === 'exact') this.headCount = true;
+    // PostgREST allows .select() after .update(); must not turn UPDATE into SELECT.
+    if (this.op === 'select') {
+      this.columns = cols;
+      if (opts?.head && opts?.count === 'exact') this.headCount = true;
+    }
     return this;
   }
 

@@ -42,20 +42,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   if (action === 'go_live') {
     try {
-      if (isElevateXTestId(String(existing.test_id ?? ''))) {
-        await goLiveElevateXSlot(admin, id, auth.ctx.user.id);
-      } else {
-        await goLiveExamScheduleNow(admin, id, { openWindowNow: true });
+      const updated = isElevateXTestId(String(existing.test_id ?? ''))
+        ? await goLiveElevateXSlot(admin, id, auth.ctx.user.id)
+        : await goLiveExamScheduleNow(admin, id, { openWindowNow: true });
+
+      if (updated.status !== 'live') {
+        throw new Error('Schedule status did not change to live');
       }
-      const { data: refreshed, error: refreshErr } = await admin
-        .from('exam_schedules')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (refreshErr || !refreshed) {
-        throw new Error(refreshErr?.message ?? 'Could not load schedule after go live');
-      }
-      return NextResponse.json({ schedule: refreshed });
+      return NextResponse.json({ schedule: updated });
     } catch (err) {
       console.error('[exam-schedules PATCH go_live]', err);
       return NextResponse.json(

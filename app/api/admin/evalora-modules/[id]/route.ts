@@ -30,13 +30,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   }
 
-  const { data, error } = await admin
+  const { data: rows, error } = await admin
     .from('evalora_module_schedules')
     .update(patch)
-    .eq('id', id)
-    .select('*')
-    .single();
+    .eq('id', id);
 
+  const data = Array.isArray(rows) ? rows[0] : rows;
   if (!error && data) {
     return NextResponse.json({ schedule: data });
   }
