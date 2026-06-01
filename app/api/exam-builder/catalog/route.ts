@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
 import {
@@ -8,8 +8,8 @@ import {
 import { buildSyllabusCatalogForGroup } from '@/lib/exam-builder/build-syllabus-catalog';
 import type { SyllabusGroupKey } from '@/lib/exam-builder/syllabus';
 
-export async function GET() {
-  const auth = await requireAuth(['admin']);
+export async function GET(request: NextRequest) {
+  const auth = await requireAuth(['admin'], request);
   if ('response' in auth) return auth.response;
 
   const admin = getDbService();

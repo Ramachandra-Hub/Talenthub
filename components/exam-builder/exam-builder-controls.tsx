@@ -60,7 +60,7 @@ export function ExamBuilderControls({
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetch('/api/exam-builder/catalog')
+    void fetch('/api/exam-builder/catalog', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((json: CatalogResponse | null) => {
         if (json) setCatalog(json);

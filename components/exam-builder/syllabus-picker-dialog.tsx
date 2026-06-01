@@ -85,11 +85,17 @@ export function SyllabusPickerDialog({
                       : 'border-slate-200 hover:border-slate-300',
                   )}
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-sm text-[#0c2340]">{topic.name}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{topic.question_count} in bank</p>
+                    <p className="text-xs text-slate-500 mt-0.5 truncate">{topic.slug}</p>
                   </div>
-                  {selected ? <Badge tone="success">Selected</Badge> : null}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge tone={(topic.question_count ?? 0) > 0 ? 'brand' : 'warning'}>
+                      {(topic.question_count ?? 0).toLocaleString()} MCQ
+                      {(topic.question_count ?? 0) === 1 ? '' : 's'}
+                    </Badge>
+                    {selected ? <Badge tone="success">Selected</Badge> : null}
+                  </div>
                 </button>
               );
             })}

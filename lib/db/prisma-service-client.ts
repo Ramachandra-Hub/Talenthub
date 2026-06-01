@@ -9,7 +9,11 @@ import { verifyPassword } from '@/lib/password';
 import bcrypt from 'bcryptjs';
 
 type Row = Record<string, unknown>;
-type DbResult<T> = { data: T; error: { message: string; code?: string } | null };
+type DbResult<T> = {
+  data: T;
+  error: { message: string; code?: string } | null;
+  count?: number | null;
+};
 type Filter =
   | { kind: 'eq'; col: string; val: unknown }
   | { kind: 'neq'; col: string; val: unknown }
@@ -368,7 +372,9 @@ class TableQuery {
     if (this.op === 'select') {
       const res = await this.runSelect();
       if (res.error) return { data: null, error: res.error };
-      return { data: (res.data ?? []) as Row[], error: null };
+      const out: DbResult<Row[]> = { data: (res.data ?? []) as Row[], error: null };
+      if (res.count != null) out.count = res.count;
+      return out;
     }
     if (this.op === 'insert') return this.runInsert();
     if (this.op === 'update') return this.runUpdate();
