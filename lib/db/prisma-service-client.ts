@@ -215,8 +215,10 @@ class TableQuery {
         parts.push(`${quoteIdent(f.col)} <> $${i++}`);
         values.push(f.val);
       } else if (f.kind === 'in') {
-        parts.push(`${quoteIdent(f.col)} = ANY($${i++}::text[])`);
-        values.push(f.vals.map(String));
+        const vals = f.vals.map(String);
+        // UUID/BIGINT columns reject `col = ANY(text[])` — compare as text.
+        parts.push(`${quoteIdent(f.col)}::text = ANY($${i++}::text[])`);
+        values.push(vals);
       } else if (f.kind === 'not' && f.op === 'is' && f.val === null) {
         parts.push(`${quoteIdent(f.col)} IS NOT NULL`);
       } else if (f.kind === 'gte') {

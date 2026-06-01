@@ -101,3 +101,56 @@ export async function seedCuratedQuestionBankPrisma(options?: {
 
   return { tagsEnsured, questionsInserted, linksCreated, perTopic, warnings };
 }
+
+/** Ensure each slug has at least `minQuestions` MCQs (insert only; never deletes). */
+export async function ensureSyllabusBankForSlugs(
+  slugs: string[],
+  minQuestions: number,
+): Promise<{ inserted: number; slugs: string[] }> {
+  const target = Math.min(
+    MAX_SYLLABUS_QUESTIONS_PER_TOPIC,
+    Math.max(5, minQuestions),
+  );
+  const defs = allSyllabusTagDefs().filter((d) => slugs.includes(d.slug));
+  let inserted = 0;
+  const touched: string[] = [];
+
+  for (const def of defs) {
+    const tag = await upsertTagPrisma(def);
+    if (!tag) continue;
+
+    const existing = await prisma.questionTagLink.count({ where: { tagId: tag.id } });
+    if (existing >= target) continue;
+
+    const need = target - existing;
+    const mcqs = generateSyllabusMcqsForSlug(def.slug, def.name, need);
+    touched.push(def.slug);
+
+    for (const q of mcqs) {
+      const created = await prisma.question.create({
+        data: {
+          questionText: q.question,
+          questionType: 'MCQ',
+          type: 'MCQ',
+          difficulty: q.difficulty ?? 'medium',
+          optionA: q.options[0],
+          optionB: q.options[1],
+          optionC: q.options[2],
+          optionD: q.options[3],
+          options: q.options as Prisma.InputJsonValue,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation ?? null,
+          tags: [CURATED_BANK_MARKER, tag.slug] as Prisma.InputJsonValue,
+          marks: 1,
+        },
+        select: { id: true },
+      });
+      await prisma.questionTagLink.create({
+        data: { questionId: created.id, tagId: tag.id },
+      });
+      inserted += 1;
+    }
+  }
+
+  return { inserted, slugs: touched };
+}

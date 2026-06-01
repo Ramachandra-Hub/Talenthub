@@ -5,7 +5,7 @@ import { drawExamQuestionsFromTopics } from '@/lib/exam-builder/draw-questions';
 import { getExamBuilderTestType } from '@/lib/exam-builder/test-catalog';
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(['admin']);
+  const auth = await requireAuth(['admin'], request);
   if ('response' in auth) return auth.response;
 
   const admin = getDbService();
@@ -54,6 +54,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not build question paper';
-    return NextResponse.json({ error: message }, { status: 400 });
+    const needsBank =
+      message.includes('No questions in the bank') ||
+      message.includes('Load topic question bank') ||
+      message.includes('seed-bank');
+    return NextResponse.json(
+      {
+        error: message,
+        hint: needsBank
+          ? 'Open Admin → Exam builder → Load topic question bank, or POST /api/exam-builder/seed-bank while signed in as admin.'
+          : undefined,
+      },
+      { status: 400 },
+    );
   }
 }

@@ -6,6 +6,7 @@ import {
   looksLikeUuid,
   normalizeQuestionId,
 } from '@/lib/exam-builder/id-utils';
+import { ensureSyllabusBankForSlugs } from '@/lib/question-bank/seed-curated-bank-prisma';
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -256,17 +257,44 @@ export async function drawExamQuestionsFromTopics(
 
   const resolvedTags = await resolveSyllabusTopicsForBuilder(admin, input.topicIds);
 
+  const minBank = Math.max(input.questionsPerTopic + 10, 25);
+  try {
+    const seeded = await ensureSyllabusBankForSlugs(
+      resolvedTags.map((t) => t.slug),
+      minBank,
+    );
+    if (seeded.inserted > 0) {
+      warnings.push(
+        `Auto-loaded ${seeded.inserted} MCQ(s) for: ${seeded.slugs.join(', ')}.`,
+      );
+    }
+  } catch {
+    warnings.push(
+      'Could not auto-fill an empty topic bank. Use Admin → Load topic question bank if draws still fail.',
+    );
+  }
+
   const usedInPaper = new Set<string>();
   const orderedIds: string[] = [];
   const topicsUsed: { id: string; name: string; count: number }[] = [];
 
   for (const tag of resolvedTags) {
     const fullForTag = await questionIdsForTag(admin, tag.id as string, tag.slug as string);
-    const pool = shuffle(fullForTag).filter((id) => !excluded.has(id) && !usedInPaper.has(id));
+    let pool = shuffle(fullForTag).filter((id) => !excluded.has(id) && !usedInPaper.has(id));
+
+    if (pool.length < input.questionsPerTopic && fullForTag.length > 0) {
+      const recycled = shuffle(fullForTag).filter((id) => !usedInPaper.has(id));
+      if (recycled.length > pool.length) {
+        warnings.push(
+          `"${tag.name}": slot "${input.slotKey}" had no unused draws left — reusing questions from the bank for this paper.`,
+        );
+        pool = recycled;
+      }
+    }
 
     if (pool.length < input.questionsPerTopic) {
       warnings.push(
-        `"${tag.name}": only ${pool.length} fresh question(s) available for this slot (requested ${input.questionsPerTopic}).`,
+        `"${tag.name}": only ${pool.length} question(s) available (requested ${input.questionsPerTopic}).`,
       );
     }
 
@@ -274,11 +302,11 @@ export async function drawExamQuestionsFromTopics(
     if (picked.length === 0) {
       if (fullForTag.length === 0) {
         throw new Error(
-          `No questions in the bank for "${tag.name}" (slug: ${tag.slug}). Ensure your AWS RDS has question_tags + MCQs (e.g. run migration 019 or upload questions for this topic).`,
+          `No questions in the bank for "${tag.name}" (slug: ${tag.slug}). Click "Load topic question bank" in Admin, or POST /api/exam-builder/seed-bank.`,
         );
       }
       throw new Error(
-        `Every question for "${tag.name}" in this bank is already marked as used for test type "${input.testType}" + slot "${input.slotKey}". Pick another slot (e.g. slot-2), or delete rows for that slot in table exam_builder_draws, or add more MCQs.`,
+        `Could not pick questions for "${tag.name}". Try another slot or load more MCQs for this topic.`,
       );
     }
 
@@ -289,7 +317,14 @@ export async function drawExamQuestionsFromTopics(
     }
   }
 
-  const { data: questionRows } = await admin.from('questions').select('*').in('id', orderedIds);
+  const { data: questionRows, error: fetchErr } = await admin
+    .from('questions')
+    .select('*')
+    .in('id', orderedIds);
+
+  if (fetchErr) {
+    throw new Error(`Could not load drawn questions: ${fetchErr.message}`);
+  }
 
   const byId = new Map((questionRows ?? []).map((r) => [normalizeQuestionId(r.id), r]));
   const questions: FacultyExamQuestion[] = [];
@@ -298,6 +333,12 @@ export async function drawExamQuestionsFromTopics(
     if (!row) continue;
     const q = rowToFacultyQuestion(row as Record<string, unknown>);
     if (q) questions.push(q);
+  }
+
+  if (orderedIds.length > 0 && questions.length === 0) {
+    throw new Error(
+      'Questions were selected from the bank but could not be loaded. Check DATABASE_URL / RDS schema (questions table).',
+    );
   }
 
   const topicUuids = resolvedTags.map((t) => t.id).filter(looksLikeUuidLocal);

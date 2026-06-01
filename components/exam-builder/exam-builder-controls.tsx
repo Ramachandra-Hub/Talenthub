@@ -173,9 +173,13 @@ export function ExamBuilderControls({
         questions?: FacultyExamQuestion[];
         warnings?: string[];
         error?: string;
+        hint?: string;
         total?: number;
       };
-      if (!res.ok) throw new Error(json.error ?? 'Could not draw from question bank');
+      if (!res.ok) {
+        const msg = [json.error, json.hint].filter(Boolean).join(' ');
+        throw new Error(msg || 'Could not draw from question bank');
+      }
       onQuestionsGenerated(json.questions ?? [], json.warnings ?? []);
       let msg = `Drew ${json.total ?? 0} questions from the bank for ${slotKey.replace('-', ' ')} (slot keeps sets fresh).`;
       if (json.warnings?.length) {
