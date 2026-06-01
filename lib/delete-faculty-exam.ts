@@ -1,6 +1,7 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { isElevateXBuilderTestType } from '@/lib/exam-builder/elevatex-exam';
 import { ELEVATEX_MODULE_KEY, isElevateXTestId } from '@/lib/elevatex';
+import { prisma } from '@/lib/prisma';
 
 export type DeleteFacultyExamResult = {
   requestId: string;
@@ -60,12 +61,7 @@ export async function deleteFacultyExamRequest(
   result.deletedScheduleIds = scheduleIds;
 
   if (scheduleIds.length) {
-    const rosterErr = await deleteByIds(
-      db,
-      'exam_student_roster',
-      'exam_schedule_id',
-      scheduleIds,
-    );
+    const rosterErr = await deleteByIds(db, 'exam_student_roster', 'schedule_id', scheduleIds);
     if (rosterErr) result.errors.push(`exam_student_roster: ${rosterErr}`);
 
     const schedErr = await deleteByIds(db, 'exam_schedules', 'id', scheduleIds);
@@ -150,6 +146,25 @@ export async function deleteFacultyExamRequest(
   return result;
 }
 
+async function deleteRosterForSchedule(
+  db: DbServiceClient,
+  scheduleId: string,
+): Promise<string | null> {
+  let err = await deleteByIds(db, 'exam_student_roster', 'schedule_id', [scheduleId]);
+  if (!err) return null;
+
+  const legacy = await deleteByIds(db, 'exam_student_roster', 'exam_schedule_id', [scheduleId]);
+  if (!legacy) return null;
+
+  if (
+    err.includes('exam_student_roster') &&
+    (err.includes('does not exist') || err.includes('schema cache'))
+  ) {
+    return null;
+  }
+  return err;
+}
+
 /** Delete a single exam schedule window (roster + row). Keeps faculty request and published test. */
 export async function deleteExamScheduleById(
   db: DbServiceClient,
@@ -161,18 +176,40 @@ export async function deleteExamScheduleById(
     .eq('id', scheduleId)
     .maybeSingle();
 
-  if (fetchErr) return { error: fetchErr.message };
-  if (!data) return { error: 'Schedule not found' };
+  if (fetchErr && !fetchErr.message.includes('does not exist')) {
+    return { error: fetchErr.message };
+  }
 
-  const rosterErr = await deleteByIds(
-    db,
-    'exam_student_roster',
-    'exam_schedule_id',
-    [scheduleId],
-  );
-  if (rosterErr) return { error: rosterErr };
+  const existsInPrisma = await prisma.examSchedule
+    .findUnique({ where: { id: scheduleId }, select: { id: true } })
+    .catch(() => null);
+
+  if (!data && !existsInPrisma) return { error: 'Schedule not found' };
+
+  const rosterErr = await deleteRosterForSchedule(db, scheduleId);
+
+  const { error: slotRosterErr } = await db
+    .from('exam_slot_roster_entries')
+    .delete()
+    .eq('schedule_id', scheduleId);
+  if (slotRosterErr && !slotRosterErr.message.includes('does not exist')) {
+    console.warn('[deleteExamScheduleById] exam_slot_roster_entries:', slotRosterErr.message);
+  }
 
   const { error } = await db.from('exam_schedules').delete().eq('id', scheduleId);
-  if (error) return { error: error.message };
-  return { ok: true };
+
+  if (!error) {
+    if (rosterErr) console.warn('[deleteExamScheduleById] roster cleanup:', rosterErr);
+    return { ok: true };
+  }
+
+  try {
+    await prisma.examStudentRoster.deleteMany({ where: { scheduleId } });
+    await prisma.examSlotRosterEntry.deleteMany({ where: { scheduleId } }).catch(() => undefined);
+    await prisma.examSchedule.delete({ where: { id: scheduleId } });
+    return { ok: true };
+  } catch (prismaErr) {
+    const msg = error?.message ?? (prismaErr instanceof Error ? prismaErr.message : 'Delete failed');
+    return { error: rosterErr ? `${msg}; roster: ${rosterErr}` : msg };
+  }
 }

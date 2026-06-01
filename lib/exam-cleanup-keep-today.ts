@@ -160,13 +160,13 @@ export async function cleanupExamsKeepToday(
       summary.deletedStudentRosterRows = await countDelete(
         db,
         'exam_student_roster',
-        'exam_schedule_id',
+        'schedule_id',
         deleteScheduleIds,
       );
       const rosterErr = await deleteByIds(
         db,
         'exam_student_roster',
-        'exam_schedule_id',
+        'schedule_id',
         deleteScheduleIds,
       );
       if (rosterErr) summary.errors.push(`exam_student_roster: ${rosterErr}`);
@@ -177,7 +177,7 @@ export async function cleanupExamsKeepToday(
       summary.deletedStudentRosterRows = await countDelete(
         db,
         'exam_student_roster',
-        'exam_schedule_id',
+        'schedule_id',
         deleteScheduleIds,
       );
     }

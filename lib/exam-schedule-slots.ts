@@ -496,7 +496,7 @@ export async function syncExamStudentRosters(
   const scheduleBySlot = new Map(schedules.map((row) => [row.slot_number, row.scheduleId]));
   const scheduleIds = schedules.map((row) => row.scheduleId);
 
-  await admin.from('exam_student_roster').delete().in('exam_schedule_id', scheduleIds);
+  await admin.from('exam_student_roster').delete().in('schedule_id', scheduleIds);
 
   const rows: Array<Record<string, unknown>> = [];
   for (const slot of slots) {
@@ -504,12 +504,11 @@ export async function syncExamStudentRosters(
     if (!scheduleId) continue;
     for (const student of slot.roster) {
       rows.push({
-        exam_schedule_id: scheduleId,
+        schedule_id: scheduleId,
         roll_number: student.roll_number,
-        email: student.email ?? null,
         full_name: student.student_name ?? null,
         branch: student.branch ?? null,
-        academic_year: student.academic_year ?? null,
+        year: student.academic_year ?? null,
       });
     }
   }
