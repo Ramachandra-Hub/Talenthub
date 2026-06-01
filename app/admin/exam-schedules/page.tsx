@@ -435,13 +435,6 @@ export default function AdminExamSchedulesPage() {
                                 ? 'Reopen'
                                 : 'Go live'}
                             </Button>
-                          ) : canGoLive && resolved.display !== 'live' && seqBlock ? (
-                            <span
-                              className="text-[10px] text-amber-800 max-w-[140px] leading-tight"
-                              title={seqBlock}
-                            >
-                              {seqBlock}
-                            </span>
                           ) : null}
                           {resolved.windowOpen || s.status === 'live' ? (
                             <Button
