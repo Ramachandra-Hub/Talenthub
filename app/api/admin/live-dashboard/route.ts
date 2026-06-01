@@ -9,6 +9,7 @@ import {
 } from '@/lib/admin/live-dashboard-prisma';
 import { prisma } from '@/lib/prisma';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
+import { isElevateXModule } from '@/lib/elevatex';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,14 +46,52 @@ function mapEndedSchedule(row: {
 
 async function listRecentlyEndedExamSchedulesPrisma(): Promise<ExamScheduleRow[]> {
   const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  const rows = await prisma.examSchedule.findMany({
-    where: {
-      OR: [{ status: 'ended' }, { endsAt: { lt: new Date(), gte: cutoff } }],
-    },
-    orderBy: { endsAt: 'desc' },
-    take: 20,
-  });
-  return rows.map(mapEndedSchedule);
+  const [rows, moduleRows] = await Promise.all([
+    prisma.examSchedule.findMany({
+      where: {
+        OR: [{ status: 'ended' }, { endsAt: { lt: new Date(), gte: cutoff } }],
+      },
+      orderBy: { endsAt: 'desc' },
+      take: 20,
+    }),
+    prisma.evaloraModuleSchedule.findMany({
+      where: {
+        OR: [{ status: 'ended' }, { endsAt: { lt: new Date(), gte: cutoff } }],
+      },
+      orderBy: { endsAt: 'desc' },
+      take: 20,
+    }),
+  ]);
+  const mapped = rows.map(mapEndedSchedule);
+  for (const row of moduleRows) {
+    mapped.push({
+      id: row.id,
+      test_id: row.moduleKey,
+      title:
+        row.title?.trim() ||
+        (isElevateXModule(row.moduleKey) ? 'ElevateX' : row.moduleKey.replace(/_/g, ' ')),
+      status: row.status === 'live' || row.status === 'ended' ? row.status : 'scheduled',
+      starts_at: row.startsAt.toISOString(),
+      ends_at: row.endsAt?.toISOString() ?? null,
+      target_departments: Array.isArray(row.targetDepartments)
+        ? (row.targetDepartments as string[])
+        : [],
+      target_years: Array.isArray(row.targetYears) ? (row.targetYears as string[]) : [],
+      description: null,
+      notice: row.notice ?? null,
+      faculty_exam_request_id: null,
+      slot_number: null,
+      slot_capacity: null,
+      created_by: row.createdBy ?? null,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
+    });
+  }
+  return mapped.sort(
+    (a, b) =>
+      new Date(b.ends_at ?? b.starts_at).getTime() -
+      new Date(a.ends_at ?? a.starts_at).getTime(),
+  );
 }
 
 export async function GET(request: Request) {

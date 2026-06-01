@@ -3,6 +3,7 @@ import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { isScheduleLiveNow, resolveExamScheduleStatus } from '@/lib/exam-schedule';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
+import { isElevateXAttemptTitle, isElevateXModule, isElevateXTestId } from '@/lib/elevatex';
 import {
   loadAdminStudentsPrisma,
   loadAllAttemptsRollupPrisma,
@@ -50,15 +51,47 @@ function isLiveForDashboard(schedule: ExamScheduleRow, now = Date.now()): boolea
 
 export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> {
   const now = Date.now();
-  const rows = await prisma.examSchedule.findMany({
-    where: { status: { not: 'ended' } },
-    orderBy: { startsAt: 'desc' },
-    take: 100,
-  });
+  const [rows, moduleRows] = await Promise.all([
+    prisma.examSchedule.findMany({
+      where: { status: { not: 'ended' } },
+      orderBy: { startsAt: 'desc' },
+      take: 100,
+    }),
+    prisma.evaloraModuleSchedule.findMany({
+      where: { status: { not: 'ended' } },
+      orderBy: { startsAt: 'desc' },
+      take: 100,
+    }),
+  ]);
 
   const live: ExamScheduleRow[] = [];
   for (const row of rows) {
     const mapped = mapSchedule(row);
+    if (isLiveForDashboard(mapped, now)) live.push(mapped);
+  }
+  for (const row of moduleRows) {
+    const mapped: ExamScheduleRow = {
+      id: row.id,
+      title:
+        row.title?.trim() ||
+        (isElevateXModule(row.moduleKey) ? 'ElevateX' : row.moduleKey.replace(/_/g, ' ')),
+      description: null,
+      notice: row.notice ?? null,
+      faculty_exam_request_id: null,
+      test_id: row.moduleKey,
+      status: row.status === 'live' || row.status === 'ended' ? row.status : 'scheduled',
+      starts_at: row.startsAt.toISOString(),
+      ends_at: row.endsAt?.toISOString() ?? null,
+      target_departments: Array.isArray(row.targetDepartments)
+        ? (row.targetDepartments as string[])
+        : [],
+      target_years: Array.isArray(row.targetYears) ? (row.targetYears as string[]) : [],
+      slot_number: null,
+      slot_capacity: null,
+      created_by: row.createdBy ?? null,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
+    };
     if (isLiveForDashboard(mapped, now)) live.push(mapped);
   }
 
@@ -70,6 +103,10 @@ export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> 
 function attemptMatchesSchedule(attempt: RollupAttempt, schedule: ExamScheduleRow): boolean {
   const testId = String(schedule.test_id ?? '').trim();
   if (testId && attempt.test_id && testIdsMatch(attempt.test_id, testId)) return true;
+  if (isElevateXModule(testId) || isElevateXTestId(testId)) {
+    if (attempt.test_id && isElevateXTestId(attempt.test_id)) return true;
+    if (isElevateXAttemptTitle(attempt.test_name)) return true;
+  }
   const title = schedule.title?.toLowerCase() ?? '';
   return title.length > 2 && attempt.test_name.toLowerCase().includes(title);
 }

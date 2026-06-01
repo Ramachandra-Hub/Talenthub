@@ -24,6 +24,7 @@ import { assertStudentCanTakeTestPrisma } from '@/lib/db/exam-access-prisma';
 import type { TestAttempt } from '@/lib/types';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
+import { rollNumberFromUser } from '@/lib/admin/roll-number';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,7 +108,8 @@ export async function POST(request: Request) {
     const accessRollNumber =
       typeof body.accessRollNumber === 'string' && body.accessRollNumber.trim()
         ? body.accessRollNumber.trim()
-        : (profile.roll_number ?? undefined);
+        : (profile.roll_number ??
+          (profile.email ? rollNumberFromUser(profile.email) : undefined));
     const access = await assertStudentCanTakeTestPrisma(userId, testId, {
       branch: accessBranch,
       academic_year: accessYear,
