@@ -220,7 +220,7 @@ sudo chown ec2-user:ec2-user /opt/prepindia /var/log/prepindia
 cd /opt/prepindia
 
 # Clone your repo (or deploy via CI artifact)
-git clone https://github.com/jagadishvajjha94-pixel/Practice-Tests.git .
+git clone https://github.com/Ramachandra-Hub/Talenthub.git .
 cd apps/prepindia-web
 ```
 
