@@ -245,7 +245,11 @@ export async function createFacultyExamRequestRecord(
     testId = published.testId;
 
     if (input.usesSlotScheduling && testId) {
-      await goLiveAllConfiguredSlotSchedules(admin, requestId);
+      try {
+        await goLiveAllConfiguredSlotSchedules(admin, requestId);
+      } catch (goLiveErr) {
+        console.warn('[createFacultyExamRequestRecord] go live slots:', goLiveErr);
+      }
     }
 
     if (input.autoGoLive && testId && !input.usesSlotScheduling) {

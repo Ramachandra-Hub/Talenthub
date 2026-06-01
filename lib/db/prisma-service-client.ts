@@ -99,11 +99,25 @@ function payloadToSnake(payload: Row): Row {
   return out;
 }
 
+function isArrayTypeMismatch(message: string): boolean {
+  return (
+    /type jsonb/i.test(message) ||
+    /cannot cast type jsonb/i.test(message) ||
+    /malformed array literal/i.test(message) ||
+    (/type .*text\[\]/i.test(message) && /json/i.test(message))
+  );
+}
+
 /** JSON/JSONB columns need string values; TEXT[] columns need native string arrays. */
-function serializeInsertValues(snake: Row): unknown[] {
-  return Object.values(snake).map((v) => {
+function serializeInsertValues(
+  snake: Row,
+  _table?: string,
+  mode: 'default' | 'json-arrays' = 'default',
+): unknown[] {
+  return Object.entries(snake).map(([, v]) => {
     if (v === undefined) return null;
     if (Array.isArray(v)) {
+      if (mode === 'json-arrays') return JSON.stringify(v);
       if (v.every((item) => item === null || typeof item === 'string')) {
         return v;
       }
@@ -305,11 +319,31 @@ class TableQuery {
       for (const row of this.insertRows) {
         const snake = payloadToSnake(row);
         const cols = Object.keys(snake);
-        const vals = serializeInsertValues(snake);
-        const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
-        const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) RETURNING *`;
-        const inserted = await db.unsafe(sqlText, vals);
-        results.push(...rowsToSnake(inserted as Row[]));
+        let mode: 'default' | 'json-arrays' = 'default';
+        let inserted: Row[] | null = null;
+        let lastErr: unknown;
+
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const vals = serializeInsertValues(snake, this.table, mode);
+          const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
+          const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) RETURNING *`;
+          try {
+            inserted = (await db.unsafe(sqlText, vals)) as Row[];
+            lastErr = null;
+            break;
+          } catch (err) {
+            lastErr = err;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (attempt === 0 && isArrayTypeMismatch(msg)) {
+              mode = mode === 'default' ? 'json-arrays' : 'default';
+              continue;
+            }
+            throw err;
+          }
+        }
+
+        if (lastErr) throw lastErr;
+        results.push(...rowsToSnake(inserted ?? []));
       }
       return { data: results, error: null };
     } catch (err) {
@@ -322,7 +356,7 @@ class TableQuery {
     const snake = payloadToSnake(this.updatePatch);
     const sets = Object.keys(snake);
     if (!sets.length) return { data: [], error: null };
-    const setVals = serializeInsertValues(snake);
+    const setVals = serializeInsertValues(snake, this.table);
     const setParts = sets.map((c, idx) => `${quoteIdent(c)} = $${idx + 1}`);
     const { clause, values } = this.buildWhere(setVals.length + 1);
     const allVals = [...setVals, ...values];
@@ -360,7 +394,7 @@ class TableQuery {
       for (const row of this.insertRows) {
         const snake = payloadToSnake(row);
         const cols = Object.keys(snake);
-        const vals = serializeInsertValues(snake);
+        const vals = serializeInsertValues(snake, this.table);
         const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
         const updates = cols
           .filter((c) => !conflictCols.includes(c))
@@ -469,30 +503,83 @@ export function createPrismaServiceClient() {
           email_confirm?: boolean;
           user_metadata?: Record<string, unknown>;
         }) {
+          const email = opts.email.trim().toLowerCase();
           const hash = await bcrypt.hash(opts.password, 12);
           const meta = opts.user_metadata ?? {};
-          const user = await prisma.user.create({
-            data: {
-              email: opts.email.trim().toLowerCase(),
-              passwordHash: hash,
-              fullName: (meta.full_name as string) ?? null,
-              branch: (meta.department as string) ?? null,
-              academicYear: (meta.academic_year as string) ?? null,
-              rollNumber: (meta.roll_number as string) ?? null,
-            },
-          });
-          return { data: { user: await authUserToClientShape(user) }, error: null };
+          const data = {
+            email,
+            passwordHash: hash,
+            fullName: (meta.full_name as string) ?? null,
+            branch: (meta.department as string) ?? (meta.branch as string) ?? null,
+            academicYear: (meta.academic_year as string) ?? (meta.year as string) ?? null,
+            rollNumber: (meta.roll_number as string) ?? null,
+          };
+
+          try {
+            const user = await prisma.user.create({ data });
+            return { data: { user: await authUserToClientShape(user) }, error: null };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const duplicate =
+              msg.includes('Unique constraint') ||
+              msg.includes('unique constraint') ||
+              (err as { code?: string }).code === 'P2002';
+            if (!duplicate) {
+              return { data: { user: null }, error: { message: msg } };
+            }
+            const existing = await prisma.user.findUnique({ where: { email } });
+            if (!existing) {
+              return { data: { user: null }, error: { message: msg } };
+            }
+            const user = await prisma.user.update({
+              where: { id: existing.id },
+              data,
+            });
+            return { data: { user: await authUserToClientShape(user) }, error: null };
+          }
         },
-        async updateUserById(id: string, patch: { user_metadata?: Record<string, unknown> }) {
+        async updateUserById(
+          id: string,
+          patch: {
+            email?: string;
+            password?: string;
+            email_confirm?: boolean;
+            user_metadata?: Record<string, unknown>;
+          },
+        ) {
           const meta = patch.user_metadata ?? {};
+          const updateData: {
+            email?: string;
+            passwordHash?: string;
+            fullName?: string | null;
+            branch?: string | null;
+            academicYear?: string | null;
+            rollNumber?: string | null;
+          } = {
+            fullName: meta.full_name != null ? String(meta.full_name) : undefined,
+            branch:
+              meta.department != null
+                ? String(meta.department)
+                : meta.branch != null
+                  ? String(meta.branch)
+                  : undefined,
+            academicYear:
+              meta.academic_year != null
+                ? String(meta.academic_year)
+                : meta.year != null
+                  ? String(meta.year)
+                  : undefined,
+            rollNumber: meta.roll_number != null ? String(meta.roll_number) : undefined,
+          };
+          if (patch.email?.trim()) {
+            updateData.email = patch.email.trim().toLowerCase();
+          }
+          if (patch.password?.trim()) {
+            updateData.passwordHash = await bcrypt.hash(patch.password, 12);
+          }
           const user = await prisma.user.update({
             where: { id },
-            data: {
-              fullName: meta.full_name != null ? String(meta.full_name) : undefined,
-              branch: meta.department != null ? String(meta.department) : undefined,
-              academicYear: meta.academic_year != null ? String(meta.academic_year) : undefined,
-              rollNumber: meta.roll_number != null ? String(meta.roll_number) : undefined,
-            },
+            data: updateData,
           });
           return { data: { user: await authUserToClientShape(user) }, error: null };
         },

@@ -97,7 +97,7 @@ export async function provisionStudentsFromSlotRoster(
     process.env.EXAM_STUDENT_DEFAULT_PASSWORD?.trim() ||
     'Exam2026';
   const defaultYear =
-    input.defaultYears.find((y) => isValidAcademicYear(y)) ?? '3';
+    input.defaultYears.find((y) => isValidAcademicYear(y)) ?? 'III Year';
 
   const usersByEmail = await loadAuthUsersByEmail(admin);
   const result: RosterProvisionResult = {

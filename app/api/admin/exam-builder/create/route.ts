@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
+import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
 import { requireAuth } from '@/lib/server-auth';
 import { parseQuestionsJson } from '@/lib/faculty-exams';
 import { getExamBuilderTestType } from '@/lib/exam-builder/test-catalog';
@@ -29,6 +30,17 @@ export async function POST(request: NextRequest) {
   const admin = getDbService();
   if (!admin) {
     return NextResponse.json({ error: 'Server configuration missing' }, { status: 500 });
+  }
+
+  const schema = await autoEnsureRdsSchema();
+  if (!schema.ok && !schema.skipped) {
+    return NextResponse.json(
+      {
+        error: schema.message,
+        hint: schema.detail ?? 'Run POST /api/setup/rds or pnpm init:rds against your DATABASE_URL.',
+      },
+      { status: 503 },
+    );
   }
 
   let body: Record<string, unknown>;
@@ -186,16 +198,18 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Publish failed';
     console.error('[exam-builder/create]', err);
-    return NextResponse.json(
-      {
-        error: message,
-        hint: message.includes('Slot 1 schedule')
-          ? 'Complete Slot 1 date, time, and roster, then publish again.'
-          : message.includes('student login')
-            ? 'Roster login provisioning failed — check DATABASE_URL and try a smaller roster first.'
-            : undefined,
-      },
-      { status: 500 },
-    );
+    const lower = message.toLowerCase();
+    let hint: string | undefined;
+    if (lower.includes('slot 1') || lower.includes('configure slot')) {
+      hint = 'Complete Slot 1 date, time, and roster, then publish again.';
+    } else if (lower.includes('student login') || lower.includes('roster')) {
+      hint =
+        'Roster login provisioning had issues — the exam may still be saved. Check DATABASE_URL, then use /api/setup/elevatex-credentials if needed.';
+    } else if (lower.includes('exam schedule') || lower.includes('target_departments')) {
+      hint = 'Schedule insert failed — run POST /api/setup/rds to sync exam_schedules columns, then retry.';
+    } else if (lower.includes('does not exist') || lower.includes('column')) {
+      hint = 'Database schema is out of date. Run POST /api/setup/rds from an admin session, wait 30s, retry.';
+    }
+    return NextResponse.json({ error: message, hint }, { status: 500 });
   }
 }

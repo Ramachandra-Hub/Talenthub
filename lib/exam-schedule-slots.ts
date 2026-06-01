@@ -381,8 +381,8 @@ async function insertSlotRosterRows(
         roll_number: student.roll_number,
         student_name: student.student_name ?? null,
         email: student.email ?? null,
-        branch: student.branch ?? null,
-        academic_year: student.academic_year ?? null,
+        department: student.branch ?? null,
+        year: student.academic_year ?? null,
         password: student.password ?? null,
       });
     }
@@ -390,17 +390,31 @@ async function insertSlotRosterRows(
   if (rows.length === 0) return;
 
   let { error } = await admin.from('exam_slot_roster_entries').insert(rows);
-  if (error?.message?.includes('branch') || error?.message?.includes('academic_year')) {
-    const fallbackRows = rows.map((row) => {
-      const { branch: _b, academic_year: _y, login_password: _p, ...rest } = row;
-      return rest;
+  if (
+    error?.message &&
+    (error.message.includes('department') ||
+      error.message.includes('year') ||
+      error.message.includes('branch') ||
+      error.message.includes('academic_year'))
+  ) {
+    const legacyRows = rows.map((row) => {
+      const base = { ...row };
+      if (row.department != null) {
+        (base as Record<string, unknown>).branch = row.department;
+        delete (base as Record<string, unknown>).department;
+      }
+      if (row.year != null) {
+        (base as Record<string, unknown>).academic_year = row.year;
+        delete (base as Record<string, unknown>).year;
+      }
+      return base;
     });
-    const retry = await admin.from('exam_slot_roster_entries').insert(fallbackRows);
+    const retry = await admin.from('exam_slot_roster_entries').insert(legacyRows);
     error = retry.error;
   }
-  if (error?.message?.includes('login_password')) {
+  if (error?.message?.includes('password') || error?.message?.includes('login_password')) {
     const fallbackRows = rows.map((row) => {
-      const { login_password: _p, ...rest } = row;
+      const { password: _p, login_password: _lp, ...rest } = row as Record<string, unknown>;
       return rest;
     });
     const retry = await admin.from('exam_slot_roster_entries').insert(fallbackRows);
@@ -442,7 +456,9 @@ export async function rebuildSlotsFromRosterEntries(
 ): Promise<ExamScheduleSlotInput[]> {
   const { data: entries, error } = await admin
     .from('exam_slot_roster_entries')
-    .select('slot_number, roll_number, student_name, email, branch, academic_year, login_password')
+    .select(
+      'slot_number, roll_number, student_name, email, department, year, branch, academic_year, password',
+    )
     .eq('faculty_exam_request_id', requestId)
     .order('slot_number');
 
@@ -459,9 +475,14 @@ export async function rebuildSlotsFromRosterEntries(
       roll_number: normalizeRoll(String(row.roll_number)),
       student_name: (row.student_name as string | null) ?? undefined,
       email: (row.email as string | null) ?? undefined,
-      branch: (row.branch as string | null) ?? undefined,
-      academic_year: (row.academic_year as string | null) ?? undefined,
-      password: (row.login_password as string | null) ?? undefined,
+      branch:
+        (row.department as string | null) ?? (row.branch as string | null) ?? undefined,
+      academic_year:
+        (row.year as string | null) ?? (row.academic_year as string | null) ?? undefined,
+      password:
+        (row.password as string | null) ??
+        (row.login_password as string | null) ??
+        undefined,
     });
     bySlot.set(slotNum, list);
   }
@@ -516,8 +537,8 @@ export async function syncExamStudentRosters(
   if (rows.length === 0) return;
 
   const { error } = await admin.from('exam_student_roster').insert(rows);
-  if (error && !error.message.includes('exam_student_roster')) {
-    throw new Error(error.message);
+  if (error) {
+    console.warn('[syncExamStudentRosters]', error.message);
   }
 }
 
@@ -712,6 +733,83 @@ export async function checkStudentSlotExamAccess(
   };
 }
 
+async function createOneSlotSchedule(
+  admin: DbServiceClient,
+  input: {
+    requestId: string;
+    testId: string;
+    title: string;
+    description: string | null;
+    targetDepartments: string[];
+    targetYears: string[];
+    createdBy: string;
+    slot: ParsedExamScheduleSlot;
+  },
+): Promise<CreatedSlotSchedule | null> {
+  const slotTitle = `${input.title} · Slot ${input.slot.slot_number}`;
+  const notice = `${input.slot.roster.length} students · max ${input.slot.capacity}`;
+
+  try {
+    const row = await prisma.examSchedule.create({
+      data: {
+        title: slotTitle,
+        description: input.description,
+        notice,
+        facultyExamRequestId: input.requestId,
+        testId: input.testId,
+        status: 'scheduled',
+        startsAt: new Date(input.slot.starts_at),
+        endsAt: new Date(input.slot.ends_at),
+        targetDepartments: input.targetDepartments as Prisma.InputJsonValue,
+        targetYears: input.targetYears as Prisma.InputJsonValue,
+        createdBy: input.createdBy,
+        slotNumber: input.slot.slot_number,
+        slotCapacity: input.slot.capacity,
+      },
+    });
+    return { scheduleId: row.id, slot_number: input.slot.slot_number };
+  } catch (prismaErr) {
+    console.warn('[createSchedulesFromSlots] prisma:', prismaErr);
+  }
+
+  const payload: Record<string, unknown> = {
+    title: slotTitle,
+    description: input.description,
+    notice,
+    faculty_exam_request_id: input.requestId,
+    test_id: input.testId,
+    status: 'scheduled',
+    starts_at: input.slot.starts_at,
+    ends_at: input.slot.ends_at,
+    target_departments: input.targetDepartments,
+    target_years: input.targetYears,
+    created_by: input.createdBy,
+    updated_at: new Date().toISOString(),
+    slot_number: input.slot.slot_number,
+    slot_capacity: input.slot.capacity,
+  };
+
+  const { data, error } = await admin
+    .from('exam_schedules')
+    .insert(payload)
+    .select('id')
+    .single();
+
+  if (!error && data?.id) {
+    return { scheduleId: String(data.id), slot_number: input.slot.slot_number };
+  }
+
+  const withoutSlotCols = { ...payload };
+  delete withoutSlotCols.slot_number;
+  delete withoutSlotCols.slot_capacity;
+  const retry = await admin.from('exam_schedules').insert(withoutSlotCols).select('id').single();
+  if (retry.error) {
+    throw new Error(retry.error.message ?? error?.message ?? 'Could not create slot schedule');
+  }
+  if (!retry.data?.id) return null;
+  return { scheduleId: String(retry.data.id), slot_number: input.slot.slot_number };
+}
+
 export async function createSchedulesFromSlots(
   admin: DbServiceClient,
   input: {
@@ -729,45 +827,12 @@ export async function createSchedulesFromSlots(
   const created: CreatedSlotSchedule[] = [];
 
   for (const slot of parsed) {
-    const payload: Record<string, unknown> = {
-      title: `${input.title} · Slot ${slot.slot_number}`,
-      description: input.description,
-      notice: `${slot.roster.length} students · max ${slot.capacity}`,
-      faculty_exam_request_id: input.requestId,
-      test_id: input.testId,
-      status: 'scheduled',
-      starts_at: slot.starts_at,
-      ends_at: slot.ends_at,
-      target_departments: input.targetDepartments,
-      target_years: input.targetYears,
-      created_by: input.createdBy,
-      updated_at: new Date().toISOString(),
-      slot_number: slot.slot_number,
-      slot_capacity: slot.capacity,
-    };
+    const row = await createOneSlotSchedule(admin, { ...input, slot });
+    if (row) created.push(row);
+  }
 
-    const { data, error } = await admin
-      .from('exam_schedules')
-      .insert(payload)
-      .select('id')
-      .single();
-
-    if (error) {
-      const withoutSlotCols = { ...payload };
-      delete withoutSlotCols.slot_number;
-      delete withoutSlotCols.slot_capacity;
-      const retry = await admin
-        .from('exam_schedules')
-        .insert(withoutSlotCols)
-        .select('id')
-        .single();
-      if (retry.error) throw new Error(retry.error.message);
-      if (retry.data?.id) {
-        created.push({ scheduleId: String(retry.data.id), slot_number: slot.slot_number });
-      }
-    } else if (data?.id) {
-      created.push({ scheduleId: String(data.id), slot_number: slot.slot_number });
-    }
+  if (parsed.length > 0 && created.length === 0) {
+    throw new Error('Could not create exam schedules for configured slots. Check DATABASE_URL / RDS schema.');
   }
 
   return created;

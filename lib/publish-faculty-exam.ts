@@ -95,12 +95,21 @@ async function finalizeSlotSchedulesOnPublish(
   );
 
   const rosterStudents = slots.reduce((n, slot) => n + slot.roster.length, 0);
-  const provision = await provisionStudentsFromSlotRoster(admin, {
-    slots,
-    defaultDepartment: String(request.department),
-    defaultYears: (request.target_years as string[]) ?? [],
-  });
-  assertRosterProvisionSucceeded(provision, rosterStudents);
+  if (rosterStudents > 0) {
+    try {
+      const provision = await provisionStudentsFromSlotRoster(admin, {
+        slots,
+        defaultDepartment: String(request.department),
+        defaultYears: (request.target_years as string[]) ?? [],
+      });
+      assertRosterProvisionSucceeded(provision, rosterStudents);
+    } catch (provisionErr) {
+      console.error('[publishFacultyExamRequest] roster provision:', provisionErr);
+      if (process.env.EXAM_REQUIRE_ROSTER_PROVISION === 'true') {
+        throw provisionErr;
+      }
+    }
+  }
 
   const { data: existingSchedules } = await admin
     .from('exam_schedules')

@@ -50,7 +50,7 @@ export async function loadStudentSlotAssignmentsByRoll(
   const { data: entries } = await admin
     .from('exam_slot_roster_entries')
     .select(
-      'faculty_exam_request_id, slot_number, student_name, roll_number, branch, academic_year',
+      'faculty_exam_request_id, slot_number, student_name, roll_number, department, year, branch, academic_year',
     );
 
   for (const row of entries ?? []) {
@@ -61,8 +61,12 @@ export async function loadStudentSlotAssignmentsByRoll(
     out.set(requestId, {
       slot_number: Math.floor(slotNum),
       student_name: (row.student_name as string | null) ?? null,
-      branch: (row.branch as string | null) ?? undefined,
-      year: (row.academic_year as string | null) ?? undefined,
+      branch:
+        (row.department as string | null) ??
+        (row.branch as string | null) ??
+        undefined,
+      year:
+        (row.year as string | null) ?? (row.academic_year as string | null) ?? undefined,
     });
   }
 
