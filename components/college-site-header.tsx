@@ -47,10 +47,9 @@ export default function CollegeSiteHeader() {
   return (
     <header className="app-brand-bar relative sticky top-0 z-[100]">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5 sm:gap-4 sm:py-3">
-        <Link
-          href={homeHref}
-          className="flex shrink-0 items-center gap-2.5 sm:gap-3 transition-opacity hover:opacity-90"
-          aria-label={`${COLLEGE.rce} — ${COLLEGE.shortName} portal home`}
+        <div
+          className="flex shrink-0 items-center gap-2.5 sm:gap-3 pointer-events-none select-none"
+          aria-hidden
         >
           <span className="rounded-lg bg-white/95 p-0.5 shadow-sm ring-1 ring-white/30">
             <CollegeLogo size={isPortalRoute ? 36 : 40} className="sm:w-10 sm:h-10" />
@@ -58,7 +57,7 @@ export default function CollegeSiteHeader() {
           <span className="hidden sm:flex h-9 w-9 items-center justify-center rounded-lg bg-white/15 text-xs font-extrabold text-white ring-1 ring-white/25 backdrop-blur-sm">
             {COLLEGE.rce}
           </span>
-        </Link>
+        </div>
 
         <Link
           href={homeHref}
