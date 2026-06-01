@@ -97,13 +97,29 @@ export function withAwsRdsSsl(url: string): string {
   return `${trimmed}${sep}sslmode=require`;
 }
 
+function appendQueryParam(url: string, param: string): string {
+  if (new RegExp(`[?&]${param.split('=')[0]}=`, 'i').test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${param}`;
+}
+
+/** Serverless-friendly query params for Vercel + RDS. */
+export function withServerlessDbParams(url: string): string {
+  let out = withAwsRdsSsl(url);
+  const onVercel = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
+  if (onVercel) {
+    out = appendQueryParam(out, 'connection_limit=1');
+  }
+  out = appendQueryParam(out, 'connect_timeout=15');
+  return out;
+}
+
 /** Patch env before Prisma/postgres clients connect (safe to call repeatedly). */
 export function normalizeDatabaseEnvUrls(): void {
   const primary = process.env.DATABASE_URL?.trim();
   if (primary) {
     const repaired = tryRepairDatabaseUrl(primary);
     if (repaired && repaired !== primary) {
-      process.env.DATABASE_URL = withAwsRdsSsl(repaired);
+      process.env.DATABASE_URL = withServerlessDbParams(repaired);
       if (!process.env.DIRECT_URL?.trim() || !isValidPostgresConnectionUrl(process.env.DIRECT_URL)) {
         process.env.DIRECT_URL = process.env.DATABASE_URL;
       }
@@ -114,7 +130,33 @@ export function normalizeDatabaseEnvUrls(): void {
     const raw = process.env[key]?.trim();
     if (!raw || raw.includes('YOUR_') || raw.includes('REPLACE_WITH')) continue;
     if (!isValidPostgresConnectionUrl(raw)) continue;
-    process.env[key] = withAwsRdsSsl(raw);
+    process.env[key] = withServerlessDbParams(raw);
+  }
+
+  const db = process.env.DATABASE_URL?.trim();
+  const direct = process.env.DIRECT_URL?.trim();
+  if (db && isValidPostgresConnectionUrl(db)) {
+    const normalizedDb = withServerlessDbParams(db);
+    process.env.DATABASE_URL = normalizedDb;
+
+    if (!direct || !isValidPostgresConnectionUrl(direct)) {
+      process.env.DIRECT_URL = normalizedDb;
+      return;
+    }
+
+    try {
+      const dbHost = new URL(db.replace(/^postgresql:/i, 'http:')).hostname;
+      const directHost = new URL(direct.replace(/^postgresql:/i, 'http:')).hostname;
+      const dbPass = new URL(db.replace(/^postgresql:/i, 'http:')).password;
+      const directPass = new URL(direct.replace(/^postgresql:/i, 'http:')).password;
+      if (dbHost !== directHost || dbPass !== directPass) {
+        process.env.DIRECT_URL = normalizedDb;
+      } else {
+        process.env.DIRECT_URL = withServerlessDbParams(direct);
+      }
+    } catch {
+      process.env.DIRECT_URL = normalizedDb;
+    }
   }
 }
 

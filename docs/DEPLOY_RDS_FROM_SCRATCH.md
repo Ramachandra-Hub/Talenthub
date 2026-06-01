@@ -387,11 +387,14 @@ Open `http://localhost:3000/setup` once, then `http://localhost:3000`.
 
 ### `database` error on `/api/health`
 
+**"Can't reach database server"** → see [FIX_RDS_VERCEL_UNREACHABLE.md](./FIX_RDS_VERCEL_UNREACHABLE.md) and run `pnpm verify:rds`.
+
 | Cause | Fix |
 |-------|-----|
 | RDS not public | RDS → Modify → Public access **Yes** |
-| Security group | Allow inbound **5432** |
+| Security group | Allow inbound **5432** from `0.0.0.0/0` (trial) |
 | Wrong password in URL | Reset RDS password; update Vercel env |
+| `DIRECT_URL` ≠ `DATABASE_URL` | Use identical connection strings in Vercel |
 | Missing `sslmode=require` | Add `?sslmode=require` to URL |
 | Special chars in password | URL-encode or change password |
 

@@ -7,6 +7,11 @@ import { prisma } from '@/lib/prisma';
 export async function isRdsSchemaReady(): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false;
   try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    return false;
+  }
+  try {
     await prisma.$queryRaw`SELECT 1 FROM users LIMIT 1`;
     return true;
   } catch {

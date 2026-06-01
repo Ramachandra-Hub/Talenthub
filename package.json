@@ -8,6 +8,7 @@
     "build": "next build",
     "vercel-build": "node scripts/vercel-build.mjs",
     "verify:vercel-aws-env": "node scripts/verify-vercel-aws-env.mjs",
+    "verify:rds": "node scripts/verify-rds-connectivity.mjs",
     "prepare:aws": "node scripts/prepare-aws-deploy.mjs",
     "start": "next start",
     "lint": "tsc --noEmit",
