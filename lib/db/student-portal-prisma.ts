@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { isSchedulePastEnd } from '@/lib/exam-schedule-sync';
 import {
   isScheduleWindowOpen,
   partitionSchedulesForStudent,
@@ -47,9 +48,7 @@ async function syncExpiredLiveExamSchedulesPrisma(
   schedules: ExamScheduleRow[],
   now = Date.now(),
 ): Promise<ExamScheduleRow[]> {
-  const expired = schedules.filter(
-    (s) => s.status === 'live' && s.ends_at && !isScheduleWindowOpen(s, now),
-  );
+  const expired = schedules.filter((s) => s.status === 'live' && isSchedulePastEnd(s, now));
   if (!expired.length) return schedules;
 
   const ids = expired.map((s) => s.id);

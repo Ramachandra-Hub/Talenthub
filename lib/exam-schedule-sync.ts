@@ -1,5 +1,14 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
-import { isScheduleWindowOpen, type ExamScheduleRow } from '@/lib/exam-schedule';
+import { scheduleEndMs, type ExamScheduleRow } from '@/lib/exam-schedule';
+
+/** True when a live schedule's end time has passed (do not treat "not started yet" as expired). */
+export function isSchedulePastEnd(
+  schedule: Pick<ExamScheduleRow, 'ends_at'>,
+  now = Date.now(),
+): boolean {
+  const end = scheduleEndMs(schedule.ends_at);
+  return end !== null && now > end;
+}
 
 /**
  * Persist status=ended when a live row's ends_at has passed so the DB matches the time window.
@@ -10,10 +19,7 @@ export async function syncExpiredLiveExamSchedules(
   now = Date.now(),
 ): Promise<ExamScheduleRow[]> {
   const expired = schedules.filter(
-    (s) =>
-      s.status === 'live' &&
-      s.ends_at &&
-      !isScheduleWindowOpen(s, now),
+    (s) => s.status === 'live' && isSchedulePastEnd(s, now),
   );
 
   if (expired.length === 0) return schedules;

@@ -9,14 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
 import {
+  isScheduleWindowOpen,
   resolveExamScheduleStatus,
   type ExamScheduleDisplayStatus,
   type ExamScheduleRow,
 } from '@/lib/exam-schedule';
-import {
-  scheduleSlotNumber,
-  validateSequentialSlotGoLive,
-} from '@/lib/exam-schedule-slots';
 import { cn } from '@/lib/utils';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import {
@@ -342,7 +339,9 @@ export default function AdminExamSchedulesPage() {
               <Button disabled={savingDraft} onClick={() => void saveDraftSchedule()}>
                 {savingDraft ? 'Saving…' : 'Save as scheduled'}
               </Button>
-              {activeScheduleId && activeResolved?.display !== 'live' ? (
+              {activeScheduleId &&
+              activeSchedule &&
+              !isScheduleWindowOpen(activeSchedule) ? (
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700"
                   disabled={acting === activeScheduleId}
@@ -390,22 +389,12 @@ export default function AdminExamSchedulesPage() {
               <tbody>
                 {schedules.map((s) => {
                   const resolved = resolveExamScheduleStatus(s);
-                  const canGoLive =
-                    s.status === 'scheduled' ||
-                    s.status === 'ended' ||
-                    resolved.display === 'window_ended';
-                  const slotNum = scheduleSlotNumber(s);
-                  const related =
-                    s.faculty_exam_request_id != null
-                      ? schedules.filter(
-                          (x) => x.faculty_exam_request_id === s.faculty_exam_request_id,
-                        )
-                      : [];
-                  const seqBlock =
-                    slotNum != null && related.length > 1
-                      ? validateSequentialSlotGoLive(related, slotNum)
-                      : null;
-                  const goLiveAllowed = canGoLive && resolved.display !== 'live' && !seqBlock;
+                  const goLiveAllowed =
+                    !isScheduleWindowOpen(s) &&
+                    (s.status === 'scheduled' ||
+                      s.status === 'ended' ||
+                      s.status === 'live' ||
+                      resolved.display === 'window_ended');
                   return (
                     <tr
                       key={s.id}

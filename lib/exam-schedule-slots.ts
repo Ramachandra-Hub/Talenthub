@@ -8,6 +8,8 @@ import {
   scheduleStartMs,
   type ExamScheduleRow,
 } from '@/lib/exam-schedule';
+import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { combineDateAndTimeIst, formatCollegeDateTime } from '@/lib/college-timezone';
 
 export const EXAM_SLOT_COUNT = 8;
@@ -941,10 +943,54 @@ export async function goLiveAllConfiguredSlotSchedules(
   return { updated, slotNumbers };
 }
 
-/** ElevateX: open one slot without ending other live slots. */
-export async function goLiveElevateXScheduleSlot(
+function mapPrismaExamScheduleRow(row: {
+  id: string;
+  testId: string | null;
+  title: string | null;
+  description: string | null;
+  notice: string | null;
+  facultyExamRequestId: string | null;
+  status: string;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  targetDepartments: unknown;
+  targetYears: unknown;
+  slotNumber: number | null;
+  slotCapacity: number | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): ExamScheduleRow {
+  return {
+    id: row.id,
+    title: row.title ?? 'Exam',
+    description: row.description,
+    notice: row.notice,
+    faculty_exam_request_id: row.facultyExamRequestId,
+    test_id: row.testId ?? '',
+    status: row.status as ExamScheduleRow['status'],
+    starts_at: row.startsAt?.toISOString() ?? new Date().toISOString(),
+    ends_at: row.endsAt?.toISOString() ?? null,
+    target_departments: Array.isArray(row.targetDepartments)
+      ? (row.targetDepartments as string[])
+      : [],
+    target_years: Array.isArray(row.targetYears) ? (row.targetYears as string[]) : [],
+    slot_number: row.slotNumber,
+    slot_capacity: row.slotCapacity,
+    created_by: row.createdBy,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Mark a schedule live. When openWindowNow is true (admin Go live), starts the window immediately.
+ * Works for slot and non-slot exams; does not require sequential slot ordering.
+ */
+export async function goLiveExamScheduleNow(
   admin: DbServiceClient,
   scheduleId: string,
+  options?: { openWindowNow?: boolean },
 ): Promise<ExamScheduleRow> {
   const { data: existing, error: fetchErr } = await admin
     .from('exam_schedules')
@@ -957,13 +1003,21 @@ export async function goLiveElevateXScheduleSlot(
   }
 
   const row = existing as ExamScheduleRow;
-  const now = new Date().toISOString();
-  const startsAtIso = String(row.starts_at ?? now);
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const openNow = options?.openWindowNow !== false;
+
+  let startsAtIso = String(row.starts_at ?? now);
+  if (openNow && scheduleStartMs(startsAtIso) > nowMs) {
+    startsAtIso = now;
+  }
+
   const normalizedEnd = normalizeEndsAtForGoLive(startsAtIso, row.ends_at ?? null);
 
   const patch: Record<string, unknown> = {
     status: 'live',
     updated_at: now,
+    starts_at: startsAtIso,
   };
   if (normalizedEnd !== row.ends_at) {
     patch.ends_at = normalizedEnd;
@@ -976,11 +1030,34 @@ export async function goLiveElevateXScheduleSlot(
     .select('*')
     .single();
 
-  if (updateErr || !updated) {
-    throw new Error(updateErr?.message ?? 'Could not go live');
+  if (!updateErr && updated) {
+    return updated as ExamScheduleRow;
   }
 
-  return updated as ExamScheduleRow;
+  try {
+    const prismaRow = await prisma.examSchedule.update({
+      where: { id: scheduleId },
+      data: {
+        status: 'live',
+        startsAt: new Date(startsAtIso),
+        endsAt: normalizedEnd ? new Date(normalizedEnd) : null,
+        targetDepartments: row.target_departments as Prisma.InputJsonValue,
+        targetYears: row.target_years as Prisma.InputJsonValue,
+      },
+    });
+    return mapPrismaExamScheduleRow(prismaRow);
+  } catch (prismaErr) {
+    const msg = updateErr?.message ?? (prismaErr instanceof Error ? prismaErr.message : 'Could not go live');
+    throw new Error(msg);
+  }
+}
+
+/** @deprecated Use goLiveExamScheduleNow — kept for ElevateX imports. */
+export async function goLiveElevateXScheduleSlot(
+  admin: DbServiceClient,
+  scheduleId: string,
+): Promise<ExamScheduleRow> {
+  return goLiveExamScheduleNow(admin, scheduleId, { openWindowNow: true });
 }
 
 /** On publish, at most one slot — must be slot 1. */

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
 import { examSchedulesMigrationHint } from '@/lib/db-migration-hints';
-import { goLiveExamScheduleSlotSequential } from '@/lib/exam-schedule-slots';
+import { goLiveExamScheduleNow } from '@/lib/exam-schedule-slots';
 import { goLiveElevateXSlot } from '@/lib/elevatex-admin';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { deleteExamScheduleById } from '@/lib/delete-faculty-exam';
@@ -44,12 +44,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     try {
       if (isElevateXTestId(String(existing.test_id ?? ''))) {
         await goLiveElevateXSlot(admin, id, auth.ctx.user.id);
-        const { data: refreshed } = await admin.from('exam_schedules').select('*').eq('id', id).single();
-        return NextResponse.json({ schedule: refreshed });
+      } else {
+        await goLiveExamScheduleNow(admin, id, { openWindowNow: true });
       }
-      const updated = await goLiveExamScheduleSlotSequential(admin, id);
-      return NextResponse.json({ schedule: updated });
+      const { data: refreshed, error: refreshErr } = await admin
+        .from('exam_schedules')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (refreshErr || !refreshed) {
+        throw new Error(refreshErr?.message ?? 'Could not load schedule after go live');
+      }
+      return NextResponse.json({ schedule: refreshed });
     } catch (err) {
+      console.error('[exam-schedules PATCH go_live]', err);
       return NextResponse.json(
         { error: err instanceof Error ? err.message : 'Could not go live' },
         { status: 400 },

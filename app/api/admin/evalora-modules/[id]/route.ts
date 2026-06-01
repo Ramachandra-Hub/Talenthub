@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
+import { prisma } from '@/lib/prisma';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -36,11 +37,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     .select('*')
     .single();
 
-  if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? 'Not found' }, { status: 404 });
+  if (!error && data) {
+    return NextResponse.json({ schedule: data });
   }
 
-  return NextResponse.json({ schedule: data });
+  if (action === 'go_live' || action === 'end') {
+    try {
+      const row = await prisma.evaloraModuleSchedule.update({
+        where: { id },
+        data:
+          action === 'go_live'
+            ? { status: 'live', startsAt: new Date() }
+            : { status: 'ended', endsAt: new Date() },
+      });
+      return NextResponse.json({
+        schedule: {
+          id: row.id,
+          module_key: row.moduleKey,
+          title: row.title,
+          notice: row.notice,
+          status: row.status,
+          starts_at: row.startsAt.toISOString(),
+          ends_at: row.endsAt?.toISOString() ?? null,
+          target_departments: row.targetDepartments,
+          target_years: row.targetYears,
+        },
+      });
+    } catch (prismaErr) {
+      const msg = error?.message ?? (prismaErr instanceof Error ? prismaErr.message : 'Update failed');
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ error: error?.message ?? 'Not found' }, { status: 404 });
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
