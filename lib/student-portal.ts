@@ -1,5 +1,5 @@
 import type { StudentEvaloraModule } from '@/lib/evalora/module-schedule';
-import type { StudentExamSchedule } from '@/lib/exam-schedule';
+import { isScheduleWindowOpen, type StudentExamSchedule } from '@/lib/exam-schedule';
 import type { StudentSlotExamPortalNotice } from '@/lib/exam-schedule-slots';
 import { formatSlotWindowLabel } from '@/lib/exam-schedule-slots';
 
@@ -19,6 +19,8 @@ export type PortalExamItem = {
   module_key?: string;
   slot_number?: number | null;
   slot_window_label?: string | null;
+  /** False when exam is live in admin but slot window has not opened yet. */
+  window_open?: boolean;
 };
 
 export type StudentPortalPayload = {
@@ -71,6 +73,7 @@ function fromFaculty(exam: StudentExamSchedule): PortalExamItem {
     slot_window_label: slotNumber
       ? formatSlotWindowLabel({ starts_at: exam.starts_at, ends_at: exam.ends_at })
       : null,
+    window_open: isScheduleWindowOpen(exam),
   };
 }
 
@@ -93,10 +96,11 @@ export function buildStudentPortalPayload(input: {
     ...input.evaloraUpcoming.map(fromEvalora),
   ].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
-  /** Featured card is only for tests that are live now (admin-triggered / window open). */
   let featured: PortalExamItem | null = null;
   if (live.length > 0) {
     featured = live[0];
+  } else if (upcoming.length > 0) {
+    featured = upcoming[0];
   }
 
   return {

@@ -56,8 +56,9 @@ export function StudentExamsPortal() {
   }, [router]);
 
   const liveExams = data?.live ?? [];
+  const upcomingExams = data?.upcoming ?? [];
   const slotNotices = data?.slot_notices ?? [];
-  const featured = liveExams[0] ?? null;
+  const featured = data?.featured ?? liveExams[0] ?? upcomingExams[0] ?? null;
 
   return (
     <div className="app-page">
@@ -70,8 +71,8 @@ export function StudentExamsPortal() {
             Examinations
           </h1>
           <p className="app-subtitle mt-3 text-white/88 max-w-2xl border-l-2 border-cyan-300/40 pl-4">
-            Only live exams assigned to your department and year appear here. When a session is open,
-            use Start examination to begin.
+            Exams assigned to your roll number and slot appear here when your department opens them.
+            Use Start examination when your slot window is open.
           </p>
         </div>
       </header>
@@ -98,7 +99,7 @@ export function StudentExamsPortal() {
               </div>
             ) : null}
 
-            <FeaturedLiveExamCard exam={featured} />
+            <FeaturedExamCard exam={featured} />
 
             {liveExams.length > 1 ? (
               <Card className="p-4 lux-surface rounded-xl border-slate-200/80">
@@ -108,15 +109,30 @@ export function StudentExamsPortal() {
                 <ul className="space-y-2">
                   {liveExams.slice(1).map((exam) => (
                     <li key={exam.id}>
-                      <Link
-                        href={exam.href}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/50 px-3 py-2 text-sm font-semibold text-[#0c2340] hover:bg-emerald-100/60 transition-colors"
-                      >
-                        <span className="truncate">
+                      <ExamListLink exam={exam} />
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
+
+            {upcomingExams.length > 0 && featured?.kind !== 'upcoming' ? (
+              <Card className="p-4 lux-surface rounded-xl border-indigo-200/80">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">
+                  Upcoming
+                </p>
+                <ul className="space-y-2">
+                  {upcomingExams.map((exam) => (
+                    <li key={exam.id}>
+                      <div className="rounded-lg border border-indigo-200/80 bg-indigo-50/40 px-3 py-2 text-sm">
+                        <p className="font-semibold text-[#0c2340]">
                           {exam.icon} {exam.title}
-                        </span>
-                        <span className="text-emerald-700 text-xs shrink-0">Start →</span>
-                      </Link>
+                        </p>
+                        <p className="text-xs text-slate-600 mt-1">
+                          Opens {formatCollegeDateTime(exam.starts_at)}
+                          {exam.slot_number ? ` · Slot ${exam.slot_number}` : ''}
+                        </p>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -126,6 +142,31 @@ export function StudentExamsPortal() {
         )}
       </div>
     </div>
+  );
+}
+
+function ExamListLink({ exam }: { exam: PortalExamItem }) {
+  const canStart = exam.window_open !== false;
+  if (!canStart) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <span className="truncate">
+          {exam.icon} {exam.title}
+        </span>
+        <span className="text-xs shrink-0">Opens {formatCollegeDateTime(exam.starts_at)}</span>
+      </div>
+    );
+  }
+  return (
+    <Link
+      href={exam.href}
+      className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/50 px-3 py-2 text-sm font-semibold text-[#0c2340] hover:bg-emerald-100/60 transition-colors"
+    >
+      <span className="truncate">
+        {exam.icon} {exam.title}
+      </span>
+      <span className="text-emerald-700 text-xs shrink-0">Start →</span>
+    </Link>
   );
 }
 
@@ -154,30 +195,41 @@ function SlotExamNoticeCard({ notice }: { notice: StudentSlotExamPortalNotice })
   );
 }
 
-function FeaturedLiveExamCard({ exam }: { exam: PortalExamItem | null }) {
+function FeaturedExamCard({ exam }: { exam: PortalExamItem | null }) {
   if (!exam) {
     return (
       <Card className="p-10 sm:p-12 text-center lux-surface rounded-2xl border-slate-200/80">
         <p className="text-xl font-semibold text-slate-800 font-[family-name:var(--font-display),ui-serif,Georgia,serif]">
-          No live examination right now
+          No examination assigned right now
         </p>
         <p className="text-sm text-slate-600 mt-3 max-w-md mx-auto leading-relaxed">
-          When your examination cell opens your assigned slot, the start button will appear here.
-          This page refreshes automatically every 15 seconds.
+          When your slot is opened by the examination cell, your exam will appear here. This page
+          refreshes automatically every 15 seconds.
         </p>
       </Card>
     );
   }
 
+  const isLive = exam.kind === 'live';
+  const canStart = isLive && exam.window_open !== false;
+
   return (
-    <Card className="lux-surface rounded-2xl p-6 sm:p-10 border border-emerald-400/90 ring-2 ring-emerald-500/25 shadow-xl shadow-emerald-900/10 bg-gradient-to-br from-emerald-50/90 via-white to-white">
+    <Card
+      className={`lux-surface rounded-2xl p-6 sm:p-10 border ring-2 shadow-xl ${
+        isLive
+          ? 'border-emerald-400/90 ring-emerald-500/25 shadow-emerald-900/10 bg-gradient-to-br from-emerald-50/90 via-white to-white'
+          : 'border-indigo-300/90 ring-indigo-400/20 shadow-indigo-900/5 bg-gradient-to-br from-indigo-50/80 via-white to-white'
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-3xl" aria-hidden>
               {exam.icon}
             </span>
-            <Badge tone="success">LIVE</Badge>
+            <Badge tone={isLive ? 'success' : 'neutral'}>
+              {isLive ? (canStart ? 'LIVE' : 'OPEN — WAITING FOR SLOT') : 'UPCOMING'}
+            </Badge>
           </div>
           <h2 className="text-2xl sm:text-[1.75rem] font-bold text-[#0c2340] leading-tight font-[family-name:var(--font-display),ui-serif,Georgia,serif]">
             {exam.title}
@@ -185,7 +237,8 @@ function FeaturedLiveExamCard({ exam }: { exam: PortalExamItem | null }) {
           {exam.slot_number ? (
             <p className="text-sm font-semibold text-emerald-800 mt-2">
               Your slot: Slot {exam.slot_number}
-              {exam.slot_window_label ? ` · ${exam.slot_window_label}` : ''} · Live now
+              {exam.slot_window_label ? ` · ${exam.slot_window_label}` : ''}
+              {canStart ? ' · Live now' : isLive ? ' · Opens at scheduled time' : ''}
             </p>
           ) : null}
           {exam.badge ? <p className="text-sm text-slate-500 mt-1">{exam.badge}</p> : null}
@@ -209,14 +262,22 @@ function FeaturedLiveExamCard({ exam }: { exam: PortalExamItem | null }) {
         {exam.duration_minutes ? <span>· {exam.duration_minutes} minutes</span> : null}
       </div>
 
-      <Link href={exam.href}>
-        <Button
-          size="lg"
-          className="w-full sm:w-auto bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white shadow-lg shadow-emerald-900/20 font-semibold px-8"
-        >
-          Start examination →
-        </Button>
-      </Link>
+      {canStart ? (
+        <Link href={exam.href}>
+          <Button
+            size="lg"
+            className="w-full sm:w-auto bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white shadow-lg shadow-emerald-900/20 font-semibold px-8"
+          >
+            Start examination →
+          </Button>
+        </Link>
+      ) : (
+        <p className="text-sm font-medium text-slate-700 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          {isLive
+            ? `Your examination opens at ${formatCollegeDateTime(exam.starts_at)}. This page will update automatically.`
+            : `Scheduled to open ${formatCollegeDateTime(exam.starts_at)}.`}
+        </p>
+      )}
     </Card>
   );
 }

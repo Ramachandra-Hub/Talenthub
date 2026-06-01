@@ -3,7 +3,6 @@ import { getDbService } from '@/lib/db/get-db-service';
 import { partitionEvaloraModulesForStudent, type EvaloraModuleScheduleRow } from '@/lib/evalora/module-schedule';
 import { partitionSchedulesForStudent, type ExamScheduleRow } from '@/lib/exam-schedule';
 import {
-  findStudentSlotAssignment,
   buildStudentSlotExamPortalNotices,
   scheduleSlotNumber,
   facultyRequestUsesSlotScheduling,
@@ -14,14 +13,14 @@ import { listLiveFacultyExamsForStudent } from '@/lib/live-faculty-exams';
 import { buildStudentPortalPayload } from '@/lib/student-portal';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
 import { requireAuth } from '@/lib/server-auth';
-import { getEvaloraModule } from '@/lib/evalora/modules';
-import { isElevateXTestId } from '@/lib/elevatex';
+import { prisma } from '@/lib/prisma';
+import { normalizeRoll } from '@/lib/exam-schedule-slots';
 import {
-  isScheduleLiveNow,
-  isScheduleUpcoming,
-  type StudentExamSchedule,
-} from '@/lib/exam-schedule';
-import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
+  buildRosterFirstStudentExams,
+  inferProfileFromRosterAssignments,
+  loadStudentSlotAssignmentsByRoll,
+  type ApprovedExamRequest,
+} from '@/lib/student-portal-exams';
 
 export async function GET() {
   const auth = await requireAuth(['student']);
@@ -43,30 +42,76 @@ export async function GET() {
   }
 
   const { data: authUser } = await admin.auth.admin.getUserById(auth.ctx.resolved.id);
+  const authMeta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
   const profile = await resolveStudentTargeting(
     admin,
     auth.ctx.resolved.id,
-    (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>,
+    authMeta,
     auth.ctx.resolved.email,
   );
 
-  const department = profile.branch ?? auth.ctx.resolved.department ?? null;
-  const year = profile.academic_year ?? auth.ctx.resolved.academicYear ?? null;
-
-  if (!department || !year) {
-    return NextResponse.json(
-      buildStudentPortalPayload({
-        evaloraLive: [],
-        evaloraUpcoming: [],
-        facultyLive: [],
-        facultyUpcoming: [],
-        slotNotices: [],
-        department,
-        year,
-        message: 'Complete your profile (department and year) to see scheduled examinations.',
-      }),
-    );
+  let rollNumber = rollNumberFromUser(
+    auth.ctx.resolved.email ?? auth.ctx.user.email ?? '',
+    authMeta,
+  );
+  if (!rollNumber) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: auth.ctx.resolved.id },
+      select: { rollNumber: true },
+    });
+    if (dbUser?.rollNumber) rollNumber = normalizeRoll(dbUser.rollNumber);
   }
+
+  const rosterAssignments = rollNumber
+    ? await loadStudentSlotAssignmentsByRoll(admin, rollNumber)
+    : new Map();
+
+  if (rosterAssignments.size === 0) {
+    if (!rollNumber) {
+      return NextResponse.json(
+        buildStudentPortalPayload({
+          evaloraLive: [],
+          evaloraUpcoming: [],
+          facultyLive: [],
+          facultyUpcoming: [],
+          slotNotices: [],
+          department: profile.branch,
+          year: profile.academic_year,
+          message: 'Sign in with your roll number to see scheduled examinations.',
+        }),
+      );
+    }
+    if (!profile.branch || !profile.academic_year) {
+      return NextResponse.json(
+        buildStudentPortalPayload({
+          evaloraLive: [],
+          evaloraUpcoming: [],
+          facultyLive: [],
+          facultyUpcoming: [],
+          slotNotices: [],
+          department: profile.branch,
+          year: profile.academic_year,
+          message:
+            'Complete your profile (department and year) to see scheduled examinations.',
+        }),
+      );
+    }
+  }
+
+  const inferred = inferProfileFromRosterAssignments(
+    rosterAssignments,
+    profile.branch ?? auth.ctx.resolved.department ?? null,
+    profile.academic_year ?? auth.ctx.resolved.academicYear ?? null,
+  );
+
+  const department =
+    profile.branch?.trim() ||
+    auth.ctx.resolved.department?.trim() ||
+    inferred.department;
+  const year =
+    profile.academic_year?.trim() ||
+    auth.ctx.resolved.academicYear?.trim() ||
+    inferred.year;
 
   const [{ data: evaloraRows }, { data: scheduleRows }, { data: approvedRequests }] =
     await Promise.all([
@@ -83,7 +128,7 @@ export async function GET() {
       admin
         .from('faculty_exam_requests')
         .select(
-          'id, title, topic, description, duration_minutes, target_years, target_branches, published_test_id, department',
+          'id, title, topic, description, duration_minutes, target_years, target_branches, published_test_id, department, schedule_slots_json, uses_slot_scheduling',
         )
         .eq('status', 'approved')
         .not('published_test_id', 'is', null),
@@ -93,6 +138,8 @@ export async function GET() {
   if (schedules.length > 0) {
     schedules = await syncExpiredLiveExamSchedules(admin, schedules);
   }
+
+  const approved = (approvedRequests ?? []) as ApprovedExamRequest[];
   const facultyIds = [
     ...new Set(
       schedules
@@ -102,16 +149,25 @@ export async function GET() {
   ];
 
   const extras = new Map<string, { duration_minutes?: number; topic?: string | null }>();
+  for (const row of approved) {
+    extras.set(String(row.id), {
+      duration_minutes: row.duration_minutes as number,
+      topic: (row.topic as string | null) ?? null,
+    });
+  }
   if (facultyIds.length) {
-    const { data: facultyRows } = await admin
-      .from('faculty_exam_requests')
-      .select('id, duration_minutes, topic')
-      .in('id', facultyIds);
-    for (const row of facultyRows ?? []) {
-      extras.set(row.id as string, {
-        duration_minutes: row.duration_minutes as number,
-        topic: (row.topic as string | null) ?? null,
-      });
+    const missing = facultyIds.filter((id) => !extras.has(id));
+    if (missing.length) {
+      const { data: facultyRows } = await admin
+        .from('faculty_exam_requests')
+        .select('id, duration_minutes, topic')
+        .in('id', missing);
+      for (const row of facultyRows ?? []) {
+        extras.set(row.id as string, {
+          duration_minutes: row.duration_minutes as number,
+          topic: (row.topic as string | null) ?? null,
+        });
+      }
     }
   }
 
@@ -119,10 +175,6 @@ export async function GET() {
     (evaloraRows ?? []) as EvaloraModuleScheduleRow[],
     department,
     year,
-  );
-  const rollNumber = rollNumberFromUser(
-    auth.ctx.resolved.email ?? auth.ctx.user.email,
-    (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>,
   );
 
   const schedulesForPartition: ExamScheduleRow[] = [];
@@ -135,14 +187,21 @@ export async function GET() {
   ];
   const slotRequestSet = new Set<string>();
   const studentSlotByRequestId = new Map<string, number>();
+
+  for (const [reqId, assignment] of rosterAssignments) {
+    studentSlotByRequestId.set(reqId, assignment.slot_number);
+    slotRequestSet.add(reqId);
+  }
+
   if (requestIds.length && rollNumber) {
     for (const reqId of requestIds) {
+      if (studentSlotByRequestId.has(reqId)) continue;
       const related = schedules.filter((s) => s.faculty_exam_request_id === reqId);
       const usesSlots = await facultyRequestUsesSlotScheduling(admin, reqId, related);
       if (!usesSlots) continue;
       slotRequestSet.add(reqId);
-      const assignment = await findStudentSlotAssignment(admin, reqId, rollNumber);
-      if (assignment) studentSlotByRequestId.set(reqId, assignment.slot_number);
+      const fromMap = rosterAssignments.get(reqId);
+      if (fromMap) studentSlotByRequestId.set(reqId, fromMap.slot_number);
     }
   }
 
@@ -156,13 +215,17 @@ export async function GET() {
     if (assignedSlot == null) continue;
     if (scheduleSlotNumber(schedule) === assignedSlot) {
       schedulesForPartition.push(schedule);
+    } else if (
+      schedule.title.toLowerCase().includes(`slot ${assignedSlot}`)
+    ) {
+      schedulesForPartition.push(schedule);
     }
   }
 
   const rosterAssignedRequestIds = new Set(studentSlotByRequestId.keys());
 
   const examTitlesByRequestId = new Map<string, string>();
-  for (const row of approvedRequests ?? []) {
+  for (const row of approved) {
     examTitlesByRequestId.set(String(row.id), String(row.title));
   }
   for (const schedule of schedules) {
@@ -180,70 +243,25 @@ export async function GET() {
     rosterAssignedRequestIds,
   );
 
-  if (rollNumber && studentSlotByRequestId.size > 0) {
-    const evaloraLiveKeys = new Set(evalora.live.map((m) => m.module_key));
-    for (const [reqId, slotNum] of studentSlotByRequestId) {
-      const mySchedule = schedules.find(
-        (s) =>
-          s.faculty_exam_request_id === reqId && scheduleSlotNumber(s) === slotNum,
-      );
-      if (!mySchedule) continue;
-
-      const reqRow = (approvedRequests ?? []).find((r) => String(r.id) === reqId) as
-        | {
-            id: string;
-            title: string;
-            published_test_id: string | null;
-            duration_minutes?: number;
-          }
-        | undefined;
-      if (!reqRow?.published_test_id) continue;
-
-      const testId = String(reqRow.published_test_id);
-      const meta = extras.get(reqId);
-      const facultyCard: StudentExamSchedule = {
-        ...mySchedule,
-        kind: isScheduleLiveNow(mySchedule) ? 'live' : 'upcoming',
-        take_url: studentTakeUrlForTestId(testId),
-        duration_minutes: meta?.duration_minutes ?? null,
-        topic: meta?.topic ?? null,
-        title: examTitlesByRequestId.get(reqId) ?? mySchedule.title,
+  const rosterExams = rollNumber
+    ? await buildRosterFirstStudentExams({
+        admin,
+        rollNumber,
+        schedules,
+        approvedRequests: approved,
+        department,
+        year,
+        extras,
+      })
+    : {
+        facultyLive: [],
+        facultyUpcoming: [],
+        evaloraLive: [],
+        evaloraUpcoming: [],
       };
 
-      if (isScheduleLiveNow(mySchedule)) {
-        const exists = faculty.live.some((e) => e.id === facultyCard.id);
-        if (!exists) faculty.live.push(facultyCard);
-        if (isElevateXTestId(testId)) {
-          const def = getEvaloraModule('placement_full');
-          if (def && !evaloraLiveKeys.has('placement_full')) {
-            evalora.live.push({
-              schedule_id: mySchedule.id,
-              module_key: 'placement_full',
-              kind: 'live',
-              title: def.name,
-              notice: mySchedule.notice,
-              starts_at: mySchedule.starts_at,
-              ends_at: mySchedule.ends_at,
-              href: def.href,
-              icon: def.icon,
-              description: def.description,
-              badge: def.badge,
-            });
-            evaloraLiveKeys.add('placement_full');
-          }
-        }
-      } else if (isScheduleUpcoming(mySchedule)) {
-        const exists = faculty.upcoming.some((e) => e.id === facultyCard.id);
-        if (!exists) faculty.upcoming.push(facultyCard);
-      }
-    }
-    faculty.live.sort(
-      (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
-    );
-  }
-
   const supplementalLive = listLiveFacultyExamsForStudent(
-    (approvedRequests ?? []) as Parameters<typeof listLiveFacultyExamsForStudent>[0],
+    approved as Parameters<typeof listLiveFacultyExamsForStudent>[0],
     schedules,
     department,
     year,
@@ -252,10 +270,39 @@ export async function GET() {
   );
 
   const mergedLiveByTest = new Map<string, (typeof faculty.live)[0]>();
-  for (const exam of [...faculty.live, ...supplementalLive]) {
+  for (const exam of [
+    ...rosterExams.facultyLive,
+    ...faculty.live,
+    ...supplementalLive,
+  ]) {
     mergedLiveByTest.set(String(exam.test_id), exam);
   }
-  const facultyLive = Array.from(mergedLiveByTest.values());
+  const facultyLive = Array.from(mergedLiveByTest.values()).sort(
+    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+  );
+
+  const upcomingById = new Map<string, (typeof faculty.upcoming)[0]>();
+  for (const exam of [...rosterExams.facultyUpcoming, ...faculty.upcoming]) {
+    upcomingById.set(exam.id, exam);
+  }
+  const facultyUpcoming = Array.from(upcomingById.values()).sort(
+    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+  );
+
+  const evaloraLiveKeys = new Set(evalora.live.map((m) => m.module_key));
+  for (const mod of rosterExams.evaloraLive) {
+    if (!evaloraLiveKeys.has(mod.module_key)) {
+      evalora.live.push(mod);
+      evaloraLiveKeys.add(mod.module_key);
+    }
+  }
+  const evaloraUpcomingKeys = new Set(evalora.upcoming.map((m) => m.module_key));
+  for (const mod of rosterExams.evaloraUpcoming) {
+    if (!evaloraUpcomingKeys.has(mod.module_key)) {
+      evalora.upcoming.push(mod);
+      evaloraUpcomingKeys.add(mod.module_key);
+    }
+  }
 
   const slotNotices = rollNumber
     ? await buildStudentSlotExamPortalNotices(admin, {
@@ -272,7 +319,7 @@ export async function GET() {
       evaloraLive: evalora.live,
       evaloraUpcoming: evalora.upcoming,
       facultyLive,
-      facultyUpcoming: faculty.upcoming,
+      facultyUpcoming,
       slotNotices,
       department,
       year,
