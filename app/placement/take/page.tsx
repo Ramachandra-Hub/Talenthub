@@ -118,17 +118,23 @@ export default function PlacementTakePage() {
     let cancelled = false;
 
     const run = async () => {
-      const status = await fetchElevateXAttemptStatus();
+      const draft = loadCandidateDraft();
+      const hallTicket = draft?.hallTicket ?? loadSession()?.candidate.hallTicket ?? '';
+      const status = await fetchElevateXAttemptStatus(hallTicket || undefined);
       if (cancelled) return;
-      if (status.completed && status.attemptId) {
+
+      const localCompletedId = hallTicket ? getPlacementCompletedAttemptId(hallTicket) : null;
+      const completedAttemptId =
+        status.completed && status.attemptId ? status.attemptId : localCompletedId;
+
+      if (completedAttemptId) {
         setBlocked(true);
-        router.replace(`/placement/result/${status.attemptId}`);
+        router.replace(`/placement/result/${completedAttemptId}`);
         return;
       }
 
       let loaded = loadSession();
       if (!loaded) {
-        const draft = loadCandidateDraft();
         if (draft) {
           loaded = loadSessionByHallTicket(draft.hallTicket);
           if (loaded) saveSession(loaded);
@@ -139,21 +145,8 @@ export default function PlacementTakePage() {
         return;
       }
       if (loaded.submitted) {
-        const completedId = getPlacementCompletedAttemptId(loaded.candidate.hallTicket);
-        if (completedId) {
-          setBlocked(true);
-          router.replace(`/placement/result/${completedId}`);
-          return;
-        }
-        const reopened = { ...loaded, submitted: false };
-        saveSession(reopened);
-        setSession(reopened);
-        setHydrated(true);
-        const storedProctor = loadPlacementProctorSessionId();
-        if (storedProctor) {
-          setProctorSessionId(storedProctor);
-          setProctorReady(true);
-        }
+        setBlocked(true);
+        router.replace('/placement/assessment');
         return;
       }
       setSession(loaded);
@@ -214,6 +207,8 @@ export default function PlacementTakePage() {
       const elapsedSec = Math.max(0, PLACEMENT_TOTAL_SEC - current.globalTimeLeftSec);
       const activeProctorSession = proctorSessionIdRef.current;
       const violations = activeProctorSession ? getExamViolations(activeProctorSession) : [];
+      const accessBranch = dept?.name ?? current.candidate.departmentId;
+      const accessRollNumber = current.candidate.hallTicket;
 
       try {
         const res = await fetchWithSession('/api/student/test-attempts/progress', {
@@ -226,6 +221,9 @@ export default function PlacementTakePage() {
             elapsedSec,
             startedAtIso: current.candidate.startedAt,
             attemptId: liveAttemptIdRef.current || undefined,
+            accessBranch,
+            accessYear: '',
+            accessRollNumber,
             proctorSessionId: activeProctorSession || undefined,
             proctorViolationCount: violations.length,
             answers: {
@@ -237,6 +235,15 @@ export default function PlacementTakePage() {
             },
           }),
         });
+        if (res.status === 409) {
+          const json = (await res.json()) as { attemptId?: string };
+          if (json.attemptId) {
+            markPlacementCompleted(current.candidate.hallTicket, json.attemptId);
+            setBlocked(true);
+            router.replace(`/placement/result/${json.attemptId}`);
+          }
+          return;
+        }
         if (res.ok) {
           const json = (await res.json()) as { id?: string };
           if (json.id) liveAttemptIdRef.current = String(json.id);
@@ -307,13 +314,16 @@ export default function PlacementTakePage() {
               }
             : undefined);
 
-        const res = await recordDashboardAttempt({
+        const submitRes = await recordDashboardAttempt({
           testId: elevateXTestId,
           testName,
           scorePercent: scorecard.percentage,
           rawNetScore: scorecard.earnedMarks,
           elapsedSec: scorecard.totalElapsedSec,
           examKind: 'practice',
+          accessBranch: dept?.name ?? scorecard.candidate.departmentId,
+          accessYear: '',
+          accessRollNumber: scorecard.candidate.hallTicket,
           answers: encodeElevateXScorecardAnswers(
             scorecard,
             proctorSummary ? { __proctor: proctorSummary as Record<string, unknown> } : undefined,
@@ -330,13 +340,20 @@ export default function PlacementTakePage() {
           },
         });
 
-        if (!res?.attemptId) {
+        if (submitRes?.alreadyCompleted && submitRes.attemptId) {
+          markPlacementCompleted(scorecard.candidate.hallTicket, submitRes.attemptId);
+          clearPlacementDrafts(scorecard.candidate.hallTicket);
+          router.replace(`/placement/result/${submitRes.attemptId}`);
+          return;
+        }
+
+        if (!submitRes?.attemptId) {
           throw new Error(
             'Could not save your ElevateX attempt. Check your internet connection and try Submit again.',
           );
         }
 
-        const attemptId = res.attemptId;
+        const attemptId = submitRes.attemptId;
         saveSession({ ...session, submitted: true });
         saveScorecardForAttempt(attemptId, { ...scorecard, attemptId });
         markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);

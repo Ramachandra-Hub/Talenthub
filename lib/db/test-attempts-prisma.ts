@@ -63,6 +63,23 @@ export async function ensureStudentUserRowPrisma(user: {
   });
 }
 
+/** Persist roll on the student profile when known from ElevateX / roster login. */
+export async function syncStudentRollNumberPrisma(
+  userId: string,
+  rollNumber: string,
+): Promise<void> {
+  const roll = rollNumber.replace(/\s+/g, '').toUpperCase();
+  if (!roll) return;
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { rollNumber: roll },
+    });
+  } catch {
+    // Unique constraint — roll may already belong to another row; roll-based checks still apply.
+  }
+}
+
 export async function queryAttemptsPrisma(userId: string): Promise<AttemptRow[]> {
   const rows = await prisma.testAttempt.findMany({
     where: { userId },

@@ -8,8 +8,6 @@ import { Card } from '@/components/ui/card';
 import { ElevateXLiveInfo } from '@/components/elevatex/elevatex-live-info';
 import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
 import { createProctorSessionId } from '@/lib/exam-v2/proctoring';
-import { isElevateXAttemptTitle, isElevateXTestId } from '@/lib/elevatex';
-import { clearLocalElevateXAttemptsForUser } from '@/lib/local-test-attempts';
 import { getElevateXTestId } from '@/lib/placement/elevatex-attempt';
 import { COLLEGE } from '@/lib/college-brand';
 import {
@@ -31,7 +29,7 @@ import {
   buildPlacementSession,
   clearPlacementDrafts,
   loadSessionByHallTicket,
-  PLACEMENT_COMPLETED_PREFIX,
+  getPlacementCompletedAttemptId,
   saveCandidateDraft,
   savePlacementProctorSessionId,
   saveSession,
@@ -83,27 +81,22 @@ export default function PlacementAssessmentStartPage() {
       );
       setProfile(studentProfile);
 
-      const status = await fetchElevateXAttemptStatus();
-      if (status.completed && status.attemptId) {
+      const localCompletedId = getPlacementCompletedAttemptId(studentProfile.hallTicket);
+      const status = await fetchElevateXAttemptStatus(studentProfile.hallTicket);
+      const completedAttemptId =
+        status.completed && status.attemptId
+          ? status.attemptId
+          : localCompletedId;
+
+      if (completedAttemptId) {
         setPriorAttempt({
-          attemptId: status.attemptId,
+          attemptId: completedAttemptId,
           score: status.score,
           completedAt: status.completedAt,
         });
         setResumeAvailable(false);
+        clearPlacementDrafts(studentProfile.hallTicket);
       } else {
-        clearLocalElevateXAttemptsForUser(clientUser.id, (testId, testName) =>
-          isElevateXTestId(testId) || isElevateXAttemptTitle(testName),
-        );
-        if (typeof window !== 'undefined') {
-          try {
-            window.localStorage.removeItem(
-              `${PLACEMENT_COMPLETED_PREFIX}${studentProfile.hallTicket}`,
-            );
-          } catch {
-            // ignore
-          }
-        }
         const existing = loadSessionByHallTicket(studentProfile.hallTicket);
         setResumeAvailable(Boolean(existing && !existing.submitted));
       }
@@ -247,9 +240,11 @@ export default function PlacementAssessmentStartPage() {
 
           {priorAttempt ? (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 mb-6 text-sm text-emerald-950">
-              <p className="font-semibold">You have already completed ElevateX</p>
+              <p className="font-semibold">You have already submitted ElevateX</p>
               <p className="mt-1 text-emerald-900/90">
-                Each student may attempt this examination only once. You cannot start a new paper.
+                Roll <span className="font-mono font-medium">{profile.hallTicket}</span> has already
+                been used for this examination. Each student may attempt ElevateX only once — you
+                cannot start the exam again.
               </p>
               {priorAttempt.score != null ? (
                 <p className="mt-2 font-medium">Your score: {formatScorePercentLabel(priorAttempt.score)}</p>

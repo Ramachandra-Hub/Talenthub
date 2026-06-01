@@ -20,6 +20,9 @@ export type RecordDashboardAttemptInput = {
   proctorSessionId?: string;
   proctorViolations?: number;
   proctorAutoSubmit?: boolean;
+  accessBranch?: string;
+  accessYear?: string;
+  accessRollNumber?: string;
   test?: Pick<Test, 'id' | 'name' | 'category_id' | 'duration' | 'total_questions'>;
 };
 
@@ -108,6 +111,9 @@ export async function recordDashboardAttempt(
         proctorSessionId: input.proctorSessionId,
         proctorViolations: input.proctorViolations ?? 0,
         proctorAutoSubmit: input.proctorAutoSubmit ?? false,
+        accessBranch: input.accessBranch,
+        accessYear: input.accessYear,
+        accessRollNumber: input.accessRollNumber,
       }),
     });
 
@@ -115,11 +121,16 @@ export async function recordDashboardAttempt(
       const json = (await res.json()) as {
         attemptId?: string;
         priorAttempt?: { id?: string };
+        error?: string;
       };
       const priorId = String(json.attemptId ?? json.priorAttempt?.id ?? '').trim();
       if (priorId) {
         return { attemptId: priorId, savedToServer: true, alreadyCompleted: true };
       }
+      throw new Error(
+        json.error ??
+          'You have already submitted this exam. Each roll number may attempt it only once.',
+      );
     }
 
     if (res.ok) {

@@ -87,6 +87,34 @@ export async function checkStudentExamAccessPrisma(input: {
     };
   }
 
+  if (input.rollNumber) {
+    const normalizedRoll = input.rollNumber.replace(/\s+/g, '').toUpperCase();
+    const liveScheduleIds = liveSchedules.map((s) => s.id);
+    const rosterHit = await prisma.examSlotRosterEntry.findFirst({
+      where: {
+        rollNumber: normalizedRoll,
+        scheduleId: { in: liveScheduleIds },
+      },
+      select: { scheduleId: true },
+    });
+    if (rosterHit?.scheduleId) {
+      const schedule = liveSchedules.find((s) => s.id === rosterHit.scheduleId) ?? liveSchedules[0];
+      return { allowed: true, schedule };
+    }
+
+    const anyRoster = await prisma.examSlotRosterEntry.count({
+      where: { scheduleId: { in: liveScheduleIds } },
+    });
+    if (anyRoster > 0) {
+      return {
+        allowed: false,
+        code: 'SLOT_NOT_ASSIGNED',
+        message: 'You are not on the roster for this examination slot.',
+        schedule: liveSchedules[0] ?? null,
+      };
+    }
+  }
+
   const schedule =
     liveSchedules.find((s) => scheduleMatchesStudent(s, input.department, input.year)) ??
     liveSchedules[0];
@@ -98,28 +126,6 @@ export async function checkStudentExamAccessPrisma(input: {
       message: 'This examination is not scheduled for your department or academic year.',
       schedule,
     };
-  }
-
-  if (input.rollNumber) {
-    const rosterHit = await prisma.examSlotRosterEntry.findFirst({
-      where: {
-        rollNumber: input.rollNumber.replace(/\s+/g, '').toUpperCase(),
-        scheduleId: schedule.id,
-      },
-    });
-    if (!rosterHit && schedules.some((s) => s.status === 'live' || s.status === 'scheduled')) {
-      const anyRoster = await prisma.examSlotRosterEntry.count({
-        where: { scheduleId: schedule.id },
-      });
-      if (anyRoster > 0) {
-        return {
-          allowed: false,
-          code: 'SLOT_NOT_ASSIGNED',
-          message: 'You are not on the roster for this examination slot.',
-          schedule,
-        };
-      }
-    }
   }
 
   return { allowed: true, schedule };

@@ -18,10 +18,12 @@ import {
   persistTestAttemptPrisma,
   resolveStudentProfilePrisma,
   linkProctorViolationsPrisma,
+  syncStudentRollNumberPrisma,
 } from '@/lib/db/test-attempts-prisma';
 import { assertStudentCanTakeTestPrisma } from '@/lib/db/exam-access-prisma';
 import type { TestAttempt } from '@/lib/types';
 import { isElevateXTestId } from '@/lib/elevatex';
+import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,10 +96,22 @@ export async function POST(request: Request) {
 
   if (testId) {
     const profile = await resolveStudentProfilePrisma(userId);
+    const accessBranch =
+      typeof body.accessBranch === 'string' && body.accessBranch.trim()
+        ? body.accessBranch.trim()
+        : (profile.branch ?? '');
+    const accessYear =
+      typeof body.accessYear === 'string' && body.accessYear.trim()
+        ? body.accessYear.trim()
+        : (profile.academic_year ?? '');
+    const accessRollNumber =
+      typeof body.accessRollNumber === 'string' && body.accessRollNumber.trim()
+        ? body.accessRollNumber.trim()
+        : (profile.roll_number ?? undefined);
     const access = await assertStudentCanTakeTestPrisma(userId, testId, {
-      branch: profile.branch,
-      academic_year: profile.academic_year,
-      roll_number: profile.roll_number,
+      branch: accessBranch,
+      academic_year: accessYear,
+      roll_number: accessRollNumber,
     });
     if (!access.allowed) {
       return NextResponse.json(
@@ -106,12 +120,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const prior = await findCompletedAttemptForTestPrisma(userId, testId);
+    if (accessRollNumber) {
+      await syncStudentRollNumberPrisma(userId, accessRollNumber);
+    }
+
+    const prior = isElevateXTestId(testId)
+      ? await findCompletedElevateXAttempt({ userId, rollNumber: accessRollNumber })
+      : await findCompletedAttemptForTestPrisma(userId, testId);
     if (prior) {
       return NextResponse.json(
         {
           error: isElevateXTestId(testId)
-            ? 'You have already completed ElevateX. Each student may attempt it only once.'
+            ? 'You have already submitted ElevateX. Each roll number may attempt this exam only once.'
             : 'You have already submitted this test and cannot take it again.',
           attemptId: prior.id,
           priorAttempt: prior,

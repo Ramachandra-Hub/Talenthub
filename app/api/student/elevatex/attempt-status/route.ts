@@ -1,17 +1,34 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
+import {
+  findCompletedElevateXAttempt,
+  normalizeRollNumber,
+} from '@/lib/elevatex/completed-attempt';
+import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const prior = await findCompletedElevateXAttemptForUser(session.user.id);
+    const url = new URL(request.url);
+    const rollParam = url.searchParams.get('rollNumber')?.trim() ?? '';
+    let rollNumber = rollParam ? normalizeRollNumber(rollParam) : '';
+
+    if (!rollNumber) {
+      const profile = await resolveStudentProfilePrisma(session.user.id);
+      rollNumber = profile.roll_number ? normalizeRollNumber(profile.roll_number) : '';
+    }
+
+    const prior = await findCompletedElevateXAttempt({
+      userId: session.user.id,
+      rollNumber: rollNumber || undefined,
+    });
+
     if (!prior) {
       return NextResponse.json({ completed: false });
     }

@@ -11,9 +11,13 @@ export function getElevateXTestId(): string {
   return ELEVATEX_TEST_ID;
 }
 
-export async function fetchElevateXAttemptStatus(): Promise<ElevateXAttemptStatus> {
+export async function fetchElevateXAttemptStatus(
+  rollNumber?: string,
+): Promise<ElevateXAttemptStatus> {
   try {
-    const res = await fetch('/api/student/elevatex/attempt-status', {
+    const query =
+      rollNumber?.trim() ? `?rollNumber=${encodeURIComponent(rollNumber.trim())}` : '';
+    const res = await fetch(`/api/student/elevatex/attempt-status${query}`, {
       credentials: 'include',
       cache: 'no-store',
     });
