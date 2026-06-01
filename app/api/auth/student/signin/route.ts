@@ -2,13 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { signIn } from '@/auth';
 import { studentAuthEmail } from '@/lib/college-auth';
 import { normalizeRoll } from '@/lib/exam-schedule-slots';
-import {
-  STUDENT_ALREADY_LOGGED_IN_MESSAGE,
-} from '@/lib/student-session-lock';
-import {
-  claimStudentSessionPrisma,
-  nextAuthSessionId,
-} from '@/lib/student-session-lock-prisma';
+import { claimStudentSessionPrisma, nextAuthSessionId } from '@/lib/student-session-lock-prisma';
 import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
 import { prisma } from '@/lib/prisma';
 
@@ -63,16 +57,7 @@ export async function POST(request: NextRequest) {
   }
 
   const sessionId = nextAuthSessionId(user.id);
-  const claim = await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
-  if (!claim.ok) {
-    return NextResponse.json(
-      {
-        error: claim.message || STUDENT_ALREADY_LOGGED_IN_MESSAGE,
-        code: 'already_logged_in',
-      },
-      { status: 409 },
-    );
-  }
+  await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
 
   await prisma.user.update({
     where: { id: user.id },
