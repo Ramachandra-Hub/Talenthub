@@ -9,6 +9,8 @@ next.user-config.*
 
 # Environment variables
 .env*.local
+env.local*.csv
+vercel-env-bulk-paste.env
 
 # SSH keys (never commit)
 .ssh/
@@ -16,6 +18,7 @@ next.user-config.*
 
 # Common ignores
 node_modules
+package-lock.json
 .next/
 .DS_Store
 *.tsbuildinfo
