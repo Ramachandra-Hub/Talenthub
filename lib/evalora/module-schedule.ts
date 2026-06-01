@@ -1,4 +1,6 @@
-import { departmentsMatch } from '@/lib/department-match';
+import { targetDepartmentsMatchStudent } from '@/lib/department-match';
+import { academicYearInList } from '@/lib/academic-year-match';
+import { parseTargetStringArray } from '@/lib/targeting-parse';
 import {
   getEvaloraModule,
   type EvaloraModuleDef,
@@ -36,11 +38,9 @@ function matchesStudent(
   department: string,
   year: string,
 ): boolean {
-  const years = row.target_years ?? [];
-  if (years.length > 0 && !years.includes(year)) return false;
-  const depts = row.target_departments ?? [];
-  if (depts.length === 0) return true;
-  return depts.some((d) => departmentsMatch(d, department));
+  const years = parseTargetStringArray(row.target_years);
+  if (years.length > 0 && !academicYearInList(year, years)) return false;
+  return targetDepartmentsMatchStudent(row.target_departments, department);
 }
 
 function isLive(row: Pick<EvaloraModuleScheduleRow, 'status' | 'starts_at' | 'ends_at'>, now = Date.now()) {

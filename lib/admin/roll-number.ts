@@ -14,7 +14,8 @@ export function rollNumberFromUser(
   if (fromMeta?.trim()) return fromMeta.trim();
 
   const local = email.split('@')[0]?.trim();
-  if (!local) return '—';
-  if (email.toLowerCase().includes(`@student.${COLLEGE.emailDomain}`)) return local;
-  return local;
+  if (!local) return '';
+  const normalized = local.replace(/\s+/g, '').toUpperCase();
+  if (email.toLowerCase().includes(`@student.${COLLEGE.emailDomain}`)) return normalized;
+  return normalized;
 }

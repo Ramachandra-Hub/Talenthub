@@ -1,5 +1,6 @@
 import { academicYearInList } from '@/lib/academic-year-match';
-import { departmentsMatch } from '@/lib/department-match';
+import { targetDepartmentsMatchStudent } from '@/lib/department-match';
+import { parseTargetStringArray } from '@/lib/targeting-parse';
 import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
 
 export type ExamScheduleStatus = 'scheduled' | 'live' | 'ended';
@@ -49,12 +50,19 @@ export function scheduleMatchesStudent(
   department: string,
   year: string,
 ): boolean {
-  const years = schedule.target_years ?? [];
+  const years = parseTargetStringArray(schedule.target_years);
   if (years.length > 0 && !academicYearInList(year, years)) return false;
+  return targetDepartmentsMatchStudent(schedule.target_departments, department);
+}
 
-  const depts = schedule.target_departments ?? [];
-  if (depts.length === 0) return true;
-  return depts.some((d) => departmentsMatch(d, department));
+/** Slot roster students: year rules apply; department comes from the roster, not schedule targeting. */
+export function scheduleMatchesRosterSlotStudent(
+  schedule: Pick<ExamScheduleRow, 'target_years'>,
+  year: string,
+): boolean {
+  const years = parseTargetStringArray(schedule.target_years);
+  if (years.length === 0) return true;
+  return academicYearInList(year, years);
 }
 
 export function scheduleEndMs(endsAt: string | null | undefined): number | null {
@@ -151,13 +159,19 @@ export function partitionSchedulesForStudent(
   department: string,
   year: string,
   extras?: Map<string, { duration_minutes?: number; topic?: string | null }>,
+  rosterAssignedRequestIds?: Set<string>,
 ): { live: StudentExamSchedule[]; upcoming: StudentExamSchedule[] } {
   const now = Date.now();
   const live: StudentExamSchedule[] = [];
   const upcoming: StudentExamSchedule[] = [];
 
   for (const row of rows) {
-    if (!scheduleMatchesStudent(row, department, year)) continue;
+    const reqId = row.faculty_exam_request_id;
+    const onSlotRoster = reqId != null && rosterAssignedRequestIds?.has(reqId);
+    const matches = onSlotRoster
+      ? scheduleMatchesRosterSlotStudent(row, year)
+      : scheduleMatchesStudent(row, department, year);
+    if (!matches) continue;
 
     const meta = row.faculty_exam_request_id
       ? extras?.get(row.faculty_exam_request_id)

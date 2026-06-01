@@ -541,6 +541,19 @@ export async function loadSlotsForRequest(
   return { uses_slot_scheduling: uses, slots };
 }
 
+export async function facultyRequestUsesSlotScheduling(
+  admin: DbServiceClient,
+  requestId: string,
+  relatedSchedules: ExamScheduleRow[] = [],
+): Promise<boolean> {
+  const { uses_slot_scheduling, slots } = await loadSlotsForRequest(admin, requestId);
+  if (uses_slot_scheduling) return true;
+  if (slots.some(isScheduleSlotConfigured)) return true;
+  return relatedSchedules
+    .filter((s) => s.faculty_exam_request_id === requestId)
+    .some((s) => scheduleSlotNumber(s) != null);
+}
+
 export async function findStudentSlotAssignment(
   admin: DbServiceClient,
   requestId: string,
@@ -549,18 +562,21 @@ export async function findStudentSlotAssignment(
   const roll = normalizeRoll(rollNumber);
   if (!roll) return null;
 
-  const { data, error } = await admin
+  const { data: entries, error } = await admin
     .from('exam_slot_roster_entries')
-    .select('slot_number, student_name')
-    .eq('faculty_exam_request_id', requestId)
-    .eq('roll_number', roll)
-    .maybeSingle();
+    .select('slot_number, student_name, roll_number')
+    .eq('faculty_exam_request_id', requestId);
 
-  if (!error && data?.slot_number) {
-    return {
-      slot_number: Number(data.slot_number),
-      student_name: (data.student_name as string | null) ?? null,
-    };
+  if (!error && entries?.length) {
+    for (const row of entries) {
+      if (normalizeRoll(String(row.roll_number ?? '')) !== roll) continue;
+      const slotNum = Number(row.slot_number);
+      if (!Number.isFinite(slotNum)) continue;
+      return {
+        slot_number: Math.floor(slotNum),
+        student_name: (row.student_name as string | null) ?? null,
+      };
+    }
   }
 
   const { uses_slot_scheduling, slots } = await loadSlotsForRequest(admin, requestId);

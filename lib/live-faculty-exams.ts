@@ -1,5 +1,6 @@
 import { examMatchesDepartment } from '@/lib/department-match';
 import { academicYearInList } from '@/lib/academic-year-match';
+import { parseTargetStringArray } from '@/lib/targeting-parse';
 import {
   isFacultyExamLiveForStudent,
   isScheduleLiveNow,
@@ -35,9 +36,10 @@ export function listLiveFacultyExamsForStudent(
   const seenTestIds = new Set<string>();
 
   for (const req of requests) {
-    const years = req.target_years ?? [];
+    const years = parseTargetStringArray(req.target_years);
+    const onSlotRoster = studentSlotByRequestId?.has(req.id);
     if (!academicYearInList(year, years)) continue;
-    if (!examMatchesDepartment(req, department)) continue;
+    if (!onSlotRoster && !examMatchesDepartment(req, department)) continue;
     const related = schedules.filter((s) => s.faculty_exam_request_id === req.id);
     const assignedSlot = studentSlotByRequestId?.get(req.id);
     const relevant =

@@ -21,11 +21,33 @@ export function departmentsMatch(
   return false;
 }
 
+/** ElevateX / college-wide exams use "All departments" — match every branch. */
+export function isOpenToAllDepartments(value: string | null | undefined): boolean {
+  const key = normalizeDepartmentKey(value);
+  return !key || key === 'all departments' || key === 'all' || key === 'every department';
+}
+
+export function targetDepartmentsMatchStudent(
+  targetDepartments: unknown,
+  department: string,
+): boolean {
+  const depts = Array.isArray(targetDepartments)
+    ? (targetDepartments as string[])
+    : typeof targetDepartments === 'string'
+      ? [targetDepartments]
+      : [];
+  if (depts.length === 0) return true;
+  if (depts.some((d) => isOpenToAllDepartments(d))) return true;
+  return depts.some((d) => departmentsMatch(d, department));
+}
+
 export function examMatchesDepartment(
   exam: { department?: string | null; target_branches?: string[] | null },
   department: string,
 ): boolean {
+  if (isOpenToAllDepartments(exam.department)) return true;
   if (departmentsMatch(exam.department, department)) return true;
   const branches = (exam.target_branches as string[] | null) ?? [];
+  if (branches.some((b) => isOpenToAllDepartments(b))) return true;
   return branches.some((b) => departmentsMatch(b, department));
 }
