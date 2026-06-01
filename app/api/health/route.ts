@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { isS3Configured } from '@/lib/aws/s3';
-import { useAwsStack } from '@/lib/aws/stack';
 import { autoEnsureRdsSchema, isAutoRdsSchemaEnabled } from '@/lib/db/auto-ensure-rds';
+import { getDatabaseSetupErrors } from '@/lib/postgres-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +11,16 @@ export async function GET() {
     app: 'ok',
     auth_mode: 'prisma_jwt',
   };
+
+  const dbConfigErrors = getDatabaseSetupErrors();
+  if (dbConfigErrors.length) {
+    checks.database = 'misconfigured';
+    checks.database_hint = dbConfigErrors.join(' ');
+    return NextResponse.json(
+      { status: 'unhealthy', checks, timestamp: new Date().toISOString() },
+      { status: 503 },
+    );
+  }
 
   if (isAutoRdsSchemaEnabled()) {
     const sync = await autoEnsureRdsSchema();
