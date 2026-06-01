@@ -25,6 +25,7 @@ import {
   studentElevateXProfileFromAuth,
   type StudentElevateXProfile,
 } from '@/lib/placement/student-candidate';
+import { getClientUser } from '@/lib/client-auth';
 import { fetchElevateXAttemptStatus } from '@/lib/placement/elevatex-attempt';
 import {
   buildPlacementSession,
@@ -53,18 +54,12 @@ export default function PlacementAssessmentStartPage() {
   const totalMinutes = Math.round(PLACEMENT_TOTAL_SEC / 60);
 
   const loadStudent = useCallback(async () => {
-    const db = null;
-    if (!db) {
+    const clientUser = await getClientUser();
+    if (!clientUser?.id) {
       router.replace('/auth/login/student?redirect=/placement/assessment');
       return;
     }
-
-    const { data: authData } = await db.auth.getUser();
-    if (!authData.user) {
-      router.replace('/auth/login/student?redirect=/placement/assessment');
-      return;
-    }
-    setAuthUserId(authData.user.id);
+    setAuthUserId(clientUser.id);
 
     let branch: string | null = null;
     let full_name: string | null = null;
@@ -81,8 +76,8 @@ export default function PlacementAssessmentStartPage() {
     }
 
     const studentProfile = studentElevateXProfileFromAuth(
-      authData.user.email ?? '',
-      authData.user.user_metadata as Record<string, unknown>,
+      clientUser.email ?? '',
+      (clientUser.user_metadata ?? {}) as Record<string, unknown>,
       { full_name, branch, college },
     );
     setProfile(studentProfile);
@@ -96,7 +91,7 @@ export default function PlacementAssessmentStartPage() {
       });
       setResumeAvailable(false);
     } else {
-      clearLocalElevateXAttemptsForUser(authData.user.id, (testId, testName) =>
+      clearLocalElevateXAttemptsForUser(clientUser.id, (testId, testName) =>
         isElevateXTestId(testId) || isElevateXAttemptTitle(testName),
       );
       if (typeof window !== 'undefined') {

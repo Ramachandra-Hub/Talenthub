@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { studentSignInServer } from '@/lib/auth/student-sign-in-server';
-import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { studentSignInAction } from '@/lib/auth/student-sign-in-server';
 
 type StudentSignInOptions = {
   rollNumber: string;
@@ -27,21 +26,31 @@ export function useStudentSignIn() {
       setError(null);
       setLoading(true);
       try {
-        const result = await studentSignInServer({
+        const result = await studentSignInAction({
           rollNumber: rollNumber.trim(),
           password,
           department,
           year,
           redirectTo,
         });
-        if (result?.error) {
+
+        if (result.error) {
           setError(result.error);
           return;
         }
-      } catch (err) {
-        if (isRedirectError(err)) {
-          throw err;
+
+        if (!result.ok) {
+          setError('Sign in failed. Try again.');
+          return;
         }
+
+        const dest =
+          redirectTo.startsWith('/') && !redirectTo.startsWith('//')
+            ? redirectTo
+            : '/exams';
+
+        window.location.assign(dest);
+      } catch (err) {
         const msg = err instanceof Error ? err.message : 'Sign in failed';
         setError(msg);
       } finally {

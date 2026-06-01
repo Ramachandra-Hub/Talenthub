@@ -11,12 +11,38 @@ export function isAwsClientMode(): boolean {
   return true;
 }
 
-/** Resolve logged-in user via NextAuth session. */
+/** Resolve logged-in user via server session (NextAuth + RDS). */
 export async function getClientUser(): Promise<ClientUser | null> {
   try {
-    const res = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
+    const meRes = await fetch('/api/student/me', {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (meRes.ok) {
+      const me = (await meRes.json()) as {
+        authenticated?: boolean;
+        id?: string;
+        email?: string | null;
+        role?: string;
+      };
+      if (me.authenticated && me.id) {
+        return {
+          id: me.id,
+          email: me.email ?? undefined,
+          role: me.role ?? 'student',
+          user_metadata: { role: me.role ?? 'student' },
+        };
+      }
+    }
+
+    const res = await fetch('/api/auth/session', {
+      credentials: 'include',
+      cache: 'no-store',
+    });
     if (!res.ok) return null;
-    const json = (await res.json()) as { user?: { id?: string; email?: string; role?: string } };
+    const json = (await res.json()) as {
+      user?: { id?: string; email?: string; role?: string };
+    };
     if (!json.user?.id) return null;
     return {
       id: json.user.id,

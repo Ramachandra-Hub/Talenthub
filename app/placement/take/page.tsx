@@ -197,13 +197,11 @@ export default function PlacementTakePage() {
       const current = sessionRef.current;
       if (!current || current.submitted) return;
 
-      const db = null;
-      if (!db) return;
-
-      const {
-        data: { user },
-      } = await db.auth.getUser();
-      if (!user) return;
+      const user = await (async () => {
+        const { getClientUser } = await import('@/lib/client-auth');
+        return getClientUser();
+      })();
+      if (!user?.id) return;
 
       let scorePercent = 0;
       try {
@@ -218,11 +216,9 @@ export default function PlacementTakePage() {
       const violations = activeProctorSession ? getExamViolations(activeProctorSession) : [];
 
       try {
-        const headers = await fetchWithSession;
-        const res = await fetch('/api/student/test-attempts/progress', {
+        const res = await fetchWithSession('/api/student/test-attempts/progress', {
           method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', ...headers },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             testId: elevateXTestId,
             testName: `ElevateX · ${dept?.name ?? 'Department'}`,

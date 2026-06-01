@@ -1,6 +1,5 @@
 'use server';
 
-import { redirect } from 'next/navigation';
 import {
   runStudentCredentialSignIn,
   type StudentSignInInput,
@@ -8,21 +7,18 @@ import {
 
 export type { StudentSignInInput } from '@/lib/auth/student-sign-in-core';
 
-export type StudentSignInActionResult = { error?: string };
+export type StudentSignInActionResult = { error?: string; ok?: true };
 
-/** Login form — session cookie is set in this server request, then redirect. */
-export async function studentSignInServer(
+/**
+ * Sets the NextAuth session cookie in this server request.
+ * Client must call window.location.assign(redirectTo) afterward so the browser loads with the cookie.
+ */
+export async function studentSignInAction(
   input: StudentSignInInput & { redirectTo?: string },
 ): Promise<StudentSignInActionResult> {
   const result = await runStudentCredentialSignIn(input);
   if ('error' in result) {
     return { error: result.error };
   }
-
-  const redirectTo =
-    input.redirectTo?.startsWith('/') && !input.redirectTo.startsWith('//')
-      ? input.redirectTo
-      : '/exams';
-
-  redirect(redirectTo);
+  return { ok: true };
 }

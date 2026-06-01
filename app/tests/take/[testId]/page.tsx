@@ -170,76 +170,12 @@ export default function TakeTestPage({
           if (fallbackTest && fallbackQuestions.length > 0) {
             setTest(fallbackTest);
             setQuestions(fallbackQuestions);
+          } else if (!user) {
+            setLoadError('Sign in with your roll number to take this exam.');
           } else {
-            setLoadError('Sign in to load this exam.');
+            setLoadError('This exam could not be loaded. Ask faculty to republish it.');
           }
           return;
-        }
-
-        const { getClientUser } = await import('@/lib/client-auth');
-        const db = null;
-        if (!db) return;
-
-        const { test: loadedTest, questions: loadedQuestions } = await loadTestBundleForTake(db, testId);
-
-        if (!loadedTest) {
-          return;
-        }
-
-        let questionsData = loadedQuestions;
-        const adaptedTest = loadedTest;
-
-        const psychometricLike =
-          /psychometric/i.test(testId) ||
-          /psychometric/i.test(adaptedTest.name ?? '') ||
-          /psychometric/i.test(adaptedTest.description ?? '') ||
-          ((adaptedTest.total_questions ?? 0) <= 20 && (adaptedTest.duration ?? 0) <= 5);
-
-        if (
-          psychometricLike &&
-          questionsData.length < PSYCHOMETRIC_FALLBACK_QUESTION_COUNT
-        ) {
-          questionsData = getPsychometricQuestionsForTestId(testId);
-          setTest({
-            ...adaptedTest,
-            total_questions: PSYCHOMETRIC_FALLBACK_QUESTION_COUNT,
-            duration: Math.max(adaptedTest.duration ?? 0, 30),
-            question_time_limit_sec: null,
-            description:
-              adaptedTest.description ??
-              '200 visual/pattern psychometric items in 30 minutes.',
-          });
-        } else {
-          setTest({ ...adaptedTest, total_questions: questionsData.length || adaptedTest.total_questions });
-        }
-
-        setQuestions(questionsData);
-        if (!questionsData.length) {
-          setLoadError(
-            'This test has no questions loaded. Sign in as a student or ask faculty to republish the exam.',
-          );
-        }
-
-        const sections = await loadTestSections(db, testId);
-        setExamSections(sections);
-
-        const userId = user?.id;
-        if (userId && !detectedPrior) {
-          const localHit = getAttemptIndexForUser(userId).find(
-            (a) =>
-              testIdsMatch(a.test_id, testId) &&
-              (a.status === 'completed' || Boolean(a.completed_at)),
-          );
-          if (localHit) {
-            detectedPrior = {
-              id: localHit.id,
-              score: localHit.score ?? 0,
-              completed_at: localHit.completed_at,
-            };
-          }
-        }
-        if (detectedPrior) {
-          setPriorAttempt(detectedPrior);
         }
       } catch (error) {
         if (isSchemaMissingError(error)) {
