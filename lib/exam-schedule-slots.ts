@@ -358,7 +358,7 @@ async function insertSlotRosterRows(
         email: student.email ?? null,
         branch: student.branch ?? null,
         academic_year: student.academic_year ?? null,
-        login_password: student.password ?? null,
+        password: student.password ?? null,
       });
     }
   }

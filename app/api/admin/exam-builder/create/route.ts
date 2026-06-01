@@ -15,8 +15,11 @@ import {
 import { parseScheduleSlotsJson } from '@/lib/exam-schedule-slots';
 import { syncElevateXEvaloraModuleFromSchedule } from '@/lib/elevatex-admin';
 
+/** Publishing + roster provision can exceed the default 10s on Vercel. */
+export const maxDuration = 120;
+
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(['admin']);
+  const auth = await requireAuth(['admin'], request);
   if ('response' in auth) return auth.response;
 
   const admin = getDbService();
@@ -142,25 +145,29 @@ export async function POST(request: NextRequest) {
         : '';
 
     if (isElevateX && goLiveSlotNumbers.includes(1) && result.requestId) {
-      const { data: slot1 } = await admin
-        .from('exam_schedules')
-        .select('*')
-        .eq('faculty_exam_request_id', result.requestId)
-        .eq('slot_number', 1)
-        .maybeSingle();
-      if (slot1) {
-        await syncElevateXEvaloraModuleFromSchedule(
-          admin,
-          {
-            starts_at: slot1.starts_at,
-            ends_at: slot1.ends_at,
-            notice:
-              typeof body.notice === 'string'
-                ? body.notice
-                : `${def.name} · Slot 1`,
-          },
-          auth.ctx.user.id,
-        );
+      try {
+        const { data: slot1 } = await admin
+          .from('exam_schedules')
+          .select('*')
+          .eq('faculty_exam_request_id', result.requestId)
+          .eq('slot_number', 1)
+          .maybeSingle();
+        if (slot1) {
+          await syncElevateXEvaloraModuleFromSchedule(
+            admin,
+            {
+              starts_at: slot1.starts_at,
+              ends_at: slot1.ends_at,
+              notice:
+                typeof body.notice === 'string'
+                  ? body.notice
+                  : `${def.name} · Slot 1`,
+            },
+            auth.ctx.user.id,
+          );
+        }
+      } catch (syncErr) {
+        console.warn('[exam-builder/create] ElevateX module sync:', syncErr);
       }
     }
 
@@ -179,8 +186,17 @@ export async function POST(request: NextRequest) {
           : 'Exam published. Go live from Exam schedules when ready.',
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Publish failed';
+    console.error('[exam-builder/create]', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Publish failed' },
+      {
+        error: message,
+        hint: message.includes('Slot 1 schedule')
+          ? 'Complete Slot 1 date, time, and roster, then publish again.'
+          : message.includes('student login')
+            ? 'Roster login provisioning failed — check DATABASE_URL and try a smaller roster first.'
+            : undefined,
+      },
       { status: 500 },
     );
   }

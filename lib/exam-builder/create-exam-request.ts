@@ -1,5 +1,7 @@
+import type { Prisma } from '@prisma/client';
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import type { FacultyExamQuestion } from '@/lib/faculty-exams';
+import { prisma } from '@/lib/prisma';
 import { augmentExamQuestionsWithCoding } from '@/lib/exam-builder/programming-syllabus';
 import { resolveSyllabusTopicsForBuilder } from '@/lib/exam-builder/draw-questions';
 import { looksLikeUuid } from '@/lib/exam-builder/id-utils';
@@ -148,63 +150,84 @@ export async function createFacultyExamRequestRecord(
     }
   }
 
-  let { data: row, error } = await admin
-    .from('faculty_exam_requests')
-    .insert(insertPayload)
-    .select('id')
-    .single();
+  let requestId: string;
 
-  const stripOptionalColumns = (payload: Record<string, unknown>, columns: string[]) => {
-    for (const col of columns) delete payload[col];
-  };
+  try {
+    const created = await prisma.facultyExamRequest.create({
+      data: {
+        facultyUserId: input.creatorUserId,
+        department,
+        topic: input.topic?.trim() || null,
+        title: input.title.trim(),
+        description: input.description?.trim() ?? null,
+        targetYears: input.targetYears as Prisma.InputJsonValue,
+        targetBranches: target_branches as Prisma.InputJsonValue,
+        durationMinutes: input.durationMinutes,
+        questionsJson: examQuestions as Prisma.InputJsonValue,
+        status: input.status,
+        testType: input.testType?.trim() || null,
+        slotKey: input.slotKey?.trim() || null,
+        syllabusTopicIds: syllabusTopicUuids as Prisma.InputJsonValue,
+        questionsPerTopic: input.questionsPerTopic ?? null,
+        usesSlotScheduling: Boolean(input.usesSlotScheduling),
+        scheduleSlotsJson: scheduleSlotsForDb?.length
+          ? (scheduleSlotsForDb as unknown as Prisma.InputJsonValue)
+          : undefined,
+        departmentGroupId: groupId,
+      },
+      select: { id: true },
+    });
+    requestId = created.id;
+  } catch (prismaErr) {
+    const stripOptionalColumns = (payload: Record<string, unknown>, columns: string[]) => {
+      for (const col of columns) delete payload[col];
+    };
 
-  if (
-    error?.message?.includes('department_group_id') &&
-    (error.message.includes('schema cache') || error.message.includes('does not exist'))
-  ) {
-    stripOptionalColumns(insertPayload, ['department_group_id']);
-    const retry = await admin
+    let { data: row, error } = await admin
       .from('faculty_exam_requests')
       .insert(insertPayload)
       .select('id')
       .single();
-    row = retry.data;
-    error = retry.error;
-    if (!error) {
-      console.warn(
-        'faculty_exam_requests.department_group_id missing — saved without group. Run migration 023_faculty_department_group_id.sql in AWS RDS.',
-      );
+
+    if (
+      error?.message?.includes('department_group_id') &&
+      (error.message.includes('schema cache') || error.message.includes('does not exist'))
+    ) {
+      stripOptionalColumns(insertPayload, ['department_group_id']);
+      const retry = await admin
+        .from('faculty_exam_requests')
+        .insert(insertPayload)
+        .select('id')
+        .single();
+      row = retry.data;
+      error = retry.error;
     }
-  }
 
-  if (
-    error &&
-    (error.message.includes('uses_slot_scheduling') ||
-      error.message.includes('schedule_slots_json'))
-  ) {
-    stripOptionalColumns(insertPayload, ['uses_slot_scheduling', 'schedule_slots_json']);
-    const retry = await admin
-      .from('faculty_exam_requests')
-      .insert(insertPayload)
-      .select('id')
-      .single();
-    row = retry.data;
-    error = retry.error;
-    if (!error) {
-      console.warn(
-        'Slot scheduling columns missing — run migration 029_exam_slot_scheduling.sql in AWS RDS.',
-      );
+    if (
+      error &&
+      (error.message.includes('uses_slot_scheduling') ||
+        error.message.includes('schedule_slots_json'))
+    ) {
+      stripOptionalColumns(insertPayload, ['uses_slot_scheduling', 'schedule_slots_json']);
+      const retry = await admin
+        .from('faculty_exam_requests')
+        .insert(insertPayload)
+        .select('id')
+        .single();
+      row = retry.data;
+      error = retry.error;
     }
-  }
 
-  if (error || !row?.id) {
-    const hint = error?.message?.includes('department_group_id')
-      ? `${error?.message ?? 'Could not save exam request'} — Run migration 023_faculty_department_group_id.sql in AWS RDS SQL editor, wait 30s, retry.`
-      : (error?.message ?? 'Could not save exam request');
-    throw new Error(hint);
-  }
+    if (error || !row?.id) {
+      const prismaMsg = prismaErr instanceof Error ? prismaErr.message : String(prismaErr);
+      const hint = error?.message?.includes('department_group_id')
+        ? `${error?.message ?? prismaMsg} — Run migration 023_faculty_department_group_id.sql in AWS RDS SQL editor, wait 30s, retry.`
+        : (error?.message ?? prismaMsg ?? 'Could not save exam request');
+      throw new Error(hint);
+    }
 
-  const requestId = row.id as string;
+    requestId = row.id as string;
+  }
 
   if (input.usesSlotScheduling && scheduleSlotsForDb?.length) {
     try {

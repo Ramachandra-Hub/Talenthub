@@ -30,6 +30,9 @@
     "app/api/admin/question-bank/route.ts": {
       "maxDuration": 60
     },
+    "app/api/admin/exam-builder/create/route.ts": {
+      "maxDuration": 120
+    },
     "app/api/admin/cleanup-exams-keep-today/route.ts": {
       "maxDuration": 60
     },

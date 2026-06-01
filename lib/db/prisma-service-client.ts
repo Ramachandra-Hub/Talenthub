@@ -99,6 +99,15 @@ function payloadToSnake(payload: Row): Row {
   return out;
 }
 
+/** JSON/JSONB columns need string values for raw SQL parameter binding. */
+function serializeInsertValues(snake: Row): unknown[] {
+  return Object.values(snake).map((v) => {
+    if (v === undefined) return null;
+    if (typeof v === 'object' && v !== null) return JSON.stringify(v);
+    return v;
+  });
+}
+
 function quoteIdent(name: string): string {
   if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
     throw new Error(`Invalid identifier: ${name}`);
@@ -150,9 +159,9 @@ class TableQuery {
     return this;
   }
 
-  upsert(row: Row, opts?: { onConflict?: string }) {
+  upsert(row: Row | Row[], opts?: { onConflict?: string }) {
     this.op = 'upsert';
-    this.insertRows = [row];
+    this.insertRows = Array.isArray(row) ? row : [row];
     this.upsertConflict = opts?.onConflict ?? 'id';
     return this;
   }
@@ -288,7 +297,7 @@ class TableQuery {
       for (const row of this.insertRows) {
         const snake = payloadToSnake(row);
         const cols = Object.keys(snake);
-        const vals = Object.values(snake);
+        const vals = serializeInsertValues(snake);
         const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
         const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) RETURNING *`;
         const inserted = await db.unsafe(sqlText, vals);
@@ -305,7 +314,7 @@ class TableQuery {
     const snake = payloadToSnake(this.updatePatch);
     const sets = Object.keys(snake);
     if (!sets.length) return { data: [], error: null };
-    const setVals = Object.values(snake);
+    const setVals = serializeInsertValues(snake);
     const setParts = sets.map((c, idx) => `${quoteIdent(c)} = $${idx + 1}`);
     const { clause, values } = this.buildWhere(setVals.length + 1);
     const allVals = [...setVals, ...values];
@@ -332,18 +341,28 @@ class TableQuery {
 
   private async runUpsert(): Promise<DbResult<Row[]>> {
     const db = getSql();
+    const conflictCols = (this.upsertConflict ?? 'id')
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+    const conflictSql = conflictCols.map(quoteIdent).join(', ');
+    const results: Row[] = [];
+
     try {
-      const snake = payloadToSnake(this.insertRows[0] ?? {});
-      const cols = Object.keys(snake);
-      const vals = Object.values(snake);
-      const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
-      const updates = cols
-        .filter((c) => c !== this.upsertConflict)
-        .map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`)
-        .join(', ');
-      const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) ON CONFLICT (${quoteIdent(this.upsertConflict ?? 'id')}) DO UPDATE SET ${updates} RETURNING *`;
-      const rows = await db.unsafe(sqlText, vals);
-      return { data: rowsToSnake(rows as Row[]), error: null };
+      for (const row of this.insertRows) {
+        const snake = payloadToSnake(row);
+        const cols = Object.keys(snake);
+        const vals = serializeInsertValues(snake);
+        const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
+        const updates = cols
+          .filter((c) => !conflictCols.includes(c))
+          .map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`)
+          .join(', ');
+        const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) ON CONFLICT (${conflictSql}) DO UPDATE SET ${updates} RETURNING *`;
+        const inserted = await db.unsafe(sqlText, vals);
+        results.push(...rowsToSnake(inserted as Row[]));
+      }
+      return { data: results, error: null };
     } catch (err) {
       return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
     }

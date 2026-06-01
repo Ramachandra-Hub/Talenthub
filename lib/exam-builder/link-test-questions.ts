@@ -28,7 +28,7 @@ export async function linkTestQuestions(
     return {
       test_id: normalizedTestId,
       question_id,
-      order: idx + 1,
+      sort_order: idx + 1,
     };
   });
 
