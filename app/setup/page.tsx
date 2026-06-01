@@ -191,6 +191,10 @@ export default function SetupPage() {
         error?: string;
         schemaReady?: boolean;
         needsSchema?: boolean;
+        setupComplete?: boolean;
+        adminEmail?: string;
+        userCount?: number;
+        categoryCount?: number;
       }>(statusRes);
 
       if (!statusRes.ok) {
@@ -198,6 +202,14 @@ export default function SetupPage() {
       }
 
       if (statusJson.mode === 'aws') {
+        if (statusJson.setupComplete) {
+          setStatus(
+            `Database is already set up (${statusJson.userCount ?? 0} user(s), ${statusJson.categoryCount ?? 0} categories). Sign in at /auth/login/admin as ${statusJson.adminEmail ?? 'admin@rce.ac.in'}.`,
+          );
+          setCompleted(true);
+          return;
+        }
+
         setStatus('Creating tables and columns on AWS RDS (Prisma schema sync)...');
         const rdsRes = await fetch('/api/setup/rds', {
           method: 'POST',
@@ -207,13 +219,25 @@ export default function SetupPage() {
         const { json: rdsJson } = await readJsonResponse<{
           error?: string;
           detail?: string;
+          hint?: string;
           message?: string;
+          alreadyConfigured?: boolean;
+          adminEmail?: string;
           results?: { admin?: { email?: string } };
         }>(rdsRes);
-        if (!rdsRes.ok) {
-          throw new Error(rdsJson.detail ?? rdsJson.error ?? 'RDS setup failed');
+        if (!rdsRes.ok && !rdsJson.alreadyConfigured) {
+          throw new Error(rdsJson.detail ?? rdsJson.hint ?? rdsJson.error ?? 'RDS setup failed');
         }
-        const adminEmail = rdsJson.results?.admin?.email;
+        if (rdsJson.alreadyConfigured && !rdsRes.ok) {
+          setStatus(
+            rdsJson.message ??
+              `Already set up. Sign in at /auth/login/admin as ${rdsJson.adminEmail ?? 'admin@rce.ac.in'}.`,
+          );
+          setCompleted(true);
+          return;
+        }
+        const adminEmail =
+          rdsJson.results?.admin?.email ?? rdsJson.adminEmail ?? statusJson.adminEmail;
         setStatus(
           rdsJson.message ??
             `RDS ready.${adminEmail ? ` Admin: ${adminEmail}` : ''} Use /auth/login/admin`,

@@ -50,6 +50,8 @@ async function buildRdsStatus() {
     }
   }
 
+  const setupComplete = schemaReady && userCount > 0 && categoryCount > 0;
+
   return {
     status: 200,
     body: {
@@ -57,9 +59,11 @@ async function buildRdsStatus() {
       schemaReady,
       categoryCount,
       userCount,
+      setupComplete,
       needsSchema: !schemaReady,
       needsSeed: schemaReady && categoryCount === 0,
       needsAdmin: schemaReady && userCount === 0,
+      adminEmail: (process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in').trim().toLowerCase(),
     },
   };
 }
@@ -105,23 +109,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
+    const step = body.step ?? 'all';
+    const { body: statusPreview } = await buildRdsStatus();
+    const preview = statusPreview as {
+      setupComplete?: boolean;
+      needsSchema?: boolean;
+      needsSeed?: boolean;
+      adminEmail?: string;
+    };
+
     const secret = process.env.RDS_SETUP_SECRET?.trim();
     if (secret) {
       const provided = request.headers.get('x-rds-setup-secret') ?? body.setupSecret;
       if (provided !== secret) {
         return NextResponse.json({ error: 'Invalid RDS_SETUP_SECRET' }, { status: 403 });
       }
-    } else if (!(await isFirstRun())) {
+    } else if (preview.setupComplete && step === 'all') {
+      return NextResponse.json({
+        ok: true,
+        alreadyConfigured: true,
+        message:
+          'Database is already set up. Sign in at /auth/login/admin — no need to run setup again.',
+        adminEmail: preview.adminEmail,
+        status: statusPreview,
+      });
+    } else if (!(await isFirstRun()) && step === 'all' && !preview.needsSchema && !preview.needsSeed) {
       return NextResponse.json(
         {
-          error:
-            'Database already has users. Set RDS_SETUP_SECRET in env to run setup again, or use admin tools.',
+          error: 'Database already has users.',
+          alreadyConfigured: true,
+          hint:
+            'Use /auth/login/admin to sign in. To force a full re-setup, set RDS_SETUP_SECRET in Vercel env and pass it in the request.',
+          adminEmail: preview.adminEmail,
+          status: statusPreview,
         },
         { status: 403 },
       );
     }
-
-    const step = body.step ?? 'all';
     const results: Record<string, unknown> = { step };
 
     if (step === 'schema' || step === 'all') {
