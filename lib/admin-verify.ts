@@ -15,10 +15,14 @@ function isDatabaseConnectionError(message: string): boolean {
   return (
     m.includes('pg_hba') ||
     m.includes('no encryption') ||
-    m.includes('ssl') ||
     m.includes('econnrefused') ||
     m.includes('connection refused') ||
-    m.includes('database_url is not configured')
+    m.includes('database_url is not configured') ||
+    m.includes("can't reach database server") ||
+    m.includes('unrecognized configuration parameter') ||
+    m.includes('connection_limit') ||
+    m.includes('etimedout') ||
+    m.includes('timeout')
   );
 }
 

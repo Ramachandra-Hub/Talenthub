@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
-import { checkIsAdmin } from '@/lib/admin-verify';
+import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
+import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/server-auth';
-import { fetchTestCategories } from '@/lib/db-catalog-queries';
+
+export const dynamic = 'force-dynamic';
 
 const FALLBACK_CATEGORIES = [
   { id: 'fallback-quantitative', name: 'Quantitative Ability', slug: 'quantitative', description: null, icon: '📊', order: 1 },
@@ -16,35 +17,45 @@ const FALLBACK_CATEGORIES = [
 ] as const;
 
 const RDS_SETUP_HINT =
-  'Run prisma db push or scripts/01-initial-schema.sql on RDS. Ensure DATABASE_URL includes ?sslmode=require.';
+  'Run pnpm init:rds or POST /api/setup/rds on RDS. Use DATABASE_URL with ?sslmode=require (no quotes on Vercel).';
 
 export async function GET() {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
-  const service = getDbService();
-  if (!service) {
+  try {
+    const rows = await prisma.testCategory.findMany({
+      orderBy: { order: 'asc' },
+    });
+
+    if (!rows.length) {
+      return NextResponse.json({
+        categories: FALLBACK_CATEGORIES,
+        source: 'fallback',
+        warning: `No categories in database. ${RDS_SETUP_HINT}`,
+      });
+    }
+
+    return NextResponse.json({
+      categories: rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        description: c.description,
+        icon: c.icon,
+        order: c.order,
+      })),
+      source: 'database',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const { remediation } = classifyDatabaseError(message);
+    console.error('[api/admin/categories]', message);
     return NextResponse.json({
       categories: FALLBACK_CATEGORIES,
       source: 'fallback',
-      warning: `Using built-in categories. ${RDS_SETUP_HINT}`,
+      warning: remediation[0] ?? message,
+      error: 'Database unavailable — using built-in categories',
     });
   }
-
-  const isAdmin = await checkIsAdmin(service, auth.ctx.resolved.id, auth.ctx.resolved.email);
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const { categories, error } = await fetchTestCategories(service);
-
-  if (error || !categories.length) {
-    return NextResponse.json({
-      categories: FALLBACK_CATEGORIES,
-      source: 'fallback',
-      warning: error ?? `No categories in database. ${RDS_SETUP_HINT}`,
-    });
-  }
-
-  return NextResponse.json({ categories, source: 'database' });
 }

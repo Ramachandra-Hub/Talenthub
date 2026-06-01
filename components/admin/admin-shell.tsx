@@ -110,7 +110,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           'fixed top-0 left-0 z-[100] h-full w-[min(100vw-2.5rem,320px)] bg-[#0c2340] text-white shadow-2xl transition-transform duration-200 ease-out flex flex-col',
           navOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
         )}
-        aria-hidden={!navOpen}
         inert={!navOpen || undefined}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">

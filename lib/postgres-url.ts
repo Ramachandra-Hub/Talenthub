@@ -131,14 +131,30 @@ function appendQueryParam(url: string, param: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}${param}`;
 }
 
-/** Serverless-friendly query params for Vercel + RDS. */
+/**
+ * Prisma-only URL params (postgres.js / libpq send unknown ?key= values to the server and fail).
+ * Keep DATABASE_URL with connection_limit for Prisma; use this for the postgres() driver.
+ */
+export function stripDriverUnsafeUrlParams(url: string): string {
+  return url
+    .replace(/([?&])connection_limit=\d+/gi, '$1')
+    .replace(/([?&])connect_timeout=\d+/gi, '$1')
+    .replace(/([?&])pool_timeout=\d+/gi, '$1')
+    .replace(/([?&])socket_timeout=\d+/gi, '$1')
+    .replace(/([?&])pgbouncer=[^&]*/gi, '$1')
+    .replace(/([?&])schema=[^&]*/gi, '$1')
+    .replace(/\?&/g, '?')
+    .replace(/[?&]$/g, '')
+    .replace(/\?$/, '');
+}
+
+/** Serverless-friendly query params for Vercel + RDS (Prisma reads connection_limit from URL). */
 export function withServerlessDbParams(url: string): string {
   let out = withAwsRdsSsl(url);
   const onVercel = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
   if (onVercel) {
     out = appendQueryParam(out, 'connection_limit=1');
   }
-  out = appendQueryParam(out, 'connect_timeout=15');
   return out;
 }
 
