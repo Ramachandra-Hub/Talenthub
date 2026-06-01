@@ -30,6 +30,7 @@ import {
   type AdminDashboardReportContext,
 } from '@/lib/admin/dashboard-card-reports';
 import { buildDashboardTestOverviewItem } from '@/lib/admin/dashboard-test-report';
+import { readJsonResponse } from '@/lib/fetch-json';
 import { getTodayDateKeyInIST, formatDateKeyLabel } from '@/lib/admin/report-date-filter';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 
@@ -98,13 +99,10 @@ export function AdminDashboard() {
     const checkAdminAccess = async () => {
       try {
         const meRes = await fetch('/api/admin/me', { credentials: 'include' });
-        if (!meRes.ok) {
-          router.push('/auth/login');
-          return;
-        }
-        const me = (await meRes.json()) as { isAdmin?: boolean };
-        if (!me.isAdmin) {
-          router.push('/auth/login');
+        const { json: me } = await readJsonResponse<{ isAdmin?: boolean; hint?: string }>(meRes);
+        if (!meRes.ok || !me.isAdmin) {
+          if (me.hint) console.error('[admin dashboard]', me.hint);
+          router.push('/auth/login/admin');
           return;
         }
 

@@ -37,6 +37,12 @@ export async function resetPassword(_newPassword: string) {
 export async function isAdmin(userId: string) {
   const res = await fetch('/api/admin/me', { credentials: 'include', cache: 'no-store' });
   if (!res.ok) return false;
-  const json = (await res.json()) as { isAdmin?: boolean; userId?: string };
-  return !!json.isAdmin && json.userId === userId;
+  const raw = await res.text();
+  if (!raw.trim()) return false;
+  try {
+    const json = JSON.parse(raw) as { isAdmin?: boolean; userId?: string };
+    return !!json.isAdmin && json.userId === userId;
+  } catch {
+    return false;
+  }
 }
