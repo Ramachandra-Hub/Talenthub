@@ -54,59 +54,64 @@ export default function PlacementAssessmentStartPage() {
   const totalMinutes = Math.round(PLACEMENT_TOTAL_SEC / 60);
 
   const loadStudent = useCallback(async () => {
-    const clientUser = await getClientUser();
-    if (!clientUser?.id) {
-      router.replace('/auth/login/student?redirect=/placement/assessment');
-      return;
-    }
-    setAuthUserId(clientUser.id);
-
-    let branch: string | null = null;
-    let full_name: string | null = null;
-    let college: string | null = null;
-
-    const profileRes = await fetch('/api/student/profile', { credentials: 'include' });
-    if (profileRes.ok) {
-      const json = (await profileRes.json()) as {
-        profile?: { full_name?: string | null; branch?: string | null; college?: string | null };
-      };
-      branch = json.profile?.branch ?? null;
-      full_name = json.profile?.full_name ?? null;
-      college = json.profile?.college ?? null;
-    }
-
-    const studentProfile = studentElevateXProfileFromAuth(
-      clientUser.email ?? '',
-      (clientUser.user_metadata ?? {}) as Record<string, unknown>,
-      { full_name, branch, college },
-    );
-    setProfile(studentProfile);
-
-    const status = await fetchElevateXAttemptStatus();
-    if (status.completed && status.attemptId) {
-      setPriorAttempt({
-        attemptId: status.attemptId,
-        score: status.score,
-        completedAt: status.completedAt,
-      });
-      setResumeAvailable(false);
-    } else {
-      clearLocalElevateXAttemptsForUser(clientUser.id, (testId, testName) =>
-        isElevateXTestId(testId) || isElevateXAttemptTitle(testName),
-      );
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.removeItem(
-            `${PLACEMENT_COMPLETED_PREFIX}${studentProfile.hallTicket}`,
-          );
-        } catch {
-          // ignore
-        }
+    try {
+      const clientUser = await getClientUser();
+      if (!clientUser?.id) {
+        router.replace('/auth/login/student?redirect=/placement/assessment');
+        return;
       }
-      const existing = loadSessionByHallTicket(studentProfile.hallTicket);
-      setResumeAvailable(Boolean(existing && !existing.submitted));
+      setAuthUserId(clientUser.id);
+
+      let branch: string | null = null;
+      let full_name: string | null = null;
+      let college: string | null = null;
+
+      const profileRes = await fetch('/api/student/profile', { credentials: 'include' });
+      if (profileRes.ok) {
+        const json = (await profileRes.json()) as {
+          profile?: { full_name?: string | null; branch?: string | null; college?: string | null };
+        };
+        branch = json.profile?.branch ?? null;
+        full_name = json.profile?.full_name ?? null;
+        college = json.profile?.college ?? null;
+      }
+
+      const studentProfile = studentElevateXProfileFromAuth(
+        clientUser.email ?? '',
+        (clientUser.user_metadata ?? {}) as Record<string, unknown>,
+        { full_name, branch, college },
+      );
+      setProfile(studentProfile);
+
+      const status = await fetchElevateXAttemptStatus();
+      if (status.completed && status.attemptId) {
+        setPriorAttempt({
+          attemptId: status.attemptId,
+          score: status.score,
+          completedAt: status.completedAt,
+        });
+        setResumeAvailable(false);
+      } else {
+        clearLocalElevateXAttemptsForUser(clientUser.id, (testId, testName) =>
+          isElevateXTestId(testId) || isElevateXAttemptTitle(testName),
+        );
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem(
+              `${PLACEMENT_COMPLETED_PREFIX}${studentProfile.hallTicket}`,
+            );
+          } catch {
+            // ignore
+          }
+        }
+        const existing = loadSessionByHallTicket(studentProfile.hallTicket);
+        setResumeAvailable(Boolean(existing && !existing.submitted));
+      }
+    } catch (err) {
+      console.error('[placement/assessment] loadStudent', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {

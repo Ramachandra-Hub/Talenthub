@@ -125,10 +125,30 @@ export async function fetchDashboardStatEntries(
 
   if (error) {
     const msg = String(error.message ?? '').toLowerCase();
-    if (error.code === 'PGRST205' || msg.includes('student_dashboard_stats')) {
+    if (
+      error.code === 'PGRST205' ||
+      msg.includes('student_dashboard_stats') ||
+      msg.includes('column "attempts"') ||
+      msg.includes('attempts does not exist')
+    ) {
+      try {
+        const { fetchDashboardStatEntriesPrisma } = await import(
+          '@/lib/db/student-dashboard-stats-prisma'
+        );
+        return await fetchDashboardStatEntriesPrisma(userId);
+      } catch {
+        return [];
+      }
+    }
+    try {
+      const { fetchDashboardStatEntriesPrisma } = await import(
+        '@/lib/db/student-dashboard-stats-prisma'
+      );
+      return await fetchDashboardStatEntriesPrisma(userId);
+    } catch {
+      console.warn('[fetchDashboardStatEntries]', error.message);
       return [];
     }
-    throw error;
   }
 
   return parseAttemptsJson(data?.attempts);

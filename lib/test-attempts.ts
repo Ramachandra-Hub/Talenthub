@@ -126,9 +126,11 @@ export async function findCompletedAttemptForTest(
 function rowMatchesElevateX(row: {
   test_id?: unknown;
   test_title?: unknown;
+  test_name?: unknown;
 }): boolean {
   if (isElevateXTestId(String(row.test_id ?? ''))) return true;
-  return isElevateXAttemptTitle(String(row.test_title ?? ''));
+  const title = row.test_title ?? row.test_name ?? '';
+  return isElevateXAttemptTitle(String(title));
 }
 
 /** Any prior completed ElevateX paper for this student (canonical or legacy test ids). */
@@ -136,33 +138,50 @@ export async function findCompletedElevateXAttempt(
   db: DbServiceClient,
   userId: string,
 ): Promise<CompletedAttemptSummary | null> {
-  const rows = await queryAttempts(db, userId);
-  for (const row of rows) {
-    if (!rowMatchesElevateX(row)) continue;
-    if (!isAttemptRowCompleted(row)) continue;
-    const attempt = normalizeAttemptRow(row);
-    return {
-      id: attempt.id,
-      score: attempt.score,
-      completed_at: attempt.completed_at,
-    };
+  try {
+    const { findCompletedElevateXAttemptForUser } = await import(
+      '@/lib/elevatex/completed-attempt'
+    );
+    const hit = await findCompletedElevateXAttemptForUser(userId);
+    if (hit) return hit;
+  } catch {
+    // fall through to service client
   }
 
-  const stats = await fetchStudentDashboardStats(db, userId);
-  let placeholderFallback: CompletedAttemptSummary | null = null;
-  for (const entry of stats) {
-    if (!rowMatchesElevateX(entry)) continue;
-    if (entry.status !== 'completed' && !entry.completed_at) continue;
-    const summary = {
-      id: entry.id,
-      score: entry.score,
-      completed_at: entry.completed_at,
-    };
-    if (!isPlaceholderAttemptId(String(entry.id))) return summary;
-    if (!placeholderFallback) placeholderFallback = summary;
-  }
+  try {
+    const rows = await queryAttempts(db, userId);
+    for (const row of rows) {
+      if (!rowMatchesElevateX(row)) continue;
+      if (!isAttemptRowCompleted(row)) continue;
+      const attempt = normalizeAttemptRow(row);
+      return {
+        id: attempt.id,
+        score: attempt.score,
+        completed_at: attempt.completed_at,
+      };
+    }
 
-  return placeholderFallback;
+    const stats = await fetchStudentDashboardStats(db, userId);
+    let placeholderFallback: CompletedAttemptSummary | null = null;
+    for (const entry of stats) {
+      if (!rowMatchesElevateX({ test_id: entry.test_id, test_name: entry.test?.name })) {
+        continue;
+      }
+      if (entry.status !== 'completed' && !entry.completed_at) continue;
+      const summary = {
+        id: entry.id,
+        score: entry.score,
+        completed_at: entry.completed_at,
+      };
+      if (!isPlaceholderAttemptId(String(entry.id))) return summary;
+      if (!placeholderFallback) placeholderFallback = summary;
+    }
+
+    return placeholderFallback;
+  } catch (err) {
+    console.warn('[findCompletedElevateXAttempt]', err);
+    return null;
+  }
 }
 
 export function normalizeAttemptRow(row: AttemptRow): TestAttempt {
