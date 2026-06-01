@@ -59,7 +59,7 @@ export async function POST() {
       legacyRemoved: result.legacyRemoved,
       accounts: result.accounts,
       studentLogin: '/auth/login/student',
-      credentialsCsv: '/elevatex-slot1-credentials.csv',
+      credentialsCsv: '/api/setup/elevatex-credentials',
       csvWriteSkipped: csvPath === null,
     });
   } catch (err) {

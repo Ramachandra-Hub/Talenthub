@@ -15,6 +15,7 @@ const ELEVATEX_FIRST_ROLL = ELEVATEX_SAMPLE_STUDENTS[0]?.roll ?? 'EXS1001';
 const ELEVATEX_LAST_ROLL =
   ELEVATEX_SAMPLE_STUDENTS[ELEVATEX_SAMPLE_STUDENTS.length - 1]?.roll ?? 'EXS1120';
 const ELEVATEX_ROLL_RANGE = `${ELEVATEX_FIRST_ROLL}–${ELEVATEX_LAST_ROLL}`;
+const ELEVATEX_CREDENTIALS_CSV_URL = '/api/setup/elevatex-credentials';
 
 type SeedAccount = {
   roll: string;
@@ -35,6 +36,7 @@ export default function SetupPage() {
   const [elevatexPassword, setElevatexPassword] = useState<string | null>(null);
   const [elevatexAccounts, setElevatexAccounts] = useState<SeedAccount[]>([]);
   const [elevatexMeta, setElevatexMeta] = useState<string | null>(null);
+  const [elevatexCsvUrl, setElevatexCsvUrl] = useState(ELEVATEX_CREDENTIALS_CSV_URL);
 
   const defaultElevatexAccounts = useMemo(
     () =>
@@ -154,6 +156,7 @@ export default function SetupPage() {
         scheduleWarning?: string;
         legacyRemoved?: string[];
         accounts?: SeedAccount[];
+        credentialsCsv?: string;
       } = {};
       if (raw.trim()) {
         try {
@@ -169,6 +172,7 @@ export default function SetupPage() {
       if (!res.ok) throw new Error(json.error ?? 'ElevateX seed failed');
       setElevatexPassword(json.password ?? ELEVATEX_SAMPLE_PASSWORD);
       setElevatexAccounts(json.accounts ?? defaultElevatexAccounts);
+      if (json.credentialsCsv) setElevatexCsvUrl(json.credentialsCsv);
       const parts = [
         `Created ${json.accounts?.length ?? ELEVATEX_SAMPLE_COUNT} accounts (${json.rdsProject ?? 'RDS'}).`,
         json.scheduleLabel ? `Schedule: ${json.scheduleLabel}.` : null,
@@ -386,8 +390,8 @@ export default function SetupPage() {
                   </code>
                 </span>
                 <a
-                  href="/elevatex-slot1-credentials.csv"
-                  download
+                  href={elevatexCsvUrl}
+                  download="elevatex-slot1-credentials.csv"
                   className="text-blue-600 hover:underline font-medium"
                 >
                   Download CSV ({ELEVATEX_SAMPLE_COUNT} rows)
