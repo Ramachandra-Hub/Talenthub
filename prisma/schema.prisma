@@ -202,7 +202,7 @@ model QuestionTagLink {
 model TestAttempt {
   id              String    @id @default(uuid()) @db.Uuid
   userId          String    @map("user_id") @db.Uuid
-  testId          String?   @map("test_id")
+  testId          String?   @map("test_id") @db.Uuid
   testTitle       String?   @map("test_title")
   startedAt       DateTime? @default(now()) @map("started_at")
   completedAt     DateTime? @map("completed_at")

@@ -1,3 +1,4 @@
+import { ensureRdsSchemaReadyForWrites } from '@/lib/db/ensure-rds-schema';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
@@ -28,6 +29,8 @@ export async function seedRdsBaseline(): Promise<{
   tests: number;
   questions: number;
 }> {
+  await ensureRdsSchemaReadyForWrites();
+
   const categoryIds = new Map<string, string>();
 
   for (const cat of CATEGORIES) {
@@ -114,6 +117,8 @@ export async function seedRdsBaseline(): Promise<{
 }
 
 export async function bootstrapRdsAdmin(): Promise<{ email: string; created: boolean }> {
+  await ensureRdsSchemaReadyForWrites();
+
   const email = (process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in').trim().toLowerCase();
   const password = process.env.PREPINDIA_ADMIN_PASSWORD || 'RCE_T&P';
   const hash = await bcrypt.hash(password, 12);

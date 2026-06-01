@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { useAwsStack } from '@/lib/aws/stack';
-import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
 import { ensureRdsSchema, isRdsSchemaReady } from '@/lib/db/ensure-rds-schema';
 import { bootstrapRdsAdmin, seedRdsBaseline } from '@/lib/db/seed-rds-baseline';
 import { prisma } from '@/lib/prisma';
@@ -126,8 +125,7 @@ export async function POST(request: NextRequest) {
     const results: Record<string, unknown> = { step };
 
     if (step === 'schema' || step === 'all') {
-      const schema =
-        step === 'all' ? await autoEnsureRdsSchema() : await ensureRdsSchema();
+      const schema = await ensureRdsSchema();
       results.schema = schema;
       if (!schema.ok) {
         return NextResponse.json(
@@ -135,14 +133,32 @@ export async function POST(request: NextRequest) {
           { status: 500 },
         );
       }
+    } else if (!(await isRdsSchemaReady())) {
+      return NextResponse.json(
+        {
+          error: 'Database tables are missing',
+          detail: 'Run step "all" or "schema" first, or use pnpm init:rds locally.',
+        },
+        { status: 400 },
+      );
     }
 
     if (step === 'admin' || step === 'all') {
-      results.admin = await bootstrapRdsAdmin();
+      try {
+        results.admin = await bootstrapRdsAdmin();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: message, results }, { status: 500 });
+      }
     }
 
     if (step === 'seed' || step === 'all') {
-      results.seed = await seedRdsBaseline();
+      try {
+        results.seed = await seedRdsBaseline();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: message, results }, { status: 500 });
+      }
     }
 
     const { body: statusBody } = await buildRdsStatus();
