@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { readJsonResponse } from '@/lib/fetch-json';
 import { studentAuthEmail } from '@/lib/college-auth';
 import {
   ELEVATEX_SAMPLE_PASSWORD,
@@ -185,10 +186,16 @@ export default function SetupPage() {
 
     try {
       const statusRes = await fetch('/api/setup/rds', { cache: 'no-store' });
-      const statusJson = (await statusRes.json()) as {
+      const { json: statusJson } = await readJsonResponse<{
         mode?: string;
         error?: string;
-      };
+        schemaReady?: boolean;
+        needsSchema?: boolean;
+      }>(statusRes);
+
+      if (!statusRes.ok) {
+        throw new Error(statusJson.error ?? `Setup status failed (HTTP ${statusRes.status})`);
+      }
 
       if (statusJson.mode === 'aws') {
         setStatus('Creating tables and columns on AWS RDS (Prisma schema sync)...');
@@ -197,12 +204,12 @@ export default function SetupPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ step: 'all' }),
         });
-        const rdsJson = (await rdsRes.json()) as {
+        const { json: rdsJson } = await readJsonResponse<{
           error?: string;
           detail?: string;
           message?: string;
           results?: { admin?: { email?: string } };
-        };
+        }>(rdsRes);
         if (!rdsRes.ok) {
           throw new Error(rdsJson.detail ?? rdsJson.error ?? 'RDS setup failed');
         }
@@ -215,18 +222,18 @@ export default function SetupPage() {
         return;
       }
 
-      setStatus('Initializing database (legacy AWS RDS path)...');
+      setStatus('Initializing database (legacy path — requires POSTGRES_URL)...');
       const initResponse = await fetch('/api/setup/init-direct', { method: 'POST' });
+      const { json: initData } = await readJsonResponse<{ error?: string }>(initResponse);
       if (!initResponse.ok) {
-        const errorData = await initResponse.json();
-        throw new Error(errorData.error || 'Database initialization failed');
+        throw new Error(initData.error || 'Database initialization failed');
       }
 
       setStatus('Seeding sample data...');
       const seedResponse = await fetch('/api/setup/seed-direct', { method: 'POST' });
+      const { json: seedData } = await readJsonResponse<{ error?: string }>(seedResponse);
       if (!seedResponse.ok) {
-        const errorData = await seedResponse.json();
-        throw new Error(errorData.error || 'Data seeding failed');
+        throw new Error(seedData.error || 'Data seeding failed');
       }
 
       setStatus('Setup completed successfully!');

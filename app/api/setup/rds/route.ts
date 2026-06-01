@@ -6,6 +6,7 @@ import { bootstrapRdsAdmin, seedRdsBaseline } from '@/lib/db/seed-rds-baseline';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 async function isFirstRun(): Promise<boolean> {
@@ -17,20 +18,22 @@ async function isFirstRun(): Promise<boolean> {
   }
 }
 
-/** GET — RDS setup status (for /setup page). */
-export async function GET() {
+async function buildRdsStatus() {
   if (!useAwsStack()) {
-    return NextResponse.json({
-      mode: 'db',
-      message: 'Set USE_AWS_STACK=true to use RDS auto-setup.',
-    });
+    return {
+      status: 200,
+      body: {
+        mode: 'legacy',
+        message: 'Set USE_AWS_STACK=true to use RDS auto-setup.',
+      },
+    };
   }
 
   if (!process.env.DATABASE_URL) {
-    return NextResponse.json(
-      { mode: 'aws', schemaReady: false, error: 'DATABASE_URL is not set' },
-      { status: 503 },
-    );
+    return {
+      status: 503,
+      body: { mode: 'aws', schemaReady: false, error: 'DATABASE_URL is not set' },
+    };
   }
 
   const schemaReady = await isRdsSchemaReady();
@@ -44,52 +47,72 @@ export async function GET() {
         prisma.user.count(),
       ]);
     } catch {
-      /* ignore */
+      /* tables may be partially created */
     }
   }
 
-  return NextResponse.json({
-    mode: 'aws',
-    schemaReady,
-    categoryCount,
-    userCount,
-    needsSchema: !schemaReady,
-    needsSeed: schemaReady && categoryCount === 0,
-    needsAdmin: schemaReady && userCount === 0,
-  });
+  return {
+    status: 200,
+    body: {
+      mode: 'aws',
+      schemaReady,
+      categoryCount,
+      userCount,
+      needsSchema: !schemaReady,
+      needsSeed: schemaReady && categoryCount === 0,
+      needsAdmin: schemaReady && userCount === 0,
+    },
+  };
+}
+
+/** GET — RDS setup status (for /setup page). */
+export async function GET() {
+  try {
+    const { status, body } = await buildRdsStatus();
+    return NextResponse.json(body, { status });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[setup/rds] GET failed:', message);
+    return NextResponse.json(
+      { mode: 'aws', schemaReady: false, error: message },
+      { status: 500 },
+    );
+  }
 }
 
 /** POST — create/update schema, seed sample data, bootstrap admin. */
 export async function POST(request: NextRequest) {
-  if (!useAwsStack()) {
-    return NextResponse.json(
-      { error: 'RDS setup only runs when USE_AWS_STACK=true' },
-      { status: 400 },
-    );
-  }
-
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json({ error: 'DATABASE_URL is not set' }, { status: 503 });
-  }
-
-  let body: { step?: 'schema' | 'seed' | 'admin' | 'all'; setupSecret?: string } = {
-    step: 'all',
-  };
   try {
-    body = { step: 'all', ...((await request.json()) as typeof body) };
-  } catch {
-    /* empty body */
-  }
-
-  const secret = process.env.RDS_SETUP_SECRET?.trim();
-  if (secret) {
-    const provided = request.headers.get('x-rds-setup-secret') ?? body.setupSecret;
-    if (provided !== secret) {
-      return NextResponse.json({ error: 'Invalid RDS_SETUP_SECRET' }, { status: 403 });
+    if (!useAwsStack()) {
+      return NextResponse.json(
+        { error: 'RDS setup only runs when USE_AWS_STACK=true' },
+        { status: 400 },
+      );
     }
-  } else {
-    const first = await isFirstRun();
-    if (!first) {
+
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: 'DATABASE_URL is not set' }, { status: 503 });
+    }
+
+    let body: { step?: 'schema' | 'seed' | 'admin' | 'all'; setupSecret?: string } = {
+      step: 'all',
+    };
+    try {
+      const text = await request.text();
+      if (text.trim()) {
+        body = { step: 'all', ...(JSON.parse(text) as typeof body) };
+      }
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const secret = process.env.RDS_SETUP_SECRET?.trim();
+    if (secret) {
+      const provided = request.headers.get('x-rds-setup-secret') ?? body.setupSecret;
+      if (provided !== secret) {
+        return NextResponse.json({ error: 'Invalid RDS_SETUP_SECRET' }, { status: 403 });
+      }
+    } else if (!(await isFirstRun())) {
       return NextResponse.json(
         {
           error:
@@ -98,37 +121,44 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
-  }
 
-  const step = body.step ?? 'all';
-  const results: Record<string, unknown> = { step };
+    const step = body.step ?? 'all';
+    const results: Record<string, unknown> = { step };
 
-  if (step === 'schema' || step === 'all') {
-    const schema = step === 'all' ? await autoEnsureRdsSchema() : await ensureRdsSchema();
-    results.schema = schema;
-    if (!schema.ok) {
-      return NextResponse.json({ error: schema.message, detail: schema.detail, results }, { status: 500 });
+    if (step === 'schema' || step === 'all') {
+      const schema =
+        step === 'all' ? await autoEnsureRdsSchema() : await ensureRdsSchema();
+      results.schema = schema;
+      if (!schema.ok) {
+        return NextResponse.json(
+          { error: schema.message, detail: schema.detail, results },
+          { status: 500 },
+        );
+      }
     }
+
+    if (step === 'admin' || step === 'all') {
+      results.admin = await bootstrapRdsAdmin();
+    }
+
+    if (step === 'seed' || step === 'all') {
+      results.seed = await seedRdsBaseline();
+    }
+
+    const { body: statusBody } = await buildRdsStatus();
+
+    return NextResponse.json({
+      ok: true,
+      message:
+        step === 'schema'
+          ? 'Schema synced to RDS.'
+          : 'RDS ready: schema, admin, and sample categories/tests created.',
+      results,
+      status: statusBody,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[setup/rds] POST failed:', message);
+    return NextResponse.json({ error: 'RDS setup failed', detail: message }, { status: 500 });
   }
-
-  if (step === 'admin' || step === 'all') {
-    results.admin = await bootstrapRdsAdmin();
-  }
-
-  if (step === 'seed' || step === 'all') {
-    results.seed = await seedRdsBaseline();
-  }
-
-  const status = await GET();
-  const statusJson = await status.json();
-
-  return NextResponse.json({
-    ok: true,
-    message:
-      step === 'schema'
-        ? 'Schema synced to RDS.'
-        : 'RDS ready: schema, admin, and sample categories/tests created.',
-    results,
-    status: statusJson,
-  });
 }
