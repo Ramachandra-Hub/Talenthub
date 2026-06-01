@@ -7,6 +7,7 @@ import {
   type StudentExamSchedule,
 } from '@/lib/exam-schedule';
 import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
+import { scheduleSlotNumber } from '@/lib/exam-schedule-slots';
 
 type ApprovedRequest = {
   id: string;
@@ -27,6 +28,8 @@ export function listLiveFacultyExamsForStudent(
   department: string,
   year: string,
   extras?: Map<string, { duration_minutes?: number; topic?: string | null }>,
+  /** When set, only schedules for the student's assigned slot count as live. */
+  studentSlotByRequestId?: Map<string, number>,
 ): StudentExamSchedule[] {
   const live: StudentExamSchedule[] = [];
   const seenTestIds = new Set<string>();
@@ -35,14 +38,29 @@ export function listLiveFacultyExamsForStudent(
     const years = req.target_years ?? [];
     if (!academicYearInList(year, years)) continue;
     if (!examMatchesDepartment(req, department)) continue;
-    if (!isFacultyExamLiveForStudent(req.id, schedules, department, year)) continue;
+    const related = schedules.filter((s) => s.faculty_exam_request_id === req.id);
+    const assignedSlot = studentSlotByRequestId?.get(req.id);
+    const relevant =
+      assignedSlot != null
+        ? related.filter((s) => scheduleSlotNumber(s) === assignedSlot)
+        : related;
+
+    if (
+      !isFacultyExamLiveForStudent(
+        req.id,
+        relevant.length > 0 ? relevant : related,
+        department,
+        year,
+      )
+    ) {
+      continue;
+    }
 
     const testId = String(req.published_test_id);
     if (!testId || seenTestIds.has(testId)) continue;
     seenTestIds.add(testId);
 
-    const related = schedules.filter((s) => s.faculty_exam_request_id === req.id);
-    const liveSchedule = related.find((s) => isScheduleLiveNow(s)) ?? related[0];
+    const liveSchedule = relevant.find((s) => isScheduleLiveNow(s)) ?? relevant[0] ?? related[0];
 
     const meta = extras?.get(req.id);
     live.push({

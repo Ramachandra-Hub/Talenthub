@@ -99,10 +99,16 @@ function payloadToSnake(payload: Row): Row {
   return out;
 }
 
-/** JSON/JSONB columns need string values for raw SQL parameter binding. */
+/** JSON/JSONB columns need string values; TEXT[] columns need native string arrays. */
 function serializeInsertValues(snake: Row): unknown[] {
   return Object.values(snake).map((v) => {
     if (v === undefined) return null;
+    if (Array.isArray(v)) {
+      if (v.every((item) => item === null || typeof item === 'string')) {
+        return v;
+      }
+      return JSON.stringify(v);
+    }
     if (typeof v === 'object' && v !== null) return JSON.stringify(v);
     return v;
   });

@@ -58,7 +58,6 @@ export default function AdminExamBuilderPage() {
   const [usesSlotScheduling, setUsesSlotScheduling] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<ExamScheduleSlotInput[]>(emptySlots);
   const [manualPaste, setManualPaste] = useState('');
-  const [goLiveSlot1OnPublish, setGoLiveSlot1OnPublish] = useState(true);
 
   const testDef = getExamBuilderTestType(testType);
   const isManual = testType === 'department-manual';
@@ -189,8 +188,6 @@ export default function AdminExamBuilderPage() {
           goLiveNow: usesSlotScheduling ? false : goLiveNow,
           usesSlotScheduling: isElevateX || usesSlotScheduling,
           scheduleSlots: isElevateX || usesSlotScheduling ? scheduleSlots : undefined,
-          goLiveSlotNumbers:
-            usesSlotScheduling && !isElevateX && goLiveSlot1OnPublish ? [1] : undefined,
           questions: questions.length ? questions : undefined,
         }),
       });
@@ -412,22 +409,11 @@ export default function AdminExamBuilderPage() {
           </label>
         ) : (
           <div className="space-y-3">
-            {isElevateX ? (
-              <StatusAlert variant="info">
-                <strong>Publish with slot schedules</strong> marks every configured slot as live
-                immediately. Each student can start only during their assigned slot time — access is
-                matched by <strong>roll number</strong> on the slot roster.
-              </StatusAlert>
-            ) : (
-              <StatusAlert variant="info">
-                Slots go live <strong>one at a time</strong> in order (Slot 1 → 2 → … → 8). After
-                publish, open Slot 1, then end it and open Slot 2 from{' '}
-                <Link href="/admin/exam-schedules" className="font-semibold underline">
-                  Exam schedules
-                </Link>
-                . Only roster students for that slot can take the exam during its window.
-              </StatusAlert>
-            )}
+            <StatusAlert variant="info">
+              <strong>Publish with slot schedules</strong> creates live schedules for every
+              configured slot. Students see the exam on their portal (year, branch, roll on the
+              roster) and can start only during their assigned slot time.
+            </StatusAlert>
             {isElevateX && slotsValid ? (
               <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                 Slot 1 is required to publish. Add Slots 2–8 before publish, or later from{' '}
@@ -436,17 +422,11 @@ export default function AdminExamBuilderPage() {
                 </Link>
                 .
               </p>
-            ) : slotsValid ? (
-              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer rounded-xl border border-slate-200 bg-white p-4">
-                <input
-                  type="checkbox"
-                  checked={goLiveSlot1OnPublish}
-                  onChange={(e) => setGoLiveSlot1OnPublish(e.target.checked)}
-                  disabled={!scheduleSlots[0]?.roster.length}
-                  className="rounded border-slate-300"
-                />
-                Open Slot 1 immediately on publish (Slot 2+ only after you end the previous slot)
-              </label>
+            ) : slotsValid && !isElevateX ? (
+              <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                Complete all configured slots, then publish — no separate step on Exam schedules is
+                required.
+              </p>
             ) : slotValidationError ? (
               <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 {slotValidationError}

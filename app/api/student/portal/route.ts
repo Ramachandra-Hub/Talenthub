@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { partitionEvaloraModulesForStudent, type EvaloraModuleScheduleRow } from '@/lib/evalora/module-schedule';
 import { partitionSchedulesForStudent, type ExamScheduleRow } from '@/lib/exam-schedule';
-import { findStudentSlotAssignment, buildStudentSlotExamPortalNotices } from '@/lib/exam-schedule-slots';
+import {
+  findStudentSlotAssignment,
+  buildStudentSlotExamPortalNotices,
+  scheduleSlotNumber,
+} from '@/lib/exam-schedule-slots';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { syncExpiredLiveExamSchedules } from '@/lib/exam-schedule-sync';
 import { listLiveFacultyExamsForStudent } from '@/lib/live-faculty-exams';
@@ -121,6 +125,7 @@ export async function GET() {
     ),
   ];
   const slotRequestSet = new Set<string>();
+  const studentSlotByRequestId = new Map<string, number>();
   if (requestIds.length && rollNumber) {
     for (const reqId of requestIds) {
       const { data: req } = await admin
@@ -128,7 +133,10 @@ export async function GET() {
         .select('uses_slot_scheduling')
         .eq('id', reqId)
         .maybeSingle();
-      if (req?.uses_slot_scheduling) slotRequestSet.add(reqId);
+      if (!req?.uses_slot_scheduling) continue;
+      slotRequestSet.add(reqId);
+      const assignment = await findStudentSlotAssignment(admin, reqId, rollNumber);
+      if (assignment) studentSlotByRequestId.set(reqId, assignment.slot_number);
     }
   }
 
@@ -138,8 +146,9 @@ export async function GET() {
       schedulesForPartition.push(schedule);
       continue;
     }
-    const assignment = await findStudentSlotAssignment(admin, reqId, rollNumber);
-    if (assignment && schedule.slot_number === assignment.slot_number) {
+    const assignedSlot = studentSlotByRequestId.get(reqId);
+    if (assignedSlot == null) continue;
+    if (scheduleSlotNumber(schedule) === assignedSlot) {
       schedulesForPartition.push(schedule);
     }
   }
@@ -157,6 +166,7 @@ export async function GET() {
     department,
     year,
     extras,
+    studentSlotByRequestId.size > 0 ? studentSlotByRequestId : undefined,
   );
 
   const mergedLiveByTest = new Map<string, (typeof faculty.live)[0]>();

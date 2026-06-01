@@ -141,9 +141,9 @@ export function isScheduleUpcoming(
   now = Date.now(),
 ): boolean {
   if (schedule.status === 'ended') return false;
-  if (schedule.status === 'live') return false;
-  const start = new Date(schedule.starts_at).getTime();
-  return !Number.isNaN(start) && start > now;
+  const start = scheduleStartMs(schedule.starts_at);
+  if (start <= now) return false;
+  return schedule.status === 'scheduled' || schedule.status === 'live';
 }
 
 export function partitionSchedulesForStudent(

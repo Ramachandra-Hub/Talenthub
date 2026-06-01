@@ -12,7 +12,6 @@ import {
   validateScheduleSlots,
   validateElevateXPublishSlots,
   validateOptionalConfiguredSlots,
-  goLiveExamSchedulesForSlots,
   goLiveAllConfiguredSlotSchedules,
   type ExamScheduleSlotInput,
 } from '@/lib/exam-schedule-slots';
@@ -246,11 +245,7 @@ export async function createFacultyExamRequestRecord(
     testId = published.testId;
 
     if (input.usesSlotScheduling && testId) {
-      if (isElevateX) {
-        await goLiveAllConfiguredSlotSchedules(admin, requestId);
-      } else if (input.goLiveSlotNumbers?.length) {
-        await goLiveExamSchedulesForSlots(admin, requestId, input.goLiveSlotNumbers);
-      }
+      await goLiveAllConfiguredSlotSchedules(admin, requestId);
     }
 
     if (input.autoGoLive && testId && !input.usesSlotScheduling) {
