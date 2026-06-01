@@ -11,9 +11,20 @@ export const authConfig = {
     strategy: 'jwt',
     maxAge: 60 * 60 * 12, // 12 hours — exam day
   },
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        token.sub = user.id;
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? 'student';
       }

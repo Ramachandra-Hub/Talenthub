@@ -24,15 +24,19 @@ export function useCollegeSignIn() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ email, password, metadata }),
+          body: JSON.stringify({
+            rollNumber: email,
+            password,
+            department: metadata?.department,
+            year: metadata?.year,
+          }),
         });
         const json = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) {
           throw new Error(json.error ?? 'Sign in failed');
         }
 
-        router.push(redirectTo);
-        router.refresh();
+        window.location.assign(redirectTo);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Sign in failed';
         setError(

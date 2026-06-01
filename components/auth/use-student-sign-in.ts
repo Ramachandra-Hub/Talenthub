@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { formatApiErrorField } from '@/lib/api-error-message';
+import { studentSignInServer } from '@/lib/auth/student-sign-in-server';
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 
 type StudentSignInOptions = {
   rollNumber: string;
@@ -13,7 +13,6 @@ type StudentSignInOptions = {
 };
 
 export function useStudentSignIn() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,37 +27,28 @@ export function useStudentSignIn() {
       setError(null);
       setLoading(true);
       try {
-        const res = await fetch('/api/auth/student/signin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            rollNumber: rollNumber.trim(),
-            password,
-            department,
-            year,
-          }),
+        const result = await studentSignInServer({
+          rollNumber: rollNumber.trim(),
+          password,
+          department,
+          year,
+          redirectTo,
         });
-
-        const json = (await res.json().catch(() => ({}))) as {
-          error?: unknown;
-          code?: string;
-        };
-
-        if (!res.ok) {
-          throw new Error(formatApiErrorField(json.error) ?? 'Sign in failed');
+        if (result?.error) {
+          setError(result.error);
+          return;
         }
-
-        router.push(redirectTo);
-        router.refresh();
       } catch (err) {
+        if (isRedirectError(err)) {
+          throw err;
+        }
         const msg = err instanceof Error ? err.message : 'Sign in failed';
         setError(msg);
       } finally {
         setLoading(false);
       }
     },
-    [router],
+    [],
   );
 
   return { signIn, loading, error, setError };

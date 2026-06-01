@@ -15,6 +15,7 @@ import {
   validatePassword,
   validateRollNumber,
 } from '@/lib/college-auth';
+import { normalizeRoll } from '@/lib/exam-schedule-slots';
 
 export type AppRole = 'admin' | 'student';
 
@@ -38,7 +39,7 @@ export function buildAuthProviders(): Provider[] {
       },
       async authorize(credentials) {
         await autoEnsureRdsSchema();
-        const roll = String(credentials?.rollNumber ?? '').trim();
+        const roll = normalizeRoll(String(credentials?.rollNumber ?? ''));
         const password = String(credentials?.password ?? '');
         const rollErr = validateRollNumber(roll);
         const passErr = validatePassword(password);
@@ -47,7 +48,7 @@ export function buildAuthProviders(): Provider[] {
         const email = studentAuthEmail(roll);
         const user = await prisma.user.findFirst({
           where: {
-            OR: [{ rollNumber: roll.replace(/\s+/g, '') }, { email }],
+            OR: [{ rollNumber: roll }, { rollNumber: roll.replace(/\s+/g, '') }, { email }],
           },
           include: { adminUser: true },
         });

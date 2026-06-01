@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { signIn } from '@/auth';
-import { studentAuthEmail } from '@/lib/college-auth';
-import { normalizeRoll } from '@/lib/exam-schedule-slots';
-import { claimStudentSessionPrisma, nextAuthSessionId } from '@/lib/student-session-lock-prisma';
-import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
-import { prisma } from '@/lib/prisma';
+import {
+  copyAuthSessionCookiesToResponse,
+  runStudentCredentialSignIn,
+} from '@/lib/auth/student-sign-in-core';
 
 export async function POST(request: NextRequest) {
-  await autoEnsureRdsSchema();
-
   let body: {
     rollNumber?: string;
     password?: string;
@@ -21,56 +17,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const rollNumber = normalizeRoll(body.rollNumber ?? '');
-  const password = body.password ?? '';
-  const department = body.department?.trim() ?? '';
-  const year = body.year?.trim() ?? '';
+  try {
+    const result = await runStudentCredentialSignIn({
+      rollNumber: body.rollNumber ?? '',
+      password: body.password ?? '',
+      department: body.department,
+      year: body.year,
+    });
 
-  if (!rollNumber || !password) {
-    return NextResponse.json({ error: 'Roll number and password are required' }, { status: 400 });
-  }
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: 401 });
+    }
 
-  const result = await signIn('student', {
-    rollNumber,
-    password,
-    redirect: false,
-  });
-
-  if (result?.error) {
+    const res = NextResponse.json({
+      success: true,
+      userId: result.userId,
+      email: result.email,
+    });
+    return copyAuthSessionCookiesToResponse(res);
+  } catch (err) {
+    console.error('[student signin]', err);
     return NextResponse.json(
-      {
-        error: 'Invalid roll number or password.',
-      },
-      { status: 401 },
+      { error: err instanceof Error ? err.message : 'Sign in failed' },
+      { status: 500 },
     );
   }
-
-  const email = studentAuthEmail(rollNumber);
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: [{ rollNumber: rollNumber.replace(/\s+/g, '') }, { email }],
-    },
-  });
-
-  if (!user) {
-    return NextResponse.json({ error: 'Account not found.' }, { status: 401 });
-  }
-
-  const sessionId = nextAuthSessionId(user.id);
-  await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      fullName: rollNumber,
-      branch: department || undefined,
-      academicYear: year || undefined,
-    },
-  });
-
-  return NextResponse.json({
-    success: true,
-    email: user.email,
-    userId: user.id,
-  });
 }
