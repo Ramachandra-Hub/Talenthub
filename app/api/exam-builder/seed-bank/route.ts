@@ -31,6 +31,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not seed question bank';
-    return NextResponse.json({ error: message }, { status: 400 });
+    const isClient =
+      message.includes('Invalid') ||
+      message.includes('questionsPerTopic') ||
+      message.includes('Unauthorized');
+    return NextResponse.json(
+      {
+        error: message,
+        hint: isClient
+          ? undefined
+          : 'Ensure RDS schema is applied (pnpm init:rds or POST /api/setup/rds). Check DATABASE_URL on Vercel.',
+      },
+      { status: isClient ? 400 : 500 },
+    );
   }
 }

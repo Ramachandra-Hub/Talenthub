@@ -1,14 +1,30 @@
 import type { AiGenerateRequest, AiGenerateResult, AiProvider } from '@/lib/ai/providers/types';
 
-/** True when no real API keys are needed (local demo / dev only unless AI_MOCK=1). */
+function anyRealAiProviderConfigured(): boolean {
+  return Boolean(
+    process.env.OPENAI_API_KEY?.trim() ||
+      process.env.GEMINI_API_KEY?.trim() ||
+      process.env.ANTHROPIC_API_KEY?.trim() ||
+      process.env.HF_API_TOKEN?.trim() ||
+      process.env.HUGGINGFACE_API_KEY?.trim() ||
+      process.env.LOCAL_LLM_URL?.trim() ||
+      process.env.OLLAMA_HOST?.trim(),
+  );
+}
+
+/** True when mock/demo MCQs should be used (no external AI keys). */
 export function isMockAiEnabled(): boolean {
   if (process.env.AI_MOCK === '1') return true;
   if (process.env.AI_MOCK === '0') return false;
-  return process.env.NODE_ENV === 'development';
+  if (process.env.NODE_ENV === 'development') return true;
+  return !anyRealAiProviderConfigured();
 }
 
 function parseMcqCountFromPrompt(prompt: string): number {
-  const m = prompt.match(/exactly\s+(\d+)\s+distinct/i);
+  const m =
+    prompt.match(/Generate exactly\s+(\d+)/i) ||
+    prompt.match(/exactly\s+(\d+)\s+distinct/i) ||
+    prompt.match(/exactly\s+(\d+)\s+multiple-choice/i);
   if (m) {
     return Math.min(50, Math.max(1, Number(m[1]) || 4));
   }
@@ -33,14 +49,13 @@ function buildDemoMcqJson(prompt: string): string {
     const topic = topics[i % topics.length] ?? 'General';
     const n = i + 1;
     rows.push({
-      question_text: `[Offline demo — ${topic}] Question ${n}: If a train travels 120 km in 2 hours at constant speed, how far does it travel in 5 hours at the same speed?`,
-      option_a: '240 km',
-      option_b: '300 km',
-      option_c: '280 km',
-      option_d: '260 km',
+      question_text: `[Demo AI — ${topic}] Question ${n}: A train travels 120 km in 2 hours at constant speed. How far does it travel in 5 hours at the same speed?`,
+      options: ['240 km', '300 km', '280 km', '260 km'],
       correct_answer: 'B',
       explanation:
-        'Demo placeholder from mock AI: speed = 60 km/h → 5 × 60 = 300 km. Set HF_API_TOKEN or LOCAL_LLM_URL for real MCQs.',
+        'Demo placeholder: speed = 60 km/h, so distance in 5 h = 300 km. Set OPENAI_API_KEY or HF_API_TOKEN on Vercel for real AI-generated MCQs.',
+      difficulty: 'medium',
+      tags: [topic.toLowerCase().replace(/\s+/g, '-')],
     });
   }
 

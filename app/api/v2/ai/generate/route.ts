@@ -46,7 +46,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI generation failed';
-    const status = message.includes('not configured') ? 503 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const status =
+      message.includes('not configured') || message.includes('No AI provider') ? 503 : 500;
+    return NextResponse.json(
+      {
+        error: message,
+        hint:
+          'On Vercel: set OPENAI_API_KEY or HF_API_TOKEN, or leave keys unset for demo MCQs (AI_MOCK auto). Set AI_MOCK=0 to disable demo mode.',
+      },
+      { status },
+    );
   }
 }

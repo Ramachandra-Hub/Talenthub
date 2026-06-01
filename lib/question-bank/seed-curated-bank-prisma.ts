@@ -28,11 +28,24 @@ export async function seedCuratedQuestionBankPrisma(options?: {
   const perTopic: SeedCuratedBankResult['perTopic'] = [];
 
   if (options?.replaceExisting !== false) {
-    await prisma.question.deleteMany({
-      where: {
-        tags: { array_contains: [CURATED_BANK_MARKER] },
-      },
+    const curatedRows = await prisma.question.findMany({
+      select: { id: true, tags: true },
+      take: 50_000,
     });
+    const curatedIds = curatedRows
+      .filter((row) => {
+        const tags = row.tags;
+        return Array.isArray(tags) && tags.includes(CURATED_BANK_MARKER);
+      })
+      .map((row) => row.id);
+    if (curatedIds.length > 0) {
+      await prisma.questionTagLink.deleteMany({
+        where: { questionId: { in: curatedIds } },
+      });
+      await prisma.question.deleteMany({
+        where: { id: { in: curatedIds } },
+      });
+    }
   }
 
   const defs = allSyllabusTagDefs();

@@ -58,7 +58,7 @@ function dedupeOrder(order: AiProviderId[]): AiProviderId[] {
   return out;
 }
 
-export function getAiProvider(id?: AiProviderId): AiProvider {
+export function getAiProvider(id?: AiProviderId): AiProvider | null {
   const preferred = resolvePreferredProvider();
   const order = dedupeOrder(
     id
@@ -75,15 +75,28 @@ export function getAiProvider(id?: AiProviderId): AiProvider {
     return providers.mock;
   }
 
-  return providers.openai;
+  return null;
 }
 
 export async function generateWithAi(req: AiGenerateRequest): Promise<AiGenerateResult> {
   const provider = getAiProvider();
-  if (!provider.isConfigured()) {
+  if (!provider?.isConfigured()) {
     throw new Error(
-      'No AI provider configured. Run Ollama (OLLAMA_HOST or LOCAL_LLM_URL), or set HF_API_TOKEN / OPENAI_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY. Dev fallback: omit keys for mock MCQs or set AI_MOCK=1 in production demos only.',
+      'No AI provider configured. Set OPENAI_API_KEY, HF_API_TOKEN, or LOCAL_LLM_URL (Ollama). For demo MCQs without keys, set AI_MOCK=1 on Vercel.',
     );
   }
-  return provider.generate(req);
+
+  try {
+    return await provider.generate(req);
+  } catch (err) {
+    const mock = providers.mock;
+    if (provider.id !== 'mock' && mock.isConfigured()) {
+      const fallback = await mock.generate(req);
+      return {
+        ...fallback,
+        text: `${fallback.text}\n\n[Note: Primary AI provider failed; demo MCQs were used. Check API keys on Vercel.]`,
+      };
+    }
+    throw err;
+  }
 }

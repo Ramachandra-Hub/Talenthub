@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
@@ -18,14 +18,22 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const { allowed, loading } = useAdminGate();
   const [navOpen, setNavOpen] = useState(false);
 
+  const closeNav = useCallback(() => {
+    const drawer = document.getElementById('admin-nav-drawer');
+    if (drawer?.contains(document.activeElement)) {
+      (document.activeElement as HTMLElement).blur();
+    }
+    setNavOpen(false);
+  }, []);
+
   const signOut = async () => {
     await signOutClient();
     router.push('/auth/role');
   };
 
   useEffect(() => {
-    setNavOpen(false);
-  }, [pathname]);
+    closeNav();
+  }, [pathname, closeNav]);
 
   useEffect(() => {
     if (!navOpen) return;
@@ -59,7 +67,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               aria-expanded={navOpen}
               aria-controls="admin-nav-drawer"
               aria-label={navOpen ? 'Close admin menu' : 'Open admin menu'}
-              onClick={() => setNavOpen((o) => !o)}
+              onClick={() => (navOpen ? closeNav() : setNavOpen(true))}
             >
               {navOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
@@ -100,7 +108,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           type="button"
           className="fixed inset-0 z-[95] bg-black/40 backdrop-blur-[1px]"
           aria-label="Close menu"
-          onClick={() => setNavOpen(false)}
+          onClick={closeNav}
         />
       ) : null}
 
@@ -110,7 +118,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           'fixed top-0 left-0 z-[100] h-full w-[min(100vw-2.5rem,320px)] bg-[#0c2340] text-white shadow-2xl transition-transform duration-200 ease-out flex flex-col',
           navOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
         )}
-        inert={!navOpen || undefined}
+        aria-hidden={!navOpen}
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <p className="text-sm font-bold tracking-tight">Admin menu</p>
@@ -120,7 +128,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             size="icon"
             className="h-8 w-8 text-white hover:bg-white/10"
             aria-label="Close menu"
-            onClick={() => setNavOpen(false)}
+            onClick={closeNav}
           >
             <X className="h-5 w-5" />
           </Button>
@@ -136,13 +144,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 title={item.description}
+                tabIndex={navOpen ? 0 : -1}
                 className={cn(
                   'block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors',
                   active
                     ? 'bg-white text-[#0c2340] shadow-sm'
                     : 'text-slate-200 hover:bg-white/10 hover:text-white',
                 )}
-                onClick={() => setNavOpen(false)}
+                onClick={closeNav}
               >
                 {item.label}
               </Link>
@@ -150,7 +159,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="border-t border-white/10 p-3 flex flex-col gap-2 sm:hidden">
-          <Link href="/auth/role" onClick={() => setNavOpen(false)}>
+          <Link href="/auth/role" tabIndex={navOpen ? 0 : -1} onClick={closeNav}>
             <Button variant="outline" className="w-full border-white/30 bg-transparent text-white">
               Portal home
             </Button>
