@@ -1,20 +1,66 @@
+const DB_ENV_KEYS = ['DATABASE_URL', 'DIRECT_URL', 'POSTGRES_URL'] as const;
+
+/** Strip quotes, newlines, and BOM from Vercel / .env paste mistakes. */
+export function sanitizeDatabaseEnvValue(raw: string): string {
+  let t = raw.replace(/^\uFEFF/, '').trim();
+  while (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'")) ||
+    (t.startsWith('`') && t.endsWith('`'))
+  ) {
+    t = t.slice(1, -1).trim();
+  }
+  const line = t.split(/\r?\n/).find((l) => l.trim().length > 0);
+  return (line ?? t).trim();
+}
+
 /** True when value is a Prisma-compatible Postgres URL. */
 export function isValidPostgresConnectionUrl(url: string): boolean {
-  const t = url.trim();
+  const t = sanitizeDatabaseEnvValue(url);
   if (!/^postgres(ql)?:\/\//i.test(t)) return false;
   if (/^\s*(export|psql|host=)/i.test(t)) return false;
+
+  const withoutQuery = t.split('?')[0] ?? t;
+  const authority = withoutQuery.replace(/^postgres(ql)?:\/\//i, '');
+  const at = authority.lastIndexOf('@');
+  if (at <= 0) return false;
+
+  const hostPart = authority.slice(at + 1);
+  if (!hostPart.includes('.') && !hostPart.startsWith('localhost')) return false;
+
   try {
-    const u = new URL(t.replace(/^postgresql:/i, 'http:'));
+    const u = new URL(t.replace(/^postgres(ql)?:\/\//i, 'http://'));
     return Boolean(u.hostname);
   } catch {
-    return false;
+    return /^postgres(ql)?:\/\/[^@\s]+@[^/\s?#]+(:\d+)?\/[^?\s#]+/i.test(t);
   }
+}
+
+function describeInvalidDatabaseUrl(raw: string): string {
+  if (/^["'`]/.test(raw.trim()) || /["'`]$/.test(raw.trim())) {
+    return 'Remove surrounding quotes from DATABASE_URL in Vercel — paste only postgresql://... with no " or \' characters.';
+  }
+  if (raw.includes('\n') || raw.includes('\r')) {
+    return 'DATABASE_URL must be a single line (no line breaks). Paste one full postgresql:// URL.';
+  }
+  if (/psql\s/i.test(raw) || /^\s*export\s/i.test(raw) || /host=\$/i.test(raw)) {
+    return 'DATABASE_URL must be postgresql://..., not a psql or shell export command.';
+  }
+  if (!raw.includes('://') && raw.includes('rds.amazonaws.com')) {
+    return 'DATABASE_URL looks like a hostname only. Use postgresql://user:password@host:5432/dbname?sslmode=require';
+  }
+  if (raw.includes('://') && !/^postgres(ql)?:\/\//i.test(sanitizeDatabaseEnvValue(raw))) {
+    return 'DATABASE_URL must use the postgresql:// scheme (not mysql:// or https://).';
+  }
+  return 'DATABASE_URL must start with postgresql:// (see .env.local.example). On Vercel, do not wrap the value in quotes.';
 }
 
 /** Detect common copy-paste mistakes (psql CLI, shell export, hostname only). */
 export function getDatabaseSetupErrors(): string[] {
+  normalizeDatabaseEnvUrls();
+
   const errors: string[] = [];
-  const raw = process.env.DATABASE_URL?.trim();
+  const raw = process.env.DATABASE_URL?.trim() ?? '';
 
   if (!raw) {
     errors.push(
@@ -35,24 +81,7 @@ export function getDatabaseSetupErrors(): string[] {
 
   if (isValidPostgresConnectionUrl(raw)) return errors;
 
-  if (/psql\s/i.test(raw) || /^\s*export\s/i.test(raw) || /host=\$/i.test(raw)) {
-    errors.push(
-      'DATABASE_URL must be a postgresql:// connection string, not a psql or shell command. ' +
-        'Example: postgresql://prepindia_admin:YOUR_PASSWORD@prepindia-db.xxxx.ap-south-1.rds.amazonaws.com:5432/postgres?sslmode=require',
-    );
-    return errors;
-  }
-
-  if (!raw.includes('://') && raw.includes('rds.amazonaws.com')) {
-    errors.push(
-      'DATABASE_URL looks like a hostname only. Use a full postgresql://user:password@host:5432/dbname?sslmode=require URL.',
-    );
-    return errors;
-  }
-
-  errors.push(
-    'DATABASE_URL is not a valid PostgreSQL URL. It must start with postgresql:// (see .env.local.example).',
-  );
+  errors.push(describeInvalidDatabaseUrl(raw));
   return errors;
 }
 
@@ -115,6 +144,17 @@ export function withServerlessDbParams(url: string): string {
 
 /** Patch env before Prisma/postgres clients connect (safe to call repeatedly). */
 export function normalizeDatabaseEnvUrls(): void {
+  for (const key of DB_ENV_KEYS) {
+    const raw = process.env[key];
+    if (!raw) continue;
+    const cleaned = sanitizeDatabaseEnvValue(raw);
+    if (cleaned !== raw) process.env[key] = cleaned;
+  }
+
+  if (!process.env.DATABASE_URL?.trim() && process.env.POSTGRES_URL?.trim()) {
+    process.env.DATABASE_URL = process.env.POSTGRES_URL;
+  }
+
   const primary = process.env.DATABASE_URL?.trim();
   if (primary) {
     const repaired = tryRepairDatabaseUrl(primary);
@@ -126,7 +166,7 @@ export function normalizeDatabaseEnvUrls(): void {
     }
   }
 
-  for (const key of ['DATABASE_URL', 'DIRECT_URL', 'POSTGRES_URL'] as const) {
+  for (const key of DB_ENV_KEYS) {
     const raw = process.env[key]?.trim();
     if (!raw || raw.includes('YOUR_') || raw.includes('REPLACE_WITH')) continue;
     if (!isValidPostgresConnectionUrl(raw)) continue;
@@ -156,6 +196,23 @@ export function normalizeDatabaseEnvUrls(): void {
       }
     } catch {
       process.env.DIRECT_URL = normalizedDb;
+    }
+  }
+
+  if (!isValidPostgresConnectionUrl(process.env.DATABASE_URL ?? '')) {
+    const password = process.env.DATABASE_PASSWORD?.trim();
+    const host = process.env.RDS_HOST?.trim();
+    if (password && host && !password.includes('YOUR_')) {
+      const user = process.env.RDS_USER?.trim() || 'prepindia_admin';
+      const port = process.env.RDS_PORT?.trim() || '5432';
+      const database = process.env.RDS_NAME?.trim() || 'postgres';
+      const built = `postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}?sslmode=require`;
+      if (isValidPostgresConnectionUrl(built)) {
+        process.env.DATABASE_URL = withServerlessDbParams(built);
+        if (!isValidPostgresConnectionUrl(process.env.DIRECT_URL ?? '')) {
+          process.env.DIRECT_URL = process.env.DATABASE_URL;
+        }
+      }
     }
   }
 }

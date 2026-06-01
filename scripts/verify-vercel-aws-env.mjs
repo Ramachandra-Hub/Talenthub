@@ -84,8 +84,23 @@ for (const key of FORBIDDEN) {
   }
 }
 
-if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('sslmode=require')) {
+const dbUrl = process.env.DATABASE_URL?.trim() ?? '';
+if (dbUrl.startsWith('"') || dbUrl.startsWith("'")) {
+  console.log('\n❌ DATABASE_URL has surrounding quotes — remove them in Vercel');
+  ok = false;
+}
+if (dbUrl && !/^postgres(ql)?:\/\//i.test(dbUrl)) {
+  console.log('\n❌ DATABASE_URL must start with postgresql://');
+  ok = false;
+}
+if (dbUrl && !dbUrl.includes('sslmode=require')) {
   console.log('\n⚠️  Add ?sslmode=require to DATABASE_URL for AWS RDS');
+}
+if (process.env.DATABASE_URL && process.env.DIRECT_URL) {
+  const strip = (u) => u.replace(/^postgres(ql)?:\/\/([^:]+):([^@]+)@/, 'postgresql://$2:***@');
+  if (strip(process.env.DATABASE_URL) !== strip(process.env.DIRECT_URL)) {
+    console.log('\n⚠️  DATABASE_URL and DIRECT_URL should use the same host, user, and password');
+  }
 }
 
 console.log(ok ? '\n✅ Ready for Vercel deploy' : '\n❌ Fix missing variables in Vercel dashboard');
