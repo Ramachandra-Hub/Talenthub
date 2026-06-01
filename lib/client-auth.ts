@@ -36,12 +36,11 @@ export async function getBrowserAuthUser(): Promise<ClientUser | null> {
 
 export async function signOutClient(): Promise<void> {
   try {
-    await fetch('/api/auth/student/signout', { method: 'POST', credentials: 'include' });
-  } catch {
-    /* ignore */
-  }
-  try {
-    await fetch('/api/auth/signout', { method: 'POST', credentials: 'include' });
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch {
     /* ignore */
   }
