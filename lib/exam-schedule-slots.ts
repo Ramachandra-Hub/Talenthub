@@ -206,6 +206,29 @@ export function validateScheduleSlots(slots: ExamScheduleSlotInput[]): string | 
   return null;
 }
 
+/** Earliest start and latest end across configured slots (ElevateX portal window). */
+export function scheduleWindowFromConfiguredSlots(slots: ExamScheduleSlotInput[]): {
+  starts_at: string;
+  ends_at: string | null;
+} {
+  const configured = filterConfiguredScheduleSlots(slots);
+  const parsed = enrichScheduleSlots(configured);
+  if (!parsed.length) {
+    const now = new Date().toISOString();
+    return { starts_at: now, ends_at: null };
+  }
+  const starts = parsed
+    .map((s) => new Date(s.starts_at).getTime())
+    .filter((t) => !Number.isNaN(t));
+  const ends = parsed
+    .map((s) => new Date(s.ends_at).getTime())
+    .filter((t) => !Number.isNaN(t));
+  return {
+    starts_at: new Date(Math.min(...starts)).toISOString(),
+    ends_at: ends.length ? new Date(Math.max(...ends)).toISOString() : null,
+  };
+}
+
 export function enrichScheduleSlots(slots: ExamScheduleSlotInput[]): ParsedExamScheduleSlot[] {
   return slots.map((slot) => ({
     ...slot,
@@ -849,6 +872,93 @@ export async function goLiveExamScheduleSlotSequential(
   }
 
   const startsAtIso = String(row.starts_at ?? '');
+  const normalizedEnd = normalizeEndsAtForGoLive(startsAtIso, row.ends_at ?? null);
+
+  const patch: Record<string, unknown> = {
+    status: 'live',
+    updated_at: now,
+  };
+  if (normalizedEnd !== row.ends_at) {
+    patch.ends_at = normalizedEnd;
+  }
+
+  const { data: updated, error: updateErr } = await admin
+    .from('exam_schedules')
+    .update(patch)
+    .eq('id', scheduleId)
+    .select('*')
+    .single();
+
+  if (updateErr || !updated) {
+    throw new Error(updateErr?.message ?? 'Could not go live');
+  }
+
+  return updated as ExamScheduleRow;
+}
+
+/**
+ * ElevateX publish: mark every configured slot schedule as live.
+ * Students still only access during their roster slot's time window.
+ */
+export async function goLiveAllConfiguredSlotSchedules(
+  admin: DbServiceClient,
+  requestId: string,
+): Promise<{ updated: number; slotNumbers: number[] }> {
+  const { data: rows, error } = await admin
+    .from('exam_schedules')
+    .select('*')
+    .eq('faculty_exam_request_id', requestId);
+
+  if (error) throw new Error(error.message);
+
+  const related = (rows ?? []) as ExamScheduleRow[];
+  const now = new Date().toISOString();
+  let updated = 0;
+  const slotNumbers: number[] = [];
+
+  for (const row of related) {
+    const slotNum = scheduleSlotNumber(row);
+    if (slotNum == null) continue;
+
+    const startsAtIso = String(row.starts_at ?? now);
+    const normalizedEnd = normalizeEndsAtForGoLive(startsAtIso, row.ends_at ?? null);
+    const patch: Record<string, unknown> = {
+      status: 'live',
+      updated_at: now,
+    };
+    if (normalizedEnd !== row.ends_at) {
+      patch.ends_at = normalizedEnd;
+    }
+
+    const { error: upErr } = await admin.from('exam_schedules').update(patch).eq('id', row.id);
+    if (!upErr) {
+      updated += 1;
+      slotNumbers.push(slotNum);
+    }
+  }
+
+  slotNumbers.sort((a, b) => a - b);
+  return { updated, slotNumbers };
+}
+
+/** ElevateX: open one slot without ending other live slots. */
+export async function goLiveElevateXScheduleSlot(
+  admin: DbServiceClient,
+  scheduleId: string,
+): Promise<ExamScheduleRow> {
+  const { data: existing, error: fetchErr } = await admin
+    .from('exam_schedules')
+    .select('*')
+    .eq('id', scheduleId)
+    .maybeSingle();
+
+  if (fetchErr || !existing) {
+    throw new Error('Schedule not found');
+  }
+
+  const row = existing as ExamScheduleRow;
+  const now = new Date().toISOString();
+  const startsAtIso = String(row.starts_at ?? now);
   const normalizedEnd = normalizeEndsAtForGoLive(startsAtIso, row.ends_at ?? null);
 
   const patch: Record<string, unknown> = {

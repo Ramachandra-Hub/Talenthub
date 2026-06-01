@@ -190,7 +190,7 @@ export default function AdminExamBuilderPage() {
           usesSlotScheduling: isElevateX || usesSlotScheduling,
           scheduleSlots: isElevateX || usesSlotScheduling ? scheduleSlots : undefined,
           goLiveSlotNumbers:
-            (isElevateX || usesSlotScheduling) && (isElevateX || goLiveSlot1OnPublish) ? [1] : undefined,
+            usesSlotScheduling && !isElevateX && goLiveSlot1OnPublish ? [1] : undefined,
           questions: questions.length ? questions : undefined,
         }),
       });
@@ -412,17 +412,25 @@ export default function AdminExamBuilderPage() {
           </label>
         ) : (
           <div className="space-y-3">
-            <StatusAlert variant="info">
-              Slots go live <strong>one at a time</strong> in order (Slot 1 → 2 → … → 8). After
-              publish, open Slot 1, then end it and open Slot 2 from{' '}
-              <Link href="/admin/exam-schedules" className="font-semibold underline">
-                Exam schedules
-              </Link>
-              . Only roster students for that slot can take the exam during its window.
-            </StatusAlert>
+            {isElevateX ? (
+              <StatusAlert variant="info">
+                <strong>Publish with slot schedules</strong> marks every configured slot as live
+                immediately. Each student can start only during their assigned slot time — access is
+                matched by <strong>roll number</strong> on the slot roster.
+              </StatusAlert>
+            ) : (
+              <StatusAlert variant="info">
+                Slots go live <strong>one at a time</strong> in order (Slot 1 → 2 → … → 8). After
+                publish, open Slot 1, then end it and open Slot 2 from{' '}
+                <Link href="/admin/exam-schedules" className="font-semibold underline">
+                  Exam schedules
+                </Link>
+                . Only roster students for that slot can take the exam during its window.
+              </StatusAlert>
+            )}
             {isElevateX && slotsValid ? (
               <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Slot 1 opens live on publish. Add Slots 2–8 later from{' '}
+                Slot 1 is required to publish. Add Slots 2–8 before publish, or later from{' '}
                 <Link href="/admin/evalora-modules" className="font-semibold underline">
                   ElevateX &amp; modules
                 </Link>
@@ -462,7 +470,7 @@ export default function AdminExamBuilderPage() {
           </p>
         ) : isElevateX ? (
           <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-            ElevateX uses the fixed 6-section placement paper. Configure Slot 1 to publish; add Slots 2–8 when ready.
+            ElevateX uses the fixed 6-section placement paper. Configure Slot 1 (and optional Slots 2–8), then publish — students take the exam only in their roster slot window.
           </p>
         ) : isManual ? (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

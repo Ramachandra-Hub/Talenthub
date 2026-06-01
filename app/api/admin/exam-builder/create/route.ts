@@ -12,7 +12,11 @@ import {
   isElevateXBuilderTestType,
   studentTakeUrlForTestId,
 } from '@/lib/exam-builder/elevatex-exam';
-import { parseScheduleSlotsJson } from '@/lib/exam-schedule-slots';
+import {
+  filterConfiguredScheduleSlots,
+  parseScheduleSlotsJson,
+  scheduleWindowFromConfiguredSlots,
+} from '@/lib/exam-schedule-slots';
 import { syncElevateXEvaloraModuleFromSchedule } from '@/lib/elevatex-admin';
 
 /** Publishing + roster provision can exceed the default 10s on Vercel. */
@@ -67,10 +71,12 @@ export async function POST(request: NextRequest) {
     : [];
   const goLiveNow = Boolean(body.goLiveNow) && !usesSlotScheduling;
   const goLiveSlotNumbersRaw = Array.isArray(body.goLiveSlotNumbers) ? body.goLiveSlotNumbers : [];
-  const goLiveSlotNumbers = goLiveSlotNumbersRaw
-    .map((n) => Math.floor(Number(n)))
-    .filter((n) => Number.isFinite(n) && n >= 1 && n <= 8)
-    .slice(0, 1);
+  const goLiveSlotNumbers = isElevateX
+    ? []
+    : goLiveSlotNumbersRaw
+        .map((n) => Math.floor(Number(n)))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 8)
+        .slice(0, 1);
 
   let questions = parseQuestionsJson(body.questions);
 
@@ -136,40 +142,38 @@ export async function POST(request: NextRequest) {
         typeof body.notice === 'string' ? body.notice : `${def.name} is now live for your group.`,
       usesSlotScheduling,
       scheduleSlots: usesSlotScheduling ? scheduleSlots : undefined,
-      goLiveSlotNumbers: usesSlotScheduling ? goLiveSlotNumbers : undefined,
+      goLiveSlotNumbers:
+        usesSlotScheduling && !isElevateX ? goLiveSlotNumbers : undefined,
     });
 
-    const goLiveMsg =
-      goLiveSlotNumbers.includes(1)
-        ? ' Slot 1 is live. End Slot 1, then go live Slot 2, and so on from Exam schedules.'
-        : '';
+    const configuredElevateXSlots = isElevateX
+      ? filterConfiguredScheduleSlots(scheduleSlots)
+      : [];
+    const elevateXSlotCount = configuredElevateXSlots.length;
 
-    if (isElevateX && goLiveSlotNumbers.includes(1) && result.requestId) {
+    if (isElevateX && result.requestId && elevateXSlotCount > 0) {
       try {
-        const { data: slot1 } = await admin
-          .from('exam_schedules')
-          .select('*')
-          .eq('faculty_exam_request_id', result.requestId)
-          .eq('slot_number', 1)
-          .maybeSingle();
-        if (slot1) {
-          await syncElevateXEvaloraModuleFromSchedule(
-            admin,
-            {
-              starts_at: slot1.starts_at,
-              ends_at: slot1.ends_at,
-              notice:
-                typeof body.notice === 'string'
-                  ? body.notice
-                  : `${def.name} · Slot 1`,
-            },
-            auth.ctx.user.id,
-          );
-        }
+        const window = scheduleWindowFromConfiguredSlots(configuredElevateXSlots);
+        await syncElevateXEvaloraModuleFromSchedule(
+          admin,
+          {
+            ...window,
+            notice:
+              typeof body.notice === 'string'
+                ? body.notice
+                : `${def.name} · ${elevateXSlotCount} slot(s) scheduled`,
+          },
+          auth.ctx.user.id,
+        );
       } catch (syncErr) {
         console.warn('[exam-builder/create] ElevateX module sync:', syncErr);
       }
     }
+
+    const goLiveMsg =
+      !isElevateX && goLiveSlotNumbers.includes(1)
+        ? ' Slot 1 is live. End Slot 1, then go live Slot 2, and so on from Exam schedules.'
+        : '';
 
     return NextResponse.json({
       requestId: result.requestId,
@@ -179,7 +183,9 @@ export async function POST(request: NextRequest) {
       targetDepartments: [result.department, ...result.target_branches],
       message: usesSlotScheduling
         ? isElevateX
-          ? `ElevateX published with configured slot(s).${goLiveMsg} Add Slots 2–8 later from ElevateX & modules or Exam schedules.`
+          ? elevateXSlotCount > 0
+            ? `ElevateX published and ${elevateXSlotCount} slot schedule(s) are live. Each student can start only during their assigned slot time (roll number on the roster).`
+            : 'ElevateX published. Configure Slot 1 with date, time, and roster, then publish again.'
           : `Exam published with slot schedules.${goLiveMsg} Open slots one at a time from Exam schedules.`
         : goLiveNow
           ? 'Exam published and is live for the selected department group.'

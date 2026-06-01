@@ -6,10 +6,11 @@ import { publishFacultyExamRequest } from '@/lib/publish-faculty-exam';
 import {
   combineDateAndTime,
   createScheduleForSlot,
-  goLiveExamScheduleSlotSequential,
+  goLiveElevateXScheduleSlot,
   parseScheduleSlotsJson,
   persistSlotRosterForSlot,
   scheduleSlotNumber,
+  scheduleWindowFromConfiguredSlots,
   syncExamStudentRosters,
   type ExamScheduleSlotInput,
   validateElevateXPublishSlots,
@@ -103,6 +104,21 @@ export async function fetchElevateXAdminState(admin: DbServiceClient): Promise<E
   };
 }
 
+/** Show ElevateX on the student portal for the full multi-slot event window. */
+export async function syncElevateXEvaloraModuleFromConfiguredSlots(
+  admin: DbServiceClient,
+  slots: ExamScheduleSlotInput[],
+  adminUserId: string,
+  notice?: string | null,
+): Promise<void> {
+  const window = scheduleWindowFromConfiguredSlots(slots);
+  await syncElevateXEvaloraModuleFromSchedule(
+    admin,
+    { ...window, notice: notice ?? null },
+    adminUserId,
+  );
+}
+
 /** Show ElevateX as LIVE on /placement when a slot is live. */
 export async function syncElevateXEvaloraModuleFromSchedule(
   admin: DbServiceClient,
@@ -172,33 +188,26 @@ export async function publishElevateXFromAdmin(
     autoPublish: true,
     usesSlotScheduling: true,
     scheduleSlots: enrichedSlots,
-    goLiveSlotNumbers: input.openSlot1Now ? [1] : undefined,
     goLiveNotice: input.notice ?? `${ELEVATEX_EXAM_NAME} is now live for your slot.`,
   });
 
-  if (input.openSlot1Now && result.testId) {
-    const { data: slot1 } = await admin
-      .from('exam_schedules')
-      .select('*')
-      .eq('faculty_exam_request_id', result.requestId)
-      .eq('slot_number', 1)
-      .maybeSingle();
-
-    if (slot1) {
-      await syncElevateXEvaloraModuleFromSchedule(
-        admin,
-        { ...slot1, notice: input.notice ?? null } as ExamScheduleRow,
-        input.creatorUserId,
-      );
-    }
+  const configured = filterConfiguredScheduleSlots(enrichedSlots);
+  if (result.testId && configured.length > 0) {
+    await syncElevateXEvaloraModuleFromConfiguredSlots(
+      admin,
+      configured,
+      input.creatorUserId,
+      input.notice ?? null,
+    );
   }
 
   return {
     requestId: result.requestId,
     testId: result.testId ?? ELEVATEX_TEST_ID,
-    message: input.openSlot1Now
-      ? 'ElevateX published and Slot 1 is live. Students in Slot 1 can start from /placement.'
-      : 'ElevateX published. Open Slot 1 from Exam schedules when ready.',
+    message:
+      configured.length > 0
+        ? `ElevateX published. ${configured.length} slot(s) are live — students can start only during their assigned slot window.`
+        : 'ElevateX published. Configure Slot 1 with date, time, and roster.',
   };
 }
 
@@ -301,9 +310,14 @@ export async function saveElevateXSlot(
   }
 
   if (input.goLiveNow && scheduleId) {
-    const liveRow = await goLiveExamScheduleSlotSequential(admin, scheduleId);
-    if (input.slot.slot_number === 1) {
-      await syncElevateXEvaloraModuleFromSchedule(admin, liveRow, input.adminUserId);
+    await goLiveElevateXScheduleSlot(admin, scheduleId);
+    const allSlots = filterConfiguredScheduleSlots(merged);
+    if (allSlots.length > 0) {
+      await syncElevateXEvaloraModuleFromConfiguredSlots(
+        admin,
+        allSlots,
+        input.adminUserId,
+      );
     }
     return {
       scheduleId,
@@ -322,9 +336,21 @@ export async function goLiveElevateXSlot(
   scheduleId: string,
   adminUserId: string,
 ): Promise<void> {
-  const liveRow = await goLiveExamScheduleSlotSequential(admin, scheduleId);
-  if (scheduleSlotNumber(liveRow) === 1) {
-    await syncElevateXEvaloraModuleFromSchedule(admin, liveRow, adminUserId);
+  const liveRow = await goLiveElevateXScheduleSlot(admin, scheduleId);
+  const requestId = liveRow.faculty_exam_request_id;
+  if (!requestId) return;
+
+  const { data: request } = await admin
+    .from('faculty_exam_requests')
+    .select('schedule_slots_json')
+    .eq('id', requestId)
+    .maybeSingle();
+
+  const configured = filterConfiguredScheduleSlots(
+    parseScheduleSlotsJson(request?.schedule_slots_json),
+  );
+  if (configured.length > 0) {
+    await syncElevateXEvaloraModuleFromConfiguredSlots(admin, configured, adminUserId);
   }
 }
 
