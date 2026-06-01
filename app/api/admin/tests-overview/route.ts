@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import { loadAdminTestsOverview } from '@/lib/admin/tests-overview-data';
 
 export const dynamic = 'force-dynamic';

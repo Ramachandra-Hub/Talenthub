@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getDbService } from '@/lib/db/get-db-service';
 import { z } from 'zod';
 import { createProctorUploadUrl, isS3Configured, proctorScreenshotKey } from '@/lib/aws/s3';
 import { requireAuth } from '@/lib/server-auth';

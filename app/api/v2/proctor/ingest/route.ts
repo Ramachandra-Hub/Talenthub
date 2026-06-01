@@ -5,7 +5,7 @@ import {
   ensureExamViolationsTableIfPossible,
   isExamViolationsSchemaError,
 } from '@/lib/ensure-exam-violations';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import {
   insertProctorViolationsPrisma,
   linkProctorViolationsPrisma,

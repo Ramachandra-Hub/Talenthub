@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
 import { generateWithAi } from '@/lib/ai/providers/registry';
 import type { AiGenerateRequest, AiTaskType } from '@/lib/ai/providers/types';

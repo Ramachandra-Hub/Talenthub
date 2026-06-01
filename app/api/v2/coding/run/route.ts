@@ -4,8 +4,6 @@ import { executeCode } from '@/lib/coding/execute';
 import { parseCodingRunRequest } from '@/lib/coding/parse-run-request';
 import { auth } from '@/auth';
 import { useAwsStack } from '@/lib/aws/stack';
-import { getDbService } from '@/lib/server-auth';
-
 
 export const runtime = 'nodejs';
 

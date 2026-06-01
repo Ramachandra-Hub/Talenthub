@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/db/get-db-service';
+import { getDbService } from '@/lib/db/get-db-service';
 import { resetElevateXSampleStudents } from '@/lib/elevatex-sample-seed';
 import { ELEVATEX_SAMPLE_COUNT } from '@/lib/elevatex-sample-credentials';
 
@@ -30,9 +30,7 @@ export async function POST() {
       );
     }
 
-    const db = createClient(rdsUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const db = getDbService();
 
     const result = await resetElevateXSampleStudents(db);
 

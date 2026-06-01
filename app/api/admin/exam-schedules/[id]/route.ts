@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import { examSchedulesMigrationHint } from '@/lib/db-migration-hints';
 import { goLiveExamScheduleSlotSequential } from '@/lib/exam-schedule-slots';
 import { goLiveElevateXSlot } from '@/lib/elevatex-admin';

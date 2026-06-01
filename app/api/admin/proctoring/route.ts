@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { ensureExamViolationsTableIfPossible } from '@/lib/ensure-exam-violations';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import { loadProctoringViolations } from '@/lib/proctoring/proctoring-data';
 
 export const dynamic = 'force-dynamic';

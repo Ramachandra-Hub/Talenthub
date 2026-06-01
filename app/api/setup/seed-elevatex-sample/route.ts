@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/db/get-db-service';
+import { getDbService } from '@/lib/db/get-db-service';
 import { ELEVATEX_SAMPLE_PASSWORD } from '@/lib/elevatex-sample-credentials';
 import { writeElevateXCredentialsPublicCsv } from '@/lib/elevatex-credentials-export';
 import { seedElevateXSample } from '@/lib/elevatex-sample-seed';
@@ -33,9 +33,7 @@ export async function POST() {
       );
     }
 
-    const db = createClient(rdsUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const db = getDbService();
 
     const password =
       process.env.ELEVATEX_SAMPLE_PASSWORD?.trim() || ELEVATEX_SAMPLE_PASSWORD;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import type { ExamScheduleStatus } from '@/lib/exam-schedule';
 import {
   examSchedulesMigrationHint,
@@ -30,7 +30,7 @@ export async function GET() {
   if (schedulesError) {
     const msg = schedulesError.message ?? '';
     if (msg.includes('exam_schedules') && (msg.includes('does not exist') || msg.includes('schema cache'))) {
-      warnings.push('Run prisma db push or scripts/01-initial-schema.sql on RDS
+      warnings.push('Run prisma db push or scripts/01-initial-schema.sql on RDS.');
     } else {
       return NextResponse.json({ error: msg }, { status: 500 });
     }

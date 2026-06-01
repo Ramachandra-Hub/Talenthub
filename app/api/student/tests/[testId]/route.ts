@@ -3,7 +3,7 @@ import { getDbService } from '@/lib/db/get-db-service';
 import { useAwsStack } from '@/lib/aws/stack';
 import { loadQuestionsForTake, loadTestRowForTake } from '@/lib/load-test-for-take';
 import { loadTestSections } from '@/lib/exam-v2/load-sections';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import { findCompletedAttemptForTest } from '@/lib/test-attempts';
 import { checkStudentExamAccess } from '@/lib/exam-access';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';

@@ -176,7 +176,7 @@ export default function TakeTestPage({
           return;
         }
 
-        const { getClientUser } = await import('@/lib/db-browser');
+        const { getClientUser } = await import('@/lib/client-auth');
         const db = null;
         if (!db) return;
 

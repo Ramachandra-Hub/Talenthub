@@ -1,30 +1,22 @@
-import { createClient } from '@/lib/db/get-db-service';
+import { getDbService } from '@/lib/db/get-db-service';
 import { NextResponse } from 'next/server';
 
-const rdsUrl = process.env.NEXT_PUBLIC_APP_URL || '';
-const serviceRoleKey = process.env.AUTH_SECRET || '';
 const isDatabaseConfigured =
-  !!rdsUrl &&
-  !!serviceRoleKey &&
-  rdsUrl.includes('.db.co') &&
-  !rdsUrl.includes('YOUR_') &&
-  !serviceRoleKey.includes('YOUR_');
+  !!process.env.DATABASE_URL?.trim() &&
+  !!process.env.AUTH_SECRET?.trim() &&
+  !process.env.DATABASE_URL.includes('YOUR_') &&
+  !process.env.AUTH_SECRET.includes('YOUR_');
 
 export async function POST(request: Request) {
   try {
     if (!isDatabaseConfigured) {
       return NextResponse.json(
-        { error: 'Set NEXT_PUBLIC_APP_URL and AUTH_SECRET in .env.local' },
+        { error: 'Set DATABASE_URL and AUTH_SECRET in .env.local' },
         { status: 500 }
       );
     }
 
-    const db = createClient(rdsUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const db = getDbService();
 
     // Create tables
     const { error: createTablesError } = await db.rpc('exec', {

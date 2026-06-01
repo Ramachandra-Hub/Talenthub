@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getDbService } from '@/lib/db/get-db-service';
 import {
   loadAdminStudentsPrisma,
   loadAllAttemptsRollupPrisma,

@@ -1,7 +1,6 @@
 import type { PostgrestError } from '@/lib/db/get-db-service';
 import { getDbService } from '@/lib/db/get-db-service';
 import postgres from 'postgres';
-import { getDbService } from '@/lib/admin-access';
 import { ELEVATEX_MODULE_KEY } from '@/lib/elevatex';
 import { resolvePostgresUrl } from '@/lib/postgres-url';
 

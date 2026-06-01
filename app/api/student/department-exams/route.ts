@@ -5,7 +5,7 @@ import { examMatchesDepartment } from '@/lib/department-match';
 import { isFacultyExamLiveForStudent } from '@/lib/exam-schedule';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 
 export async function GET() {
   const auth = await requireAuth(['student']);

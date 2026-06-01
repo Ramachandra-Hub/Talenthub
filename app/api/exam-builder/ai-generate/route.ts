@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import { resolveSyllabusTopicsForBuilder } from '@/lib/exam-builder/draw-questions';
 import { parseAiTextToFacultyQuestions } from '@/lib/exam-builder/parse-ai-faculty-mcqs';
 import { getExamBuilderTestType } from '@/lib/exam-builder/test-catalog';

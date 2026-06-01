@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { getDbService } from '@/lib/server-auth';
 import { useAwsStack } from '@/lib/aws/stack';
 import { getLiveExamAccessPolicyPrisma } from '@/lib/db/exam-access-policy-prisma';
 import { isScheduleWindowOpen, type ExamScheduleRow } from '@/lib/exam-schedule';

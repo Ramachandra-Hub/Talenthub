@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import {
   createConfirmedAuthUser,
-  getDbService,
-  getServiceRoleKey,
   grantAdminRole,
   isUserAdmin,
   upsertPublicUser,
@@ -27,10 +25,7 @@ function bootstrapAllowed(adminCount: number): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const rdsUrl = getAuthUrl();
-  const serviceRoleKey = getServiceRoleKey();
-
-  if (!rdsUrl || !serviceRoleKey) {
+  if (!process.env.AUTH_SECRET?.trim() || !process.env.DATABASE_URL?.trim()) {
     return NextResponse.json({ error: 'Configure AUTH_SECRET and DATABASE_URL' }, { status: 500 });
   }
 
@@ -82,7 +77,7 @@ export async function POST(request: NextRequest) {
   await fetch(new URL('/api/setup/ensure-users', request.url), { method: 'POST' }).catch(() => null);
   await fetch(new URL('/api/setup/ensure-admin', request.url), { method: 'POST' }).catch(() => null);
 
-  const created = await createConfirmedAuthUser(rdsUrl, serviceRoleKey, email, password, fullName);
+  const created = await createConfirmedAuthUser(email, password, fullName);
   if ('error' in created) {
     return NextResponse.json({ error: created.error }, { status: 400 });
   }
@@ -97,7 +92,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: granted.error ?? 'Could not grant admin role',
-        hint: 'Run prisma db push or scripts/01-initial-schema.sql on RDS
+        hint: 'Run prisma db push or scripts/01-initial-schema.sql on RDS.',
         profileWarning,
       },
       { status: 500 },

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 
 /** Backfill public.users from auth metadata (fixes legacy registrations). */
 export async function POST() {

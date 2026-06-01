@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { checkIsAdmin } from '@/lib/admin-verify';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 
 export async function GET(request: Request) {
   const auth = await requireAuth(['admin']);
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   if (error) {
     const hint =
       error.message.includes('schema cache') || error.message.includes('test_categories')
-        ? ' Run prisma db push or scripts/01-initial-schema.sql on RDS
+        ? ' Run prisma db push or scripts/01-initial-schema.sql on RDS.'
         : '';
     return NextResponse.json({ error: error.message + hint }, { status: 500 });
   }

@@ -15,17 +15,17 @@ export function isUuidTypeMismatchError(message: string): boolean {
 
 export function examSchedulesMigrationHint(message: string): string | null {
   if (message.includes('exam_schedules') && isMissingTableOrColumnError(message)) {
-    return 'Run prisma db push or scripts/01-initial-schema.sql on RDS
+    return 'Run prisma db push or scripts/01-initial-schema.sql on RDS.';
   }
   if (isUuidTypeMismatchError(message) && message.includes('test_id')) {
-    return 'Run prisma db push or scripts/01-initial-schema.sql on RDS
+    return 'Run prisma db push or scripts/01-initial-schema.sql on RDS.';
   }
   return null;
 }
 
 export function rmsetPapersMigrationHint(message: string): string | null {
   if (message.includes('rmset_papers') && isMissingTableOrColumnError(message)) {
-    return 'Run prisma db push or scripts/01-initial-schema.sql on RDS
+    return 'Run prisma db push or scripts/01-initial-schema.sql on RDS.';
   }
   return null;
 }

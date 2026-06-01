@@ -28,3 +28,5 @@ export async function requireAuth(
 export function getDbServiceClient(): DbServiceClient {
   return getDbService();
 }
+
+export { getDbService };

@@ -58,7 +58,7 @@ export async function ensureBankSchemaReady(admin: DbServiceClient): Promise<Ban
 
   if (!hasBankMcqColumns(shape)) {
     throw new Error(
-      'The questions table is missing MCQ columns (option_a–d or options). Run prisma db push or scripts/01-initial-schema.sql on RDS
+      'The questions table is missing MCQ columns (option_a–d or options). Run prisma db push or scripts/01-initial-schema.sql on RDS.'
     );
   }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getDbService } from '@/lib/db/get-db-service';
 import { signOut } from '@/auth';
 import { requireAuth } from '@/lib/server-auth';
 import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';

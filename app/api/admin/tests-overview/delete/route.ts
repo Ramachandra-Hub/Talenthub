@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 import { deleteAdminTestOverviewItem } from '@/lib/admin/delete-test-overview-item';
 
 export async function POST(request: NextRequest) {

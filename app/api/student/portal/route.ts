@@ -8,7 +8,7 @@ import { syncExpiredLiveExamSchedules } from '@/lib/exam-schedule-sync';
 import { listLiveFacultyExamsForStudent } from '@/lib/live-faculty-exams';
 import { buildStudentPortalPayload } from '@/lib/student-portal';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
-import { requireAuth, getDbService } from '@/lib/server-auth';
+import { requireAuth } from '@/lib/server-auth';
 
 export async function GET() {
   const auth = await requireAuth(['student']);

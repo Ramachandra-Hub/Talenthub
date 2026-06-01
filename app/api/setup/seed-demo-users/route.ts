@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { getDbService, type DbServiceClient } from '@/lib/db/get-db-service';
 import { COLLEGE } from '@/lib/college-brand';
 import { facultyAuthEmail, studentAuthEmail } from '@/lib/college-auth';
 import {
@@ -63,9 +63,7 @@ export async function POST() {
     );
   }
 
-  const db = createClient(rdsUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const db = getDbService();
 
   const results: Array<{
     role: string;

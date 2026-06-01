@@ -57,6 +57,14 @@ if (dbUrl) {
   console.log('⏭ Skipping prisma db push (no DATABASE_URL)\n');
 }
 
-run('pnpm exec next build');
+function nextBin() {
+  const win = path.join(root, 'node_modules', '.bin', 'next.cmd');
+  const unix = path.join(root, 'node_modules', '.bin', 'next');
+  if (process.platform === 'win32' && fs.existsSync(win)) return `"${win}"`;
+  if (fs.existsSync(unix)) return `"${unix}"`;
+  return 'npx next';
+}
+
+run(`${nextBin()} build`);
 
 console.log('\n✅ Vercel build finished\n');

@@ -10,7 +10,7 @@ export function getAdminDb(): DbServiceClient {
 }
 
 /** @deprecated Use getAdminDb */
-export const getAdminDb = getAdminDb;
+export const getAdminSupabase = getAdminDb;
 
 export async function findAuthUserByEmail(
   email: string,
