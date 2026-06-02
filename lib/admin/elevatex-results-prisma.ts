@@ -9,12 +9,23 @@ import {
 } from '@/lib/placement/scorecard-payload';
 import type { PlacementSectionId, PlacementScorecard } from '@/lib/placement/types';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
+import { isInProgressStatus } from '@/lib/attempt-status';
 import { resolveStoredPercent } from '@/lib/test-attempts';
 
 export type ElevateXSectionMarks = {
   earned: number;
   marks: number;
   percent: number;
+};
+
+export type ElevateXInProgressRow = {
+  attempt_id: string;
+  user_id: string;
+  roll_number: string;
+  student_name: string;
+  partial_score: number;
+  status: string;
+  updated_at: string;
 };
 
 export type ElevateXAdminResultRow = {
@@ -218,6 +229,82 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
     if (rollCmp !== 0) return rollCmp;
     return b.overall_score - a.overall_score;
   });
+}
+
+/** Students currently in the exam (autosave / heartbeat, not yet submitted). */
+export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgressRow[]> {
+  const adminIds = new Set(
+    (await prisma.adminUser.findMany({ select: { userId: true } })).map((a) => a.userId),
+  );
+  const users = await prisma.user.findMany({
+    where: { adminUser: null },
+    select: { id: true, email: true, fullName: true, rollNumber: true },
+    take: 5000,
+  });
+  const userById = new Map(
+    users
+      .filter((u) => u.email && !adminIds.has(u.id) && !u.email.includes('@admin.'))
+      .map((u) => [u.id, u]),
+  );
+
+  const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
+  const rows = await prisma.testAttempt.findMany({
+    where: {
+      createdAt: { gte: since },
+      status: { in: ['in_progress', 'started', 'active'] },
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 300,
+  });
+
+  const byUser = new Map<string, ElevateXInProgressRow>();
+  for (const row of rows) {
+    const user = userById.get(row.userId);
+    if (!user) continue;
+    if (!isInProgressStatus(row.status) || row.completedAt) continue;
+    const partial = resolveStoredPercent(
+      row.percentageScore != null ? Number(row.percentageScore) : null,
+      row.score != null ? Number(row.score) : null,
+      row.totalScore != null ? Number(row.totalScore) : null,
+    );
+    byUser.set(row.userId, {
+      attempt_id: row.id,
+      user_id: row.userId,
+      roll_number: user.rollNumber ?? rollNumberFromUser(user.email),
+      student_name: user.fullName?.trim() || user.email,
+      partial_score: partial,
+      status: row.status,
+      updated_at: row.createdAt.toISOString(),
+    });
+  }
+
+  const heartbeatCutoff = new Date(Date.now() - 10 * 60 * 1000);
+  const sessions = await prisma.studentActiveSession.findMany({
+    where: { lastHeartbeat: { gte: heartbeatCutoff } },
+    take: 200,
+  });
+  for (const session of sessions) {
+    if (byUser.has(session.userId)) continue;
+    const user = userById.get(session.userId);
+    if (!user) continue;
+    byUser.set(session.userId, {
+      attempt_id: `session-${session.userId}`,
+      user_id: session.userId,
+      roll_number: user.rollNumber ?? rollNumberFromUser(user.email),
+      student_name: user.fullName?.trim() || user.email,
+      partial_score: 0,
+      status: 'in_progress',
+      updated_at: session.lastHeartbeat.toISOString(),
+    });
+  }
+
+  return Array.from(byUser.values()).sort((a, b) =>
+    a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true }),
+  );
 }
 
 export function isElevateXTitle(title: string | null | undefined): boolean {

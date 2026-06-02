@@ -268,12 +268,18 @@ export function LiveExamDashboard() {
         ended_boards?: LiveBoard[];
         ended_reports?: EndedReportMeta[];
         writing_now?: LiveWritingEntry[];
+        elevatex_submitted_count?: number;
+        elevatex_in_progress_count?: number;
         refreshed_at?: string;
       };
 
       setFetchError(null);
       const list = json.schedules ?? [];
-      const isLive = Boolean(json.live) && list.length > 0;
+      const elevatexActive =
+        (json.elevatex_in_progress_count ?? 0) > 0 ||
+        (json.elevatex_submitted_count ?? 0) > 0 ||
+        (json.writing_now?.length ?? 0) > 0;
+      const isLive = (Boolean(json.live) && list.length > 0) || elevatexActive;
       const liveBoards = json.boards?.length ? json.boards : [];
       const endedList = json.ended_schedules ?? [];
       const endedBoardList = json.ended_boards ?? [];
@@ -351,7 +357,7 @@ export function LiveExamDashboard() {
   }
 
   if (!showingLive && endedSchedules.length === 0) {
-    return null;
+    return <ElevateXLiveResultsPanel className="mb-8" />;
   }
 
   const entries = board?.entries ?? [];
@@ -637,7 +643,7 @@ export function LiveExamDashboard() {
         </div>
       </div>
     </section>
-    {showingLive ? <ElevateXLiveResultsPanel className="mt-4" /> : null}
+    <ElevateXLiveResultsPanel className="mt-4" />
   </>
   );
 }

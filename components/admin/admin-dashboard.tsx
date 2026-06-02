@@ -15,7 +15,6 @@ import {
 import { cn } from '@/lib/utils';
 import { StatCard } from '@/components/ui/stat-card';
 import { LiveExamDashboard } from '@/components/admin/live-exam-dashboard';
-import { ElevateXLiveResultsPanel } from '@/components/admin/elevatex-live-results-panel';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import { StatDetailReportModal } from '@/components/reports/stat-detail-report-modal';
@@ -324,7 +323,6 @@ export function AdminDashboard() {
       <>
         {dashboardModals}
         <LiveExamDashboard />
-        <ElevateXLiveResultsPanel className="mb-8" />
         <LoadingScreen message="Loading admin dashboard…" className="min-h-[40vh]" />
       </>
     );
@@ -608,7 +606,6 @@ export function AdminDashboard() {
     <>
       {dashboardModals}
       <LiveExamDashboard />
-      <ElevateXLiveResultsPanel className="mb-8" />
       <Card className="mb-6 border-amber-200 bg-amber-50/80 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-amber-950">Exam day prep</p>

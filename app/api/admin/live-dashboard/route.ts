@@ -10,6 +10,10 @@ import {
 import { prisma } from '@/lib/prisma';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { isElevateXModule } from '@/lib/elevatex';
+import {
+  loadElevateXAdminResultsPrisma,
+  loadElevateXInProgressPrisma,
+} from '@/lib/admin/elevatex-results-prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,11 +110,19 @@ export async function GET(request: Request) {
     listRecentlyEndedExamSchedulesPrisma(),
   ]);
 
-  const [boards, endedBoards, writing_now] = await Promise.all([
-    liveSchedules.length ? buildAllLiveExamBoardsPrisma(liveSchedules) : Promise.resolve([]),
-    endedSchedules.length ? buildAllLiveExamBoardsPrisma(endedSchedules) : Promise.resolve([]),
-    liveSchedules.length ? buildAllLiveWritingActivityPrisma(liveSchedules) : Promise.resolve([]),
-  ]);
+  const [boards, endedBoards, writing_now, elevatexSubmitted, elevatexInProgress] =
+    await Promise.all([
+      liveSchedules.length ? buildAllLiveExamBoardsPrisma(liveSchedules) : Promise.resolve([]),
+      endedSchedules.length ? buildAllLiveExamBoardsPrisma(endedSchedules) : Promise.resolve([]),
+      liveSchedules.length ? buildAllLiveWritingActivityPrisma(liveSchedules) : Promise.resolve([]),
+      loadElevateXAdminResultsPrisma(),
+      loadElevateXInProgressPrisma(),
+    ]);
+
+  const hasElevateXActivity =
+    elevatexSubmitted.length > 0 ||
+    elevatexInProgress.length > 0 ||
+    writing_now.length > 0;
 
   const schedule =
     (scheduleId ? liveSchedules.find((s) => s.id === scheduleId) : null) ??
@@ -139,7 +151,7 @@ export async function GET(request: Request) {
   }));
 
   return NextResponse.json({
-    live: liveSchedules.length > 0,
+    live: liveSchedules.length > 0 || hasElevateXActivity,
     schedules: liveSchedules,
     boards,
     ended_schedules: endedSchedules,
@@ -147,6 +159,8 @@ export async function GET(request: Request) {
     ended_reports,
     board,
     writing_now,
+    elevatex_submitted_count: elevatexSubmitted.length,
+    elevatex_in_progress_count: elevatexInProgress.length,
     refreshed_at: new Date().toISOString(),
   });
 }

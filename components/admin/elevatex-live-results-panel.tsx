@@ -23,9 +23,24 @@ type ResultRow = {
   has_full_scorecard: boolean;
 };
 
+type InProgressRow = {
+  attempt_id: string;
+  roll_number: string;
+  student_name: string;
+  partial_score: number;
+  status: string;
+  updated_at: string;
+};
+
 type Payload = {
   rows: ResultRow[];
-  summary: { submitted_count: number; with_scorecard: number; avg_score: number };
+  in_progress?: InProgressRow[];
+  summary: {
+    submitted_count: number;
+    in_progress_count?: number;
+    with_scorecard: number;
+    avg_score: number;
+  };
   refreshed_at?: string;
 };
 
@@ -120,14 +135,35 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
               ElevateX — submitted results
             </h3>
             <p className="text-xs text-slate-600 mt-0.5">
-              {data?.summary.submitted_count ?? 0} submitted · avg{' '}
-              {formatScorePercentLabel(data?.summary.avg_score ?? 0)} · section marks per roll
+              {data?.summary.in_progress_count ?? 0} writing now · {data?.summary.submitted_count ?? 0}{' '}
+              submitted · avg {formatScorePercentLabel(data?.summary.avg_score ?? 0)}
             </p>
           </div>
           <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
             Refresh
           </Button>
         </div>
+
+        {(data?.in_progress?.length ?? 0) > 0 ? (
+          <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-3">
+            <p className="text-xs font-semibold text-amber-950 mb-2">Writing now</p>
+            <div className="flex flex-wrap gap-2">
+              {data!.in_progress!.map((row) => (
+                <span
+                  key={row.attempt_id}
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-medium text-amber-950"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="font-mono">{row.roll_number}</span>
+                  <span className="text-slate-600 truncate max-w-[8rem]">{row.student_name}</span>
+                  {row.partial_score > 0 ? (
+                    <span className="text-emerald-700">{formatScorePercentLabel(row.partial_score)}</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="overflow-x-auto max-h-[min(70vh,520px)]">
           <table className="w-full text-xs sm:text-sm">
