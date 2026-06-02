@@ -22,10 +22,10 @@ import {
   clearPlacementDrafts,
   clearPlacementProctorSessionId,
   getPlacementCompletedAttemptId,
+  loadActivePlacementSession,
   loadCandidateDraft,
   loadPlacementProctorSessionId,
-  loadSession,
-  loadSessionByHallTicket,
+  deriveGlobalTimeLeftSec,
   markPlacementCompleted,
   savePlacementProctorSessionId,
   saveScorecardForAttempt,
@@ -68,6 +68,7 @@ export default function PlacementTakePage() {
   const [proctorSessionId, setProctorSessionId] = useState('');
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitOnLoad, setSubmitOnLoad] = useState(false);
 
   const submitGuardRef = useRef(false);
   const liveAttemptIdRef = useRef('');
@@ -119,7 +120,7 @@ export default function PlacementTakePage() {
 
     const run = async () => {
       const draft = loadCandidateDraft();
-      const hallTicket = draft?.hallTicket ?? loadSession()?.candidate.hallTicket ?? '';
+      const hallTicket = draft?.hallTicket ?? '';
       const status = await fetchElevateXAttemptStatus(hallTicket || undefined);
       if (cancelled) return;
 
@@ -128,18 +129,13 @@ export default function PlacementTakePage() {
         status.completed && status.attemptId ? status.attemptId : localCompletedId;
 
       if (completedAttemptId) {
+        clearPlacementDrafts(hallTicket || undefined);
         setBlocked(true);
         router.replace(`/placement/result/${completedAttemptId}`);
         return;
       }
 
-      let loaded = loadSession();
-      if (!loaded) {
-        if (draft) {
-          loaded = loadSessionByHallTicket(draft.hallTicket);
-          if (loaded) saveSession(loaded);
-        }
-      }
+      const loaded = hallTicket ? loadActivePlacementSession(hallTicket) : null;
       if (!loaded) {
         router.replace('/placement/assessment');
         return;
@@ -149,6 +145,20 @@ export default function PlacementTakePage() {
         router.replace('/placement/assessment');
         return;
       }
+
+      if (deriveGlobalTimeLeftSec(loaded) <= 0) {
+        setSession(loaded);
+        setHydrated(true);
+        setSubmitOnLoad(true);
+        const storedProctor = loadPlacementProctorSessionId();
+        if (storedProctor) {
+          setProctorSessionId(storedProctor);
+          setProctorReady(true);
+        }
+        return;
+      }
+
+      saveSession(loaded);
       setSession(loaded);
       setHydrated(true);
       const storedProctor = loadPlacementProctorSessionId();
@@ -204,7 +214,10 @@ export default function PlacementTakePage() {
       }
 
       const dept = findDepartment(current.candidate.departmentId);
-      const elapsedSec = Math.max(0, PLACEMENT_TOTAL_SEC - current.globalTimeLeftSec);
+      const elapsedSec = Math.max(
+        0,
+        PLACEMENT_TOTAL_SEC - deriveGlobalTimeLeftSec(current),
+      );
       const activeProctorSession = proctorSessionIdRef.current;
       const violations = activeProctorSession ? getExamViolations(activeProctorSession) : [];
       const accessBranch = dept?.name ?? current.candidate.departmentId;
@@ -227,6 +240,10 @@ export default function PlacementTakePage() {
             proctorSessionId: activeProctorSession || undefined,
             proctorViolationCount: violations.length,
             answers: {
+              __placement: {
+                globalTimeLeftSec: deriveGlobalTimeLeftSec(current),
+                currentSectionIndex: current.currentSectionIndex,
+              },
               __proctor: {
                 sessionId: activeProctorSession,
                 violationCount: violations.length,
@@ -376,22 +393,27 @@ export default function PlacementTakePage() {
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
 
-  // Overall exam timer only (no per-section countdown).
+  useEffect(() => {
+    if (!submitOnLoad || !session) return;
+    void handleSubmit('timeout');
+    setSubmitOnLoad(false);
+  }, [submitOnLoad, session, handleSubmit]);
+
+  // Wall-clock timer — refresh does not reset to 60:00 (uses candidate.startedAt).
   useEffect(() => {
     if (!hydrated) return;
     const id = window.setInterval(() => {
       setSession((prev) => {
         if (!prev || prev.submitted) return prev;
-        const nextGlobal = Math.max(0, prev.globalTimeLeftSec - 1);
+        const nextGlobal = deriveGlobalTimeLeftSec(prev);
 
         if (nextGlobal <= 0 && !submitGuardRef.current) {
           window.setTimeout(() => void handleSubmitRef.current('timeout'), 0);
         }
 
-        return {
-          ...prev,
-          globalTimeLeftSec: nextGlobal,
-        };
+        const next = { ...prev, globalTimeLeftSec: nextGlobal };
+        saveSession(next);
+        return next;
       });
     }, 1000);
     return () => window.clearInterval(id);

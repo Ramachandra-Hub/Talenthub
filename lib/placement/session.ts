@@ -158,14 +158,33 @@ export function loadCandidateDraft(): PlacementCandidate | null {
   }
 }
 
+/** Remaining exam time from wall clock (survives refresh; does not reset to 60:00). */
+export function deriveGlobalTimeLeftSec(
+  session: PlacementSession,
+  nowMs = Date.now(),
+): number {
+  const startedMs = new Date(session.candidate.startedAt).getTime();
+  if (Number.isFinite(startedMs) && startedMs > 0) {
+    const elapsedSec = Math.floor((nowMs - startedMs) / 1000);
+    return Math.max(0, PLACEMENT_TOTAL_SEC - elapsedSec);
+  }
+  return Math.max(0, Math.min(PLACEMENT_TOTAL_SEC, session.globalTimeLeftSec));
+}
+
+export function syncSessionTimer(session: PlacementSession): PlacementSession {
+  if (session.submitted) return session;
+  return { ...session, globalTimeLeftSec: deriveGlobalTimeLeftSec(session) };
+}
+
 export function saveSession(session: PlacementSession): void {
   if (typeof window === 'undefined') return;
+  const synced = syncSessionTimer(session);
   try {
-    window.sessionStorage.setItem(PLACEMENT_DRAFT_SESSION_KEY, JSON.stringify(session));
+    window.sessionStorage.setItem(PLACEMENT_DRAFT_SESSION_KEY, JSON.stringify(synced));
     // Mirror to localStorage so a refresh / disconnect can resume on the same device.
     window.localStorage.setItem(
-      `${PLACEMENT_DRAFT_SESSION_KEY}:${session.candidate.hallTicket}`,
-      JSON.stringify(session),
+      `${PLACEMENT_DRAFT_SESSION_KEY}:${synced.candidate.hallTicket}`,
+      JSON.stringify(synced),
     );
   } catch {
     // quota / private browsing — best effort
@@ -177,7 +196,9 @@ function parseStoredSession(raw: string | null): PlacementSession | null {
   try {
     const parsed = JSON.parse(raw) as PlacementSession;
     if (parsed?.version !== 1) return null;
-    return repairPlacementSession(parsed);
+    const repaired = repairPlacementSession(parsed);
+    if (repaired.submitted) return repaired;
+    return syncSessionTimer(repaired);
   } catch {
     return null;
   }
@@ -193,6 +214,22 @@ export function loadSessionByHallTicket(hallTicket: string): PlacementSession | 
   return parseStoredSession(
     window.localStorage.getItem(`${PLACEMENT_DRAFT_SESSION_KEY}:${hallTicket}`),
   );
+}
+
+/** Prefer durable localStorage draft, then sessionStorage — keeps timer + answers on refresh. */
+export function loadActivePlacementSession(hallTicket: string): PlacementSession | null {
+  if (!hallTicket) return null;
+  const fromLocal = loadSessionByHallTicket(hallTicket);
+  const fromSession = loadSession();
+  const picked =
+    fromLocal && !fromLocal.submitted && fromLocal.candidate.hallTicket === hallTicket
+      ? fromLocal
+      : fromSession &&
+          !fromSession.submitted &&
+          fromSession.candidate.hallTicket === hallTicket
+        ? fromSession
+        : null;
+  return picked ? syncSessionTimer(picked) : null;
 }
 
 export function clearPlacementDrafts(hallTicket?: string): void {

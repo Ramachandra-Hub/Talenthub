@@ -28,11 +28,13 @@ import { fetchElevateXAttemptStatus } from '@/lib/placement/elevatex-attempt';
 import {
   buildPlacementSession,
   clearPlacementDrafts,
+  loadActivePlacementSession,
   loadSessionByHallTicket,
   getPlacementCompletedAttemptId,
   saveCandidateDraft,
   savePlacementProctorSessionId,
   saveSession,
+  syncSessionTimer,
 } from '@/lib/placement/session';
 
 export default function PlacementAssessmentStartPage() {
@@ -97,7 +99,7 @@ export default function PlacementAssessmentStartPage() {
         setResumeAvailable(false);
         clearPlacementDrafts(studentProfile.hallTicket);
       } else {
-        const existing = loadSessionByHallTicket(studentProfile.hallTicket);
+        const existing = loadActivePlacementSession(studentProfile.hallTicket);
         setResumeAvailable(Boolean(existing && !existing.submitted));
       }
     } catch (err) {
@@ -114,7 +116,7 @@ export default function PlacementAssessmentStartPage() {
   const handleStart = () => {
     if (!profile || starting || priorAttempt) return;
 
-    const existing = loadSessionByHallTicket(profile.hallTicket);
+    const existing = loadActivePlacementSession(profile.hallTicket);
     if (existing && !existing.submitted) {
       const resume = window.confirm(
         'A saved ElevateX session was found on this device.\n\nPress OK to resume where you left off.\nPress Cancel to choose another option.',
@@ -140,6 +142,15 @@ export default function PlacementAssessmentStartPage() {
     setStarting(true);
     const proctorId = createProctorSessionId(getElevateXTestId(), authUserId ?? undefined);
     savePlacementProctorSessionId(proctorId);
+
+    const existing = loadActivePlacementSession(profile.hallTicket);
+    if (existing && !existing.submitted) {
+      saveCandidateDraft(existing.candidate);
+      saveSession(syncSessionTimer(existing));
+      router.push('/placement/take');
+      return;
+    }
+
     const candidate = buildElevateXCandidateFromStudent(profile);
     const session = buildPlacementSession(candidate);
     saveCandidateDraft(candidate);
@@ -272,7 +283,7 @@ export default function PlacementAssessmentStartPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    const existing = loadSessionByHallTicket(profile.hallTicket);
+                    const existing = loadActivePlacementSession(profile.hallTicket);
                     if (existing && !existing.submitted) {
                       saveCandidateDraft(existing.candidate);
                       saveSession(existing);
