@@ -112,36 +112,27 @@ async function loadTodayElevateXAttemptsFromTable(
 }
 
 async function loadTodayElevateXFromDashboardStats(
-  admin: DbServiceClient,
+  _admin: DbServiceClient,
   dateKey: string,
   seenIds: Set<string>,
 ): Promise<RollupAttempt[]> {
   const out: RollupAttempt[] = [];
-  let offset = 0;
-  const pageSize = 150;
-  const maxPages = 40;
+  const { prisma } = await import('@/lib/prisma');
 
-  for (let page = 0; page < maxPages; page++) {
-    const { data, error } = await admin
-      .from('student_dashboard_stats')
-      .select('user_id, attempts')
-      .range(offset, offset + pageSize - 1);
-    if (error) break;
-    const rows = data ?? [];
-    if (rows.length === 0) break;
+  const rows = await prisma.studentDashboardStat.findMany({
+    where: { statKey: 'attempts_feed' },
+    select: { userId: true, payload: true },
+    take: 5000,
+  });
 
-    for (const row of rows) {
-      for (const entry of parseStatAttempts(row.attempts)) {
-        const attempt = attemptFromStatEntry(entry);
-        if (seenIds.has(attempt.id)) continue;
-        if (!matchesTodayElevateX(attempt, dateKey)) continue;
-        seenIds.add(attempt.id);
-        out.push(attempt);
-      }
+  for (const row of rows) {
+    for (const entry of parseStatAttempts(row.payload)) {
+      const attempt = attemptFromStatEntry(entry);
+      if (seenIds.has(attempt.id)) continue;
+      if (!matchesTodayElevateX(attempt, dateKey)) continue;
+      seenIds.add(attempt.id);
+      out.push(attempt);
     }
-
-    if (rows.length < pageSize) break;
-    offset += pageSize;
   }
 
   return out;

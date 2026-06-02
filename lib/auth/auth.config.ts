@@ -1,8 +1,8 @@
 import type { NextAuthConfig } from 'next-auth';
-import { buildAuthProviders } from '@/lib/auth/providers';
 
+/** Edge/proxy-safe config — no Prisma or credential providers (see auth.ts). */
 export const authConfig = {
-  providers: buildAuthProviders(),
+  providers: [],
   pages: {
     signIn: '/auth/role',
     error: '/auth/role',

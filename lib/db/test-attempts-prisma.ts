@@ -13,6 +13,7 @@ import {
   type PersistAttemptInput,
 } from '@/lib/test-attempts';
 import { roundScorePercent } from '@/lib/format-score';
+import { resolveTestIdForInsertPrisma } from '@/lib/db/resolve-test-id-for-insert';
 
 function toAttemptRow(row: {
   id: string;
@@ -130,14 +131,6 @@ export async function fetchAttemptsForUserPrisma(userId: string): Promise<Dashbo
   });
 }
 
-async function resolveTestIdForInsertPrisma(testId: string): Promise<string | null> {
-  if (!testId || testId.startsWith('fallback-') || testId === 'programming-assessment-v1') {
-    const first = await prisma.test.findFirst({ select: { id: true } });
-    return first?.id ?? null;
-  }
-  return testId.trim();
-}
-
 export async function persistTestAttemptPrisma(input: PersistAttemptInput): Promise<{ id: string }> {
   const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const title = input.testName?.trim() || 'Practice test';
@@ -186,6 +179,7 @@ export async function upsertExamProgressPrisma(input: {
   proctorSessionId?: string;
   proctorViolationCount?: number;
 }): Promise<{ id: string }> {
+  const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const now = new Date();
   const proctorMeta =
     input.proctorSessionId || input.proctorViolationCount
@@ -197,7 +191,7 @@ export async function upsertExamProgressPrisma(input: {
 
   const patch = {
     userId: input.userId,
-    testId: input.testId,
+    testId: resolvedTestId,
     testTitle: input.testName,
     percentageScore: input.scorePercent,
     score: input.scorePercent,

@@ -163,8 +163,16 @@ export async function findDashboardStatEntryByAttemptId(
 
   if (error) {
     const msg = String(error.message ?? '').toLowerCase();
-    if (error.code === 'PGRST205' || msg.includes('student_dashboard_stats')) {
-      return null;
+    if (
+      error.code === 'PGRST205' ||
+      msg.includes('student_dashboard_stats') ||
+      msg.includes('column "attempts"') ||
+      msg.includes('attempts does not exist')
+    ) {
+      const { findDashboardStatEntryByAttemptIdPrisma } = await import(
+        '@/lib/db/student-dashboard-stats-prisma'
+      );
+      return findDashboardStatEntryByAttemptIdPrisma(attemptId);
     }
     throw error;
   }

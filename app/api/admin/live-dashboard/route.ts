@@ -132,7 +132,9 @@ export async function GET(request: Request) {
     slot_number: s.slot_number ?? null,
     title: s.title,
     test_id: String(s.test_id ?? ''),
-    exam_type: 'department' as const,
+    exam_type: (isElevateXModule(s.test_id) || /elevatex/i.test(s.title)
+      ? 'elevatex'
+      : 'department') as const,
     ends_at: s.ends_at,
   }));
 

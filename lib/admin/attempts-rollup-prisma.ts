@@ -196,7 +196,7 @@ export async function loadAllAttemptsRollupPrisma(): Promise<{
 
   const attemptRows = await prisma.testAttempt.findMany({
     orderBy: { createdAt: 'desc' },
-    take: 2000,
+    take: 5000,
   });
 
   for (const row of attemptRows) {
@@ -212,7 +212,7 @@ export async function loadAllAttemptsRollupPrisma(): Promise<{
   const statsRows = await prisma.studentDashboardStat.findMany({
     where: { statKey: 'attempts_feed' },
     select: { userId: true, payload: true },
-    take: 2000,
+    take: 5000,
   });
 
   for (const row of statsRows) {

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { ADMIN_EXAM_TYPE_META } from '@/lib/admin/exam-type';
 import { downloadTestReportPdf } from '@/lib/admin/export-test-report-pdf';
 import { scheduleLabelForTestOverview } from '@/lib/admin/test-overview-report';
+import { ElevateXLiveResultsPanel } from '@/components/admin/elevatex-live-results-panel';
 import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 
@@ -377,6 +378,7 @@ export function LiveExamDashboard() {
       : 'Live leaders · partial scores · Gold · Silver · Bronze';
 
   return (
+    <>
     <section className="mb-8 overflow-hidden rounded-2xl border border-violet-400/25 shadow-[0_24px_64px_-16px_rgba(26,10,62,0.65)]">
       <div className="relative bg-gradient-to-br from-[#1a0a3e] via-[#2d1b69] to-[#0d2847] text-white">
         <div
@@ -635,5 +637,7 @@ export function LiveExamDashboard() {
         </div>
       </div>
     </section>
+    {showingLive ? <ElevateXLiveResultsPanel className="mt-4" /> : null}
+  </>
   );
 }

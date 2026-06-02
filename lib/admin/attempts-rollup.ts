@@ -236,7 +236,18 @@ export async function loadAllAttemptsRollup(admin: DbServiceClient): Promise<{
     }
   }
 
-  const { data: statsRows } = await admin.from('student_dashboard_stats').select('user_id, attempts');
+  const { data: statsRows, error: statsError } = await admin
+    .from('student_dashboard_stats')
+    .select('user_id, attempts');
+
+  if (statsError) {
+    const msg = String(statsError.message ?? '').toLowerCase();
+    if (msg.includes('column "attempts"') || msg.includes('attempts does not exist')) {
+      const { loadAllAttemptsRollupPrisma } = await import('@/lib/admin/attempts-rollup-prisma');
+      return loadAllAttemptsRollupPrisma();
+    }
+  }
+
   for (const row of statsRows ?? []) {
     for (const entry of parseStatAttempts(row.attempts)) {
       if (seenIds.has(String(entry.id))) continue;

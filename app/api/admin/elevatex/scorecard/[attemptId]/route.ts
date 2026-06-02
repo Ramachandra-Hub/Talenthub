@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
-import { fetchElevateXScorecardForAttempt } from '@/lib/placement/fetch-elevatex-scorecard';
+import { fetchElevateXScorecardForAttemptPrisma } from '@/lib/placement/fetch-elevatex-scorecard-prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +12,7 @@ export async function GET(
   if ('response' in auth) return auth.response;
 
   const { attemptId } = await params;
-  const service = getDbService();
-  if (!service) {
-    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
-  }
-
-  const result = await fetchElevateXScorecardForAttempt(service, attemptId);
+  const result = await fetchElevateXScorecardForAttemptPrisma(attemptId);
 
   if (!('scorecard' in result)) {
     return NextResponse.json({ error: result.error }, { status: result.status });

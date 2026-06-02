@@ -60,4 +60,22 @@ export async function fetchStudentDashboardStatsPrisma(
   return entries.map(statEntryToAttempt);
 }
 
+export async function findDashboardStatEntryByAttemptIdPrisma(
+  attemptId: string,
+): Promise<{ entry: DashboardStatEntry; userId: string } | null> {
+  const rows = await prisma.studentDashboardStat.findMany({
+    where: { statKey: ATTEMPTS_STAT_KEY },
+    select: { userId: true, payload: true },
+    take: 5000,
+  });
+
+  for (const row of rows) {
+    const list = parseAttemptsPayload(row.payload);
+    const hit = list.find((entry) => String(entry.id) === attemptId);
+    if (hit) return { entry: hit, userId: row.userId };
+  }
+
+  return null;
+}
+
 export { buildStatEntry };

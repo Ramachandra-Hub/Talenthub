@@ -1,12 +1,14 @@
 import NextAuth from 'next-auth';
 import { authConfig } from '@/lib/auth/auth.config';
 import { ensureAuthUrlEnv } from '@/lib/auth/auth-url';
-import { buildAuthProviders } from '@/lib/auth/providers';
 
 ensureAuthUrlEnv();
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+/**
+ * JWT session decode for proxy/middleware only — never import Prisma here.
+ * Sign-in uses `auth` from `@/auth` (Node.js + credentials + RDS).
+ */
+export const { auth: edgeAuth } = NextAuth({
   ...authConfig,
-  providers: buildAuthProviders(),
   secret: process.env.AUTH_SECRET,
 });

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { auth } from '@/auth';
+import { edgeAuth } from '@/lib/auth/auth-edge';
 import {
   defaultRedirectForRole,
   isAdminRoute,
@@ -60,7 +60,18 @@ function applyRoleRedirects(
 
 async function proxyAws(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
-  const session = await auth();
+  let session: Awaited<ReturnType<typeof edgeAuth>> | null = null;
+  try {
+    session = await edgeAuth();
+  } catch (err) {
+    console.error('[proxy] session decode failed:', err);
+    if (isProtectedPath(pathname)) {
+      const loginUrl = new URL('/auth/role', request.url);
+      loginUrl.searchParams.set('redirect', `${pathname}${request.nextUrl.search}`);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
   const role = (session?.user?.role as 'admin' | 'student' | undefined) ?? null;
 
   if (!session?.user && isProtectedPath(pathname)) {
