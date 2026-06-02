@@ -34,6 +34,9 @@ import { scheduleLabelForTestOverview } from '@/lib/admin/test-overview-report';
 import type { TestReportRow, TestReportsPayload } from '@/lib/admin/test-reports-data';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 import { formatCollegeDateTime } from '@/lib/college-timezone';
+import { ElevateXScorecardReportModal } from '@/components/admin/elevatex-scorecard-report-modal';
+import { useElevateXScorecardModal } from '@/hooks/use-elevatex-scorecard-modal';
+import { cn } from '@/lib/utils';
 
 type AdminTestDetailModalProps = {
   test: AdminTestOverviewItem | null;
@@ -109,6 +112,7 @@ function AdminTestDetailModalContent({
   const [reportError, setReportError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'csv' | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const scorecardModal = useElevateXScorecardModal();
   const fromDashboard = isDashboardOverviewTest(test);
 
   const scopeSet = useMemo(
@@ -170,6 +174,15 @@ function AdminTestDetailModalContent({
   const totalAttempts = stats?.total_attempts ?? test.total_attempts;
   const reportQuery = resolveReportFiltersForOverview(test);
   const examLabel = ADMIN_EXAM_TYPE_META[reportQuery.examType].label;
+  const isElevateXReport = reportQuery.examType === 'elevatex';
+
+  const openElevateXReport = (row: TestReportRow) => {
+    void scorecardModal.open({
+      attemptId: row.attempt_id,
+      studentName: row.student_name,
+      rollNumber: row.roll_number || undefined,
+    });
+  };
 
   const targetDepartments =
     test.departments.length > 0 ? test.departments.join(', ') : 'All departments';
@@ -324,24 +337,70 @@ function AdminTestDetailModalContent({
                   <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Roll</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-gray-700">Score</th>
                   <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Status</th>
+                  {isElevateXReport ? (
+                    <th className="text-right py-2.5 px-3 font-semibold text-gray-700">Report</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.attempt_id} className="border-b border-gray-100 last:border-0">
+                {rows.map((row) => {
+                  const showReport =
+                    isElevateXReport &&
+                    isCompletedAttemptStatus(row.status, row.completed_at);
+                  return (
+                  <tr
+                    key={row.attempt_id}
+                    className={cn(
+                      'border-b border-gray-100 last:border-0',
+                      showReport && 'cursor-pointer hover:bg-gray-50',
+                    )}
+                    onClick={showReport ? () => openElevateXReport(row) : undefined}
+                  >
                     <td className="py-2.5 px-3 font-semibold text-[#1e3a5f]">
                       {row.rank != null ? `#${row.rank}` : '—'}
                     </td>
                     <td className="py-2.5 px-3 text-gray-900">{row.student_name}</td>
-                    <td className="py-2.5 px-3 font-mono text-xs text-gray-600">
-                      {row.roll_number || '—'}
+                    <td className="py-2.5 px-3 font-mono text-xs">
+                      {showReport && row.roll_number ? (
+                        <button
+                          type="button"
+                          className="text-[#1e3a5f] font-semibold underline-offset-2 hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openElevateXReport(row);
+                          }}
+                        >
+                          {row.roll_number}
+                        </button>
+                      ) : (
+                        <span className="text-gray-600">{row.roll_number || '—'}</span>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-right font-semibold text-[#1e3a5f]">
                       {formatScorePercentLabel(row.score)}
                     </td>
                     <td className="py-2.5 px-3 text-gray-600">{formatAttemptStatus(row.status)}</td>
+                    {isElevateXReport ? (
+                      <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        {showReport ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={scorecardModal.loading}
+                            onClick={() => openElevateXReport(row)}
+                          >
+                            Full report
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>
@@ -392,6 +451,15 @@ function AdminTestDetailModalContent({
           </Button>
         ) : null}
       </div>
+      <ElevateXScorecardReportModal
+        open={scorecardModal.isOpen}
+        onClose={scorecardModal.close}
+        studentName={scorecardModal.target?.studentName ?? ''}
+        rollNumber={scorecardModal.target?.rollNumber}
+        scorecard={scorecardModal.scorecard}
+        loading={scorecardModal.loading}
+        loadError={scorecardModal.loadError}
+      />
     </DialogContent>
   );
 }

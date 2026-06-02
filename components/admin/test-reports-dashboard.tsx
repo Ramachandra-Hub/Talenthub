@@ -12,8 +12,8 @@ import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import { fetchWithAuth } from '@/lib/fetch-with-auth';
 import { getTodayDateKeyInIST } from '@/lib/admin/report-date-filter';
-import { ElevateXScorecardView } from '@/components/placement/elevatex-scorecard-view';
-import { downloadElevateXScorecardPdf } from '@/lib/placement/elevatex-scorecard-pdf';
+import { ElevateXScorecardReportModal } from '@/components/admin/elevatex-scorecard-report-modal';
+import { useElevateXScorecardModal } from '@/hooks/use-elevatex-scorecard-modal';
 import {
   ADMIN_EXAM_TYPES,
   ADMIN_EXAM_TYPE_META,
@@ -36,12 +36,16 @@ import {
   isCompletedAttemptStatus,
   isInProgressStatus,
 } from '@/lib/attempt-status';
-import type { PlacementScorecard } from '@/lib/placement/types';
 import { formatScorePercentLabel, averageScorePercent, roundRatePercent, roundScorePercent } from '@/lib/format-score';
-import { AppModal, AppModalPanel } from '@/components/ui/app-modal';
 import { cn } from '@/lib/utils';
 
 type StatusFilter = 'all' | 'in_progress' | 'completed';
+
+function canOpenElevateXReport(row: TestReportsPayload['rows'][0]): boolean {
+  return (
+    row.exam_type === 'elevatex' && isCompletedAttemptStatus(row.status, row.completed_at)
+  );
+}
 
 export function TestReportsDashboard() {
   const router = useRouter();
@@ -63,12 +67,8 @@ export function TestReportsDashboard() {
   const [payload, setPayload] = useState<TestReportsPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scorecardLoading, setScorecardLoading] = useState(false);
-  const [scorecardModal, setScorecardModal] = useState<{
-    row: TestReportsPayload['rows'][0];
-    scorecard: PlacementScorecard;
-  } | null>(null);
   const [detailCard, setDetailCard] = useState<TestReportsCardKey | null>(null);
+  const scorecardModal = useElevateXScorecardModal();
 
   const load = useCallback(async (type: AdminExamType, testId: string, today: boolean) => {
     setLoading(true);
@@ -189,25 +189,12 @@ export function TestReportsDashboard() {
     );
   };
 
-  const openElevateXScorecard = async (row: TestReportsPayload['rows'][0]) => {
-    setScorecardLoading(true);
-    try {
-      const res = await fetchWithAuth(
-        `/api/admin/elevatex/scorecard/${encodeURIComponent(row.attempt_id)}`,
-        { cache: 'no-store' },
-      );
-      if (!res.ok) {
-        const json = (await res.json().catch(() => ({}))) as { error?: string };
-        alert(json.error ?? 'Scorecard not available for this attempt.');
-        return;
-      }
-      const json = (await res.json()) as { scorecard?: PlacementScorecard };
-      if (json.scorecard) {
-        setScorecardModal({ row, scorecard: json.scorecard });
-      }
-    } finally {
-      setScorecardLoading(false);
-    }
+  const openElevateXReport = (row: TestReportsPayload['rows'][0]) => {
+    void scorecardModal.open({
+      attemptId: row.attempt_id,
+      studentName: row.student_name,
+      rollNumber: row.roll_number || undefined,
+    });
   };
 
   const detailReport =
@@ -263,8 +250,9 @@ export function TestReportsDashboard() {
           <p className="text-sm text-emerald-950">
             <span className="font-semibold">Today only (IST):</span>{' '}
             {payload?.report_date_label ?? 'Loading…'} — ranked by score. Use{' '}
-            <span className="font-semibold">View scorecard</span> for section-wise marks (technical,
-            aptitude, psychometric, etc.).
+            Click a <span className="font-semibold">roll number</span> or{' '}
+            <span className="font-semibold">Full report</span> for the section-wise scorecard (PDF download in
+            popup).
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setStatusFilter('completed')}>
@@ -439,17 +427,42 @@ export function TestReportsDashboard() {
                       <th>Score</th>
                       <th>Status</th>
                       <th>Finished</th>
-                      <th aria-label="actions" />
+                      <th>Report</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row) => (
-                      <tr key={row.attempt_id}>
+                    {filteredRows.map((row) => {
+                      const showReport = canOpenElevateXReport(row);
+                      return (
+                      <tr
+                        key={row.attempt_id}
+                        className={cn(showReport && 'cursor-pointer hover:bg-slate-50/80')}
+                        onClick={
+                          showReport
+                            ? () => openElevateXReport(row)
+                            : undefined
+                        }
+                      >
                         <td>
                           <p className="font-medium text-[#0c2340]">{row.student_name}</p>
                           <p className="text-xs text-slate-500 truncate max-w-[12rem]">{row.email}</p>
                         </td>
-                        <td className="font-mono text-xs text-slate-700">{row.roll_number || '—'}</td>
+                        <td className="font-mono text-xs">
+                          {showReport && row.roll_number ? (
+                            <button
+                              type="button"
+                              className="text-[#1e3a5f] font-semibold underline-offset-2 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openElevateXReport(row);
+                              }}
+                            >
+                              {row.roll_number}
+                            </button>
+                          ) : (
+                            <span className="text-slate-700">{row.roll_number || '—'}</span>
+                          )}
+                        </td>
                         <td className="text-sm text-slate-700">{row.branch ?? '—'}</td>
                         <td className="text-sm text-slate-800 max-w-[10rem] truncate" title={row.test_name}>
                           {row.test_name}
@@ -489,16 +502,16 @@ export function TestReportsDashboard() {
                             '—'
                           )}
                         </td>
-                        <td>
-                          {row.exam_type === 'elevatex' &&
-                          isCompletedAttemptStatus(row.status, row.completed_at) ? (
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {showReport ? (
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={scorecardLoading}
-                              onClick={() => void openElevateXScorecard(row)}
+                              className="text-[#1e3a5f] border-[#1e3a5f]/30"
+                              disabled={scorecardModal.loading}
+                              onClick={() => openElevateXReport(row)}
                             >
-                              Scorecard
+                              Full report
                             </Button>
                           ) : row.exam_type === 'elevatex' &&
                             isInProgressStatus(row.status) ? (
@@ -510,7 +523,8 @@ export function TestReportsDashboard() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -523,40 +537,15 @@ export function TestReportsDashboard() {
         </>
       )}
 
-      {scorecardModal ? (
-        <AppModal open onClose={() => setScorecardModal(null)} ariaLabel="Close scorecard">
-          <AppModalPanel maxWidthClass="max-w-5xl">
-            <div className="shrink-0 border-b border-slate-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-bold text-[#0c2340]">
-                  ElevateX · {scorecardModal.row.student_name}
-                </h3>
-                <p className="text-sm text-slate-500 font-mono">{scorecardModal.row.roll_number}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="bg-[#1e3a5f] hover:bg-[#16304f]"
-                  onClick={() =>
-                    downloadElevateXScorecardPdf(
-                      scorecardModal.scorecard,
-                      `elevatex-${scorecardModal.row.roll_number || 'student'}.pdf`,
-                    )
-                  }
-                >
-                  Download PDF
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setScorecardModal(null)}>
-                  Close
-                </Button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 min-h-0">
-              <ElevateXScorecardView scorecard={scorecardModal.scorecard} compact />
-            </div>
-          </AppModalPanel>
-        </AppModal>
-      ) : null}
+      <ElevateXScorecardReportModal
+        open={scorecardModal.isOpen}
+        onClose={scorecardModal.close}
+        studentName={scorecardModal.target?.studentName ?? ''}
+        rollNumber={scorecardModal.target?.rollNumber}
+        scorecard={scorecardModal.scorecard}
+        loading={scorecardModal.loading}
+        loadError={scorecardModal.loadError}
+      />
     </>
   );
 }

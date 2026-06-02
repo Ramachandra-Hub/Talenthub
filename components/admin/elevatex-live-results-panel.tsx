@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { formatScorePercentLabel } from '@/lib/format-score';
 import { PLACEMENT_SECTIONS } from '@/lib/placement/config';
 import type { PlacementSectionId } from '@/lib/placement/types';
-import { ElevateXScorecardView } from '@/components/placement/elevatex-scorecard-view';
-import type { PlacementScorecard } from '@/lib/placement/types';
+import { ElevateXScorecardReportModal } from '@/components/admin/elevatex-scorecard-report-modal';
+import { useElevateXScorecardModal } from '@/hooks/use-elevatex-scorecard-modal';
 import { cn } from '@/lib/utils';
 
 type ResultRow = {
@@ -50,11 +50,7 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scorecard, setScorecard] = useState<{
-    row: ResultRow;
-    scorecard: PlacementScorecard;
-  } | null>(null);
-  const [scorecardLoading, setScorecardLoading] = useState(false);
+  const scorecardModal = useElevateXScorecardModal();
 
   const refresh = useCallback(async () => {
     try {
@@ -84,23 +80,12 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
     return () => clearInterval(t);
   }, [refresh]);
 
-  const openScorecard = async (row: ResultRow) => {
-    setScorecardLoading(true);
-    try {
-      const res = await fetch(`/api/admin/elevatex/scorecard/${encodeURIComponent(row.attempt_id)}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
-      if (!res.ok) {
-        const json = (await res.json().catch(() => ({}))) as { error?: string };
-        alert(json.error ?? 'Full report not available for this roll number.');
-        return;
-      }
-      const json = (await res.json()) as { scorecard?: PlacementScorecard };
-      if (json.scorecard) setScorecard({ row, scorecard: json.scorecard });
-    } finally {
-      setScorecardLoading(false);
-    }
+  const openReport = (row: ResultRow) => {
+    void scorecardModal.open({
+      attemptId: row.attempt_id,
+      studentName: row.student_name,
+      rollNumber: row.roll_number || undefined,
+    });
   };
 
   if (loading && !data) {
@@ -136,7 +121,8 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
             </h3>
             <p className="text-xs text-slate-600 mt-0.5">
               {data?.summary.in_progress_count ?? 0} writing now · {data?.summary.submitted_count ?? 0}{' '}
-              submitted · avg {formatScorePercentLabel(data?.summary.avg_score ?? 0)}
+              submitted · avg {formatScorePercentLabel(data?.summary.avg_score ?? 0)} · click roll or
+              report for full section PDF
             </p>
           </div>
           <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
@@ -194,9 +180,22 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr key={row.attempt_id} className="border-b border-slate-100 hover:bg-slate-50/80">
-                    <td className="py-2 px-3 font-mono font-semibold text-[#1e3a5f]">
-                      {row.roll_number || '—'}
+                  <tr
+                    key={row.attempt_id}
+                    className="border-b border-slate-100 hover:bg-slate-50/80 cursor-pointer"
+                    onClick={() => openReport(row)}
+                  >
+                    <td className="py-2 px-3 font-mono font-semibold">
+                      <button
+                        type="button"
+                        className="text-[#1e3a5f] underline-offset-2 hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openReport(row);
+                        }}
+                      >
+                        {row.roll_number || '—'}
+                      </button>
                     </td>
                     <td className="py-2 px-3 text-slate-800 max-w-[10rem] truncate" title={row.student_name}>
                       {row.student_name}
@@ -222,14 +221,14 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
                         </td>
                       );
                     })}
-                    <td className="py-2 px-3 text-right">
+                    <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <Button
                         type="button"
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         className="h-7 text-xs text-[#1e3a5f]"
-                        disabled={scorecardLoading}
-                        onClick={() => void openScorecard(row)}
+                        disabled={scorecardModal.loading}
+                        onClick={() => openReport(row)}
                       >
                         Full report
                       </Button>
@@ -242,22 +241,15 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
         </div>
       </div>
 
-      {scorecard ? (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50"
-          role="dialog"
-          aria-modal
-        >
-          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-4 sm:p-6 shadow-2xl">
-            <div className="flex justify-end mb-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setScorecard(null)}>
-                Close
-              </Button>
-            </div>
-            <ElevateXScorecardView scorecard={scorecard.scorecard} />
-          </div>
-        </div>
-      ) : null}
+      <ElevateXScorecardReportModal
+        open={scorecardModal.isOpen}
+        onClose={scorecardModal.close}
+        studentName={scorecardModal.target?.studentName ?? ''}
+        rollNumber={scorecardModal.target?.rollNumber}
+        scorecard={scorecardModal.scorecard}
+        loading={scorecardModal.loading}
+        loadError={scorecardModal.loadError}
+      />
     </>
   );
 }
