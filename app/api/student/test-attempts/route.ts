@@ -1,21 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
-import {
-  fallbackTestForAttempt,
-  normalizeAttemptRow,
-  type PersistAttemptInput,
-} from '@/lib/test-attempts';
+import { fallbackTestForAttempt, normalizeAttemptRow } from '@/lib/test-attempts';
 import {
   appendStudentDashboardStatPrisma,
   buildStatEntry as buildStatEntryPrisma,
   fetchStudentDashboardStatsPrisma,
 } from '@/lib/db/student-dashboard-stats-prisma';
 import {
+  AttemptConflictError,
+  AttemptDeadlineError,
   ensureStudentUserRowPrisma,
   fetchAttemptsForUserPrisma,
-  findCompletedAttemptForTestPrisma,
-  persistTestAttemptPrisma,
+  finalizeTestAttemptPrisma,
   resolveStudentProfilePrisma,
   linkProctorViolationsPrisma,
   syncStudentRollNumberPrisma,
@@ -25,11 +21,12 @@ import type { TestAttempt } from '@/lib/types';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const auth = await requireAuth(undefined, request);
+  const auth = await requireAuth(['student'], request);
   if ('response' in auth) return auth.response;
 
   const userId = auth.ctx.user.id;
@@ -41,7 +38,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireAuth(undefined, request);
+  const auth = await requireAuth(['student'], request);
   if ('response' in auth) return auth.response;
 
   let body: Record<string, unknown>;
@@ -72,29 +69,20 @@ export async function POST(request: Request) {
       ? (body.answers as Record<string, unknown>)
       : {};
 
-  const input: PersistAttemptInput = {
-    userId,
-    testId: String(body.testId ?? ''),
-    testName,
-    scorePercent,
-    rawNetScore: Number(body.rawNetScore) || 0,
-    answers: answersIn,
-    elapsedSec: Number(body.elapsedSec) || 0,
-    startedAtIso: typeof body.startedAtIso === 'string' ? body.startedAtIso : nowIso,
-    completedAtIso: typeof body.completedAtIso === 'string' ? body.completedAtIso : nowIso,
-    proctorSessionId:
-      typeof body.proctorSessionId === 'string' ? body.proctorSessionId : undefined,
-    proctorViolations: Number(body.proctorViolations) || 0,
-    proctorAutoSubmit: Boolean(body.proctorAutoSubmit),
-  };
-
   const testId = String(body.testId ?? '').trim();
+  const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
+  const proctorSessionId =
+    typeof body.proctorSessionId === 'string' ? body.proctorSessionId : undefined;
+  const proctorViolations = Number(body.proctorViolations) || 0;
+  const proctorAutoSubmit = Boolean(body.proctorAutoSubmit);
+  const rawNetScore = Number(body.rawNetScore) || 0;
 
   await ensureStudentUserRowPrisma({
     id: userId,
     email: auth.ctx.user.email,
   });
 
+  let accessRollNumber: string | undefined;
   if (testId) {
     const profile = await resolveStudentProfilePrisma(userId);
     const accessBranch =
@@ -105,7 +93,7 @@ export async function POST(request: Request) {
       typeof body.accessYear === 'string' && body.accessYear.trim()
         ? body.accessYear.trim()
         : (profile.academic_year ?? '');
-    const accessRollNumber =
+    accessRollNumber =
       typeof body.accessRollNumber === 'string' && body.accessRollNumber.trim()
         ? body.accessRollNumber.trim()
         : (profile.roll_number ??
@@ -126,45 +114,75 @@ export async function POST(request: Request) {
       await syncStudentRollNumberPrisma(userId, accessRollNumber);
     }
 
-    const prior = isElevateXTestId(testId)
-      ? await findCompletedElevateXAttempt({ userId, rollNumber: accessRollNumber })
-      : await findCompletedAttemptForTestPrisma(userId, testId);
-    if (prior) {
-      return NextResponse.json(
-        {
-          error: isElevateXTestId(testId)
-            ? 'You have already submitted ElevateX. Each roll number may attempt this exam only once.'
-            : 'You have already submitted this test and cannot take it again.',
-          attemptId: prior.id,
-          priorAttempt: prior,
-        },
-        { status: 409 },
-      );
+    if (isElevateXTestId(testId)) {
+      const prior = await findCompletedElevateXAttempt({ userId, rollNumber: accessRollNumber });
+      if (prior) {
+        return NextResponse.json(
+          {
+            error:
+              'You have already submitted ElevateX. Each roll number may attempt this exam only once.',
+            attemptId: prior.id,
+            priorAttempt: prior,
+          },
+          { status: 409 },
+        );
+      }
     }
   }
 
-  const statEntry = buildStatEntryPrisma({
-    id: `pending-${Date.now()}`,
-    userId,
-    testId: input.testId,
-    testName: input.testName ?? 'Practice test',
-    scorePercent,
-    elapsedSec: input.elapsedSec,
-    completedAtIso: input.completedAtIso,
-    totalQuestions: totalQuestions || undefined,
-    answers: Object.keys(answersIn).length > 0 ? answersIn : undefined,
-  });
+  let durationSec = 0;
+  if (testId) {
+    const dbTest = await prisma.test.findFirst({
+      where: { id: testId },
+      select: { duration: true, durationMinutes: true },
+    });
+    if (dbTest) {
+      const mins = Number(dbTest.duration ?? dbTest.durationMinutes ?? 0);
+      durationSec = Number.isFinite(mins) && mins > 0 ? mins * 60 : 0;
+    } else {
+      const fer = await prisma.facultyExamRequest.findFirst({
+        where: { publishedTestId: testId, status: 'approved' },
+        select: { durationMinutes: true },
+      });
+      const mins = Number(fer?.durationMinutes ?? 0);
+      durationSec = Number.isFinite(mins) && mins > 0 ? mins * 60 : 0;
+    }
+  }
 
   try {
-    const { id } = await persistTestAttemptPrisma(input);
-    statEntry.id = id;
+    const finalized = await finalizeTestAttemptPrisma({
+      userId,
+      testId,
+      testName,
+      scorePercent,
+      rawNetScore,
+      answers: answersIn,
+      submittedAtIso: nowIso,
+      attemptId,
+      durationSec,
+      proctorSessionId,
+      proctorViolations,
+      proctorAutoSubmit,
+    });
+    const id = finalized.id;
+    const statEntry = buildStatEntryPrisma({
+      id,
+      userId,
+      testId,
+      testName,
+      scorePercent,
+      elapsedSec: finalized.elapsedSec,
+      completedAtIso: nowIso,
+      totalQuestions: totalQuestions || undefined,
+      answers: Object.keys(answersIn).length > 0 ? answersIn : undefined,
+    });
 
-    if (input.proctorSessionId) {
+    if (proctorSessionId) {
       await linkProctorViolationsPrisma(
         userId,
         id,
-        input.testId || null,
-        input.proctorSessionId,
+        testId || null,
+        proctorSessionId,
       );
     }
 
@@ -175,40 +193,68 @@ export async function POST(request: Request) {
       ...normalizeAttemptRow({
         id,
         user_id: userId,
-        test_id: input.testId,
-        score: input.scorePercent,
-        percentage_score: input.scorePercent,
+        test_id: testId,
+        score: scorePercent,
+        percentage_score: scorePercent,
         status: 'completed',
-        created_at: input.completedAtIso,
-        completed_at: input.completedAtIso,
-        started_at: input.startedAtIso,
-        time_taken: input.elapsedSec,
-        test_title: input.testName,
+        created_at: nowIso,
+        completed_at: nowIso,
+        started_at: nowIso,
+        time_taken: finalized.elapsedSec,
+        test_title: testName,
       }),
       test: {
         ...fallbackTestForAttempt({
           id,
           user_id: userId,
-          test_id: input.testId,
-          started_at: input.startedAtIso,
-          completed_at: input.completedAtIso,
-          score: input.scorePercent,
+          test_id: testId,
+          started_at: nowIso,
+          completed_at: nowIso,
+          score: scorePercent,
           answers: null,
-          time_taken: input.elapsedSec,
+          time_taken: finalized.elapsedSec,
           status: 'completed',
-          created_at: input.completedAtIso,
+          created_at: nowIso,
         }),
-        name: input.testName ?? 'Practice test',
+        name: testName || 'Practice test',
       },
     };
 
     return NextResponse.json({ id, attempt, attempts });
   } catch (error) {
+    if (error instanceof AttemptConflictError) {
+      return NextResponse.json(
+        {
+          error: isElevateXTestId(testId)
+            ? 'You have already submitted ElevateX. Each roll number may attempt this exam only once.'
+            : 'You have already submitted this test and cannot take it again.',
+          attemptId: error.attemptId,
+        },
+        { status: 409 },
+      );
+    }
+    if (error instanceof AttemptDeadlineError) {
+      return NextResponse.json(
+        { error: 'Exam deadline reached. Submission is blocked by server timing rules.' },
+        { status: 409 },
+      );
+    }
     try {
-      await appendStudentDashboardStatPrisma(userId, statEntry);
+      const fallbackStatEntry = buildStatEntryPrisma({
+        id: `pending-${Date.now()}`,
+        userId,
+        testId,
+        testName,
+        scorePercent,
+        elapsedSec: Number(body.elapsedSec) || 0,
+        completedAtIso: nowIso,
+        totalQuestions: totalQuestions || undefined,
+        answers: Object.keys(answersIn).length > 0 ? answersIn : undefined,
+      });
+      await appendStudentDashboardStatPrisma(userId, fallbackStatEntry);
       const attempts = await fetchStudentDashboardStatsPrisma(userId);
       return NextResponse.json({
-        id: statEntry.id,
+        id: fallbackStatEntry.id,
         attempts,
         warning: 'Saved to dashboard stats; test_attempts row may be missing.',
       });

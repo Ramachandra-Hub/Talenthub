@@ -221,11 +221,21 @@ export async function loadAllAttemptsRollup(admin: DbServiceClient): Promise<{
   const merged: RollupAttempt[] = [];
   const seenIds = new Set<string>();
 
-  const { data: attemptRows } = await admin
-    .from('test_attempts')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(2000);
+  const attemptRows: AttemptRow[] = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data } = await admin
+      .from('test_attempts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+    const page = (data ?? []) as AttemptRow[];
+    if (!page.length) break;
+    attemptRows.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
 
   for (const row of attemptRows ?? []) {
     const attempt = attemptFromRow(row as AttemptRow, resolveTestName(row as AttemptRow, testsById, facultyByTestId));
@@ -238,7 +248,8 @@ export async function loadAllAttemptsRollup(admin: DbServiceClient): Promise<{
 
   const { data: statsRows, error: statsError } = await admin
     .from('student_dashboard_stats')
-    .select('user_id, attempts');
+    .select('id, user_id, attempts')
+    .order('id', { ascending: true });
 
   if (statsError) {
     const msg = String(statsError.message ?? '').toLowerCase();

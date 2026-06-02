@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
 import {
   ensureStudentUserRowPrisma,
@@ -16,7 +15,7 @@ import { rollNumberFromUser } from '@/lib/admin/roll-number';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-  const auth = await requireAuth(undefined, request);
+  const auth = await requireAuth(['student'], request);
   if ('response' in auth) return auth.response;
 
   let body: Record<string, unknown>;

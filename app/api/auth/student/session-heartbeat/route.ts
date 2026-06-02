@@ -17,7 +17,7 @@ export async function POST() {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const sessionId = `${user.id}:${Date.now()}`;
+  const sessionId = `${user.id}`;
   await touchStudentSessionPrisma(user.id, sessionId);
 
   return NextResponse.json({ ok: true });

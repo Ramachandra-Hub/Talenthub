@@ -77,7 +77,13 @@ export async function runStudentCredentialSignIn(
   }
 
   const sessionId = nextAuthSessionId(user.id);
-  await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
+  const lock = await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
+  if (!lock.lockActive) {
+    return {
+      error:
+        'This roll number already has an active login session. Please sign out from the other device first.',
+    };
+  }
 
   if (department || year) {
     await prisma.user.update({

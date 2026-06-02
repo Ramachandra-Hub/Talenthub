@@ -84,6 +84,7 @@ export default function TestInterface({
 
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
 
   const speedSecRaw = test.question_time_limit_sec;
   const speedActive =
@@ -223,7 +224,17 @@ export default function TestInterface({
   // Overall test countdown (minutes → seconds in context) — skip when section timers active
   useEffect(() => {
     if (sectionMode) return;
-    setTimeRemaining(test.duration * 60);
+    const key = `exam:start:${test.id}`;
+    const nowMs = Date.now();
+    let startMs = Number(window.sessionStorage.getItem(key) ?? '');
+    if (!Number.isFinite(startMs) || startMs <= 0) {
+      startMs = nowMs;
+      window.sessionStorage.setItem(key, String(startMs));
+    }
+    setStartedAtMs(startMs);
+    const durationSec = Math.max(0, Math.floor(test.duration * 60));
+    const elapsedSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+    setTimeRemaining(Math.max(0, durationSec - elapsedSec));
   }, [test.duration, setTimeRemaining, sectionMode]);
 
   // Auto-submit when the overall test timer reaches zero (once per attempt).
@@ -361,8 +372,14 @@ export default function TestInterface({
         return;
       }
 
-      const nowIso = new Date().toISOString();
-      const elapsedSec = test.duration * 60 - timeRemaining;
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
+      const elapsedSec =
+        startedAtMs && startedAtMs > 0
+          ? Math.max(0, Math.floor((now - startedAtMs) / 1000))
+          : test.duration * 60 - timeRemaining;
+      const startedAtIso =
+        startedAtMs && startedAtMs > 0 ? new Date(startedAtMs).toISOString() : nowIso;
       const localAttemptId = `local-${Date.now()}`;
       const dashboardTestName = dashboardDisplayNameForTest(test);
       const examKind = isDepartmentExamTest(test)
@@ -383,7 +400,7 @@ export default function TestInterface({
           id: localAttemptId,
           user_id: user.id,
           test_id: test.id,
-          started_at: nowIso,
+          started_at: startedAtIso,
           completed_at: nowIso,
           score: scorePercent,
           answers: answersPayload,
@@ -428,8 +445,9 @@ export default function TestInterface({
             scorePercent,
             rawNetScore,
             elapsedSec,
-            startedAtIso: nowIso,
+            startedAtIso,
             completedAtIso: nowIso,
+            attemptId: liveAttemptIdRef.current,
             examKind,
             totalQuestions: questions.length,
             answers: answersPayload,
@@ -503,6 +521,7 @@ export default function TestInterface({
       }
 
       clearExamDraft(test.id);
+      window.sessionStorage.removeItem(`exam:start:${test.id}`);
       setIsSubmitted(true);
       router.push(`/tests/result/${attemptId}`);
     } catch (error) {

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import {
   resolveStoredPercent,
@@ -138,20 +139,37 @@ export async function loadAdminStudentsPrisma(): Promise<RollupStudent[]> {
     (await prisma.adminUser.findMany({ select: { userId: true } })).map((a) => a.userId),
   );
 
-  const users = await prisma.user.findMany({
-    where: { adminUser: null },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      rollNumber: true,
-      branch: true,
-      academicYear: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 5000,
-  });
+  const users: Array<{
+    id: string;
+    email: string;
+    fullName: string | null;
+    rollNumber: string | null;
+    branch: string | null;
+    academicYear: string | null;
+    createdAt: Date;
+  }> = [];
+  let cursorId: string | undefined;
+  while (true) {
+    const page = await prisma.user.findMany({
+      where: { adminUser: null },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        rollNumber: true,
+        branch: true,
+        academicYear: true,
+        createdAt: true,
+      },
+      orderBy: { id: 'asc' },
+      take: 1000,
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+    });
+    if (!page.length) break;
+    users.push(...page);
+    cursorId = page[page.length - 1].id;
+    if (page.length < 1000) break;
+  }
 
   return users
     .filter((u) => !adminIds.has(u.id) && u.email && !u.email.includes('@admin.'))
@@ -175,7 +193,6 @@ export async function loadAllAttemptsRollupPrisma(): Promise<{
 
   const tests = await prisma.test.findMany({
     select: { id: true, title: true, name: true },
-    take: 2000,
   });
   for (const row of tests) {
     testsById.set(row.id, String(row.title ?? row.name ?? `Test ${row.id}`));
@@ -194,10 +211,33 @@ export async function loadAllAttemptsRollupPrisma(): Promise<{
   const merged: RollupAttempt[] = [];
   const seenIds = new Set<string>();
 
-  const attemptRows = await prisma.testAttempt.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 5000,
-  });
+  const attemptRows: Array<{
+    id: string;
+    userId: string;
+    testId: string | null;
+    testTitle: string | null;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    score: Prisma.Decimal | null;
+    percentageScore: Prisma.Decimal | null;
+    totalScore: Prisma.Decimal | null;
+    answers: Prisma.JsonValue | null;
+    timeTaken: number | null;
+    status: string;
+    createdAt: Date;
+  }> = [];
+  let attemptCursor: string | undefined;
+  while (true) {
+    const page = await prisma.testAttempt.findMany({
+      orderBy: { id: 'asc' },
+      take: 2000,
+      ...(attemptCursor ? { cursor: { id: attemptCursor }, skip: 1 } : {}),
+    });
+    if (!page.length) break;
+    attemptRows.push(...page);
+    attemptCursor = page[page.length - 1].id;
+    if (page.length < 2000) break;
+  }
 
   for (const row of attemptRows) {
     const ar = toAttemptRow(row);
@@ -209,11 +249,21 @@ export async function loadAllAttemptsRollupPrisma(): Promise<{
     }
   }
 
-  const statsRows = await prisma.studentDashboardStat.findMany({
-    where: { statKey: 'attempts_feed' },
-    select: { userId: true, payload: true },
-    take: 5000,
-  });
+  const statsRows: Array<{ userId: string; payload: Prisma.JsonValue | null }> = [];
+  let statsCursor: string | undefined;
+  while (true) {
+    const page = await prisma.studentDashboardStat.findMany({
+      where: { statKey: 'attempts_feed' },
+      select: { id: true, userId: true, payload: true },
+      orderBy: { id: 'asc' },
+      take: 2000,
+      ...(statsCursor ? { cursor: { id: statsCursor }, skip: 1 } : {}),
+    });
+    if (!page.length) break;
+    statsRows.push(...page.map((row) => ({ userId: row.userId, payload: row.payload })));
+    statsCursor = page[page.length - 1].id;
+    if (page.length < 2000) break;
+  }
 
   for (const row of statsRows) {
     const attempts = parseStatAttempts(row.payload);

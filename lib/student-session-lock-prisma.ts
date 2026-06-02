@@ -24,6 +24,19 @@ export async function claimStudentSessionPrisma(
   try {
     await purgeStaleSessions(now);
 
+    const conflicting = await prisma.studentActiveSession.findFirst({
+      where: {
+        user: {
+          OR: [{ rollNumber: roll }, { rollNumber: roll.replace(/\s+/g, '') }],
+        },
+        NOT: { sessionId },
+      },
+      select: { userId: true, sessionId: true },
+    });
+    if (conflicting) {
+      return { ok: true, lockActive: false };
+    }
+
     await prisma.studentActiveSession.upsert({
       where: { userId },
       create: {
@@ -45,10 +58,10 @@ export async function claimStudentSessionPrisma(
   }
 }
 
-export async function touchStudentSessionPrisma(userId: string, sessionId: string): Promise<void> {
-  if (!userId || !sessionId) return;
+export async function touchStudentSessionPrisma(userId: string, _sessionId?: string): Promise<void> {
+  if (!userId) return;
   await prisma.studentActiveSession.updateMany({
-    where: { userId, sessionId },
+    where: { userId },
     data: { lastHeartbeat: new Date() },
   });
 }
@@ -64,5 +77,5 @@ export async function releaseStudentSessionPrisma(
 }
 
 export function nextAuthSessionId(tokenSub: string, issuedAt?: number): string {
-  return `${tokenSub}:${issuedAt ?? Date.now()}`;
+  return `${tokenSub}`;
 }

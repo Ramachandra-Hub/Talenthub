@@ -15,6 +15,37 @@ import {
 import { roundScorePercent } from '@/lib/format-score';
 import { resolveTestIdForInsertPrisma } from '@/lib/db/resolve-test-id-for-insert';
 
+export class AttemptConflictError extends Error {
+  readonly attemptId: string;
+  constructor(attemptId: string) {
+    super('Attempt already submitted');
+    this.attemptId = attemptId;
+  }
+}
+
+export class AttemptDeadlineError extends Error {
+  constructor() {
+    super('Exam time is already over.');
+  }
+}
+
+type AttemptConstraintGlobal = {
+  attemptConstraintsEnsured?: boolean;
+};
+
+const attemptConstraintGlobal = globalThis as typeof globalThis & AttemptConstraintGlobal;
+
+export async function ensureAttemptConstraintsPrisma(): Promise<void> {
+  if (attemptConstraintGlobal.attemptConstraintsEnsured) return;
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_user_test_idx
+    ON test_attempts (user_id, test_id)
+    WHERE test_id IS NOT NULL
+      AND status IN ('completed', 'submitted')
+  `);
+  attemptConstraintGlobal.attemptConstraintsEnsured = true;
+}
+
 function toAttemptRow(row: {
   id: string;
   userId: string;
@@ -132,6 +163,7 @@ export async function fetchAttemptsForUserPrisma(userId: string): Promise<Dashbo
 }
 
 export async function persistTestAttemptPrisma(input: PersistAttemptInput): Promise<{ id: string }> {
+  await ensureAttemptConstraintsPrisma();
   const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const title = input.testName?.trim() || 'Practice test';
 
@@ -167,6 +199,144 @@ export async function persistTestAttemptPrisma(input: PersistAttemptInput): Prom
   return { id: row.id };
 }
 
+export async function finalizeTestAttemptPrisma(input: {
+  userId: string;
+  testId: string;
+  testName: string;
+  scorePercent: number;
+  rawNetScore: number;
+  answers: Record<string, unknown>;
+  submittedAtIso: string;
+  attemptId?: string;
+  durationSec?: number;
+  proctorSessionId?: string;
+  proctorViolations?: number;
+  proctorAutoSubmit?: boolean;
+}): Promise<{ id: string; elapsedSec: number }> {
+  await ensureAttemptConstraintsPrisma();
+  const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
+  const title = input.testName?.trim() || 'Practice test';
+  const now = new Date(input.submittedAtIso);
+  const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
+
+  const proctorMetadata =
+    input.proctorSessionId != null ||
+    input.proctorViolations != null ||
+    input.proctorAutoSubmit != null
+      ? {
+          proctor_session_id: input.proctorSessionId ?? null,
+          proctor_violations: input.proctorViolations ?? 0,
+          proctor_auto_submit: input.proctorAutoSubmit ?? false,
+        }
+      : undefined;
+
+  const lockKey = `${input.userId}:${resolvedTestId || input.testId}`;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+      const prior = await tx.testAttempt.findFirst({
+        where: {
+          userId: input.userId,
+          testId: resolvedTestId,
+          status: { in: ['completed', 'submitted'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (prior) {
+        throw new AttemptConflictError(prior.id);
+      }
+
+      let candidate =
+        input.attemptId?.trim()
+          ? await tx.testAttempt.findFirst({
+              where: {
+                id: input.attemptId.trim(),
+                userId: input.userId,
+                status: 'in_progress',
+              },
+            })
+          : null;
+      if (!candidate) {
+        candidate = await tx.testAttempt.findFirst({
+          where: {
+            userId: input.userId,
+            testId: resolvedTestId,
+            status: 'in_progress',
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      const startedAt = candidate?.startedAt ?? now;
+      const startedMs = startedAt.getTime();
+      const elapsedSec = Math.max(0, Math.floor((now.getTime() - startedMs) / 1000));
+      if (durationSec > 0 && elapsedSec > durationSec) {
+        throw new AttemptDeadlineError();
+      }
+
+      if (candidate) {
+        const updated = await tx.testAttempt.update({
+          where: { id: candidate.id },
+          data: {
+            testId: resolvedTestId,
+            testTitle: title,
+            startedAt,
+            completedAt: now,
+            status: 'completed',
+            score: input.scorePercent,
+            percentageScore: input.scorePercent,
+            totalScore: input.rawNetScore,
+            answers: input.answers as Prisma.InputJsonValue,
+            timeTaken: elapsedSec,
+            proctorMetadata: proctorMetadata as Prisma.InputJsonValue | undefined,
+          },
+          select: { id: true, timeTaken: true },
+        });
+        return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedSec };
+      }
+
+      const created = await tx.testAttempt.create({
+        data: {
+          userId: input.userId,
+          testId: resolvedTestId,
+          testTitle: title,
+          startedAt: now,
+          completedAt: now,
+          status: 'completed',
+          score: input.scorePercent,
+          percentageScore: input.scorePercent,
+          totalScore: input.rawNetScore,
+          answers: input.answers as Prisma.InputJsonValue,
+          timeTaken: elapsedSec,
+          proctorMetadata: proctorMetadata as Prisma.InputJsonValue | undefined,
+        },
+        select: { id: true, timeTaken: true },
+      });
+      return { id: created.id, elapsedSec: created.timeTaken ?? elapsedSec };
+    });
+  } catch (error) {
+    if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
+      throw error;
+    }
+    const msg = error instanceof Error ? error.message : '';
+    if (msg.includes('test_attempts_one_completed_per_user_test_idx')) {
+      const latest = await prisma.testAttempt.findFirst({
+        where: {
+          userId: input.userId,
+          testId: resolvedTestId,
+          status: { in: ['completed', 'submitted'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (latest) throw new AttemptConflictError(latest.id);
+    }
+    throw error;
+  }
+}
+
 export async function upsertExamProgressPrisma(input: {
   userId: string;
   testId: string;
@@ -179,6 +349,7 @@ export async function upsertExamProgressPrisma(input: {
   proctorSessionId?: string;
   proctorViolationCount?: number;
 }): Promise<{ id: string }> {
+  await ensureAttemptConstraintsPrisma();
   const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const now = new Date();
   const proctorMeta =
@@ -198,7 +369,6 @@ export async function upsertExamProgressPrisma(input: {
     status: 'in_progress' as const,
     answers: input.answers as Prisma.InputJsonValue,
     timeTaken: input.elapsedSec,
-    startedAt: input.startedAtIso ? new Date(input.startedAtIso) : now,
     completedAt: null,
     proctorMetadata: proctorMeta as Prisma.InputJsonValue | undefined,
   };
@@ -228,7 +398,10 @@ export async function upsertExamProgressPrisma(input: {
   }
 
   const created = await prisma.testAttempt.create({
-    data: patch,
+    data: {
+      ...patch,
+      startedAt: input.startedAtIso ? new Date(input.startedAtIso) : now,
+    },
     select: { id: true },
   });
   return { id: created.id };
