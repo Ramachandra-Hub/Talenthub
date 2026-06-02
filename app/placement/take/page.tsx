@@ -34,6 +34,7 @@ import {
 import { recordDashboardAttempt } from '@/lib/record-dashboard-attempt';
 import { fetchWithSession } from '@/lib/client-auth';
 import type {
+  PlacementCodingSubmission,
   PlacementMcqAnswerMap,
   PlacementSectionId,
   PlacementSession,
@@ -41,6 +42,7 @@ import type {
 } from '@/lib/placement/types';
 import SpeakingSection from '@/components/placement/speaking-section';
 import { PlacementMcqRunner } from '@/components/placement/placement-mcq-runner';
+import { PlacementCodingSection } from '@/components/placement/placement-coding-section';
 import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
@@ -514,6 +516,28 @@ export default function PlacementTakePage() {
     });
   };
 
+  const saveCodingSubmission = (submission: PlacementCodingSubmission) => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
+      const state = prev.sectionStates[cfg.id as PlacementSectionId];
+      if (!state || state.kind !== 'coding') return prev;
+      return {
+        ...prev,
+        sectionStates: {
+          ...prev.sectionStates,
+          [cfg.id]: {
+            ...state,
+            submissions: {
+              ...state.submissions,
+              [submission.problemId]: submission,
+            },
+          },
+        },
+      };
+    });
+  };
+
   const overallProgress = useMemo(() => {
     if (!session) return 0;
     let answered = 0;
@@ -523,6 +547,9 @@ export default function PlacementTakePage() {
       if (cfg.kind === 'mcq' && state?.kind === 'mcq') {
         total += state.questions.length;
         answered += Object.values(state.answers).filter(Boolean).length;
+      } else if (cfg.kind === 'coding' && state?.kind === 'coding') {
+        total += state.problems.length;
+        answered += Object.keys(state.submissions).length;
       } else if (cfg.kind === 'speaking' && state?.kind === 'speaking') {
         total += SPEAKING_TASKS.length;
         answered += state.responses.length;
@@ -651,6 +678,8 @@ export default function PlacementTakePage() {
             const counter =
               state?.kind === 'mcq'
                 ? `${Object.values(state.answers).filter(Boolean).length}/${state.questions.length}`
+                : state?.kind === 'coding'
+                  ? `${Object.keys(state.submissions).length}/${state.problems.length}`
                 : state?.kind === 'speaking'
                   ? `${state.responses.length}/${SPEAKING_TASKS.length}`
                   : '';
@@ -712,6 +741,12 @@ export default function PlacementTakePage() {
               questions={sectionState.questions}
               answers={sectionState.answers}
               onAnswerChange={setMcqAnswer}
+            />
+          ) : sectionState?.kind === 'coding' ? (
+            <PlacementCodingSection
+              problems={sectionState.problems}
+              submissions={sectionState.submissions}
+              onSubmissionChange={saveCodingSubmission}
             />
           ) : sectionState?.kind === 'speaking' ? (
             <SpeakingSection

@@ -7,36 +7,55 @@ import type {
   PlacementSession,
 } from '@/lib/placement/types';
 
-type McqSectionId = Exclude<PlacementSectionId, 'speaking'>;
+type McqSectionId = Exclude<PlacementSectionId, 'speaking' | 'technical'>;
 
-/** Fill missing/empty MCQ pools (e.g. resumed sessions or older drafts). */
+/** Fill missing/empty section pools (e.g. resumed sessions or older drafts). */
 export function repairPlacementSession(session: PlacementSession): PlacementSession {
   const banks = buildPlacementQuestions(session.candidate.seed, session.candidate.departmentId);
   const sectionStates = { ...session.sectionStates };
   let changed = false;
 
   for (const cfg of PLACEMENT_SECTIONS) {
-    if (cfg.kind !== 'mcq') continue;
-    const sectionId = cfg.id as McqSectionId;
-    const expected = getPlacementSection(sectionId).questionCount ?? 0;
-    const state = sectionStates[sectionId];
-    const needsRepair =
-      !state ||
-      state.kind !== 'mcq' ||
-      !Array.isArray(state.questions) ||
-      state.questions.length < Math.min(expected, 1);
+    if (cfg.kind === 'mcq') {
+      const sectionId = cfg.id as McqSectionId;
+      const expected = getPlacementSection(sectionId).questionCount ?? 0;
+      const state = sectionStates[sectionId];
+      const needsRepair =
+        !state ||
+        state.kind !== 'mcq' ||
+        !Array.isArray(state.questions) ||
+        state.questions.length < Math.min(expected, 1);
 
-    if (!needsRepair) continue;
+      if (!needsRepair) continue;
 
-    const existingAnswers = state?.kind === 'mcq' ? state.answers : {};
-    const completed = state?.kind === 'mcq' ? state.completed : false;
-    sectionStates[sectionId] = {
-      kind: 'mcq',
-      questions: banks[sectionId] ?? [],
-      answers: existingAnswers,
-      completed,
-    };
-    changed = true;
+      const existingAnswers = state?.kind === 'mcq' ? state.answers : {};
+      const completed = state?.kind === 'mcq' ? state.completed : false;
+      sectionStates[sectionId] = {
+        kind: 'mcq',
+        questions: banks[sectionId] ?? [],
+        answers: existingAnswers,
+        completed,
+      };
+      changed = true;
+      continue;
+    }
+
+    if (cfg.id === 'technical' && cfg.kind === 'coding') {
+      const state = sectionStates.technical;
+      const needsRepair =
+        !state ||
+        state.kind !== 'coding' ||
+        !Array.isArray(state.problems) ||
+        state.problems.length < 1;
+      if (!needsRepair) continue;
+      sectionStates.technical = {
+        kind: 'coding',
+        problems: banks.technical,
+        submissions: state?.kind === 'coding' ? state.submissions : {},
+        completed: state?.kind === 'coding' ? state.completed : false,
+      };
+      changed = true;
+    }
   }
 
   if (!sectionStates.speaking || sectionStates.speaking.kind !== 'speaking') {
@@ -111,11 +130,18 @@ export function buildPlacementSession(candidate: PlacementCandidate): PlacementS
 
   for (const cfg of PLACEMENT_SECTIONS) {
     if (cfg.kind === 'mcq') {
-      const questions = banks[cfg.id as Exclude<PlacementSectionId, 'speaking'>] ?? [];
+      const questions = banks[cfg.id as McqSectionId] ?? [];
       sectionStates[cfg.id] = {
         kind: 'mcq',
         questions,
         answers: {},
+        completed: false,
+      };
+    } else if (cfg.kind === 'coding' && cfg.id === 'technical') {
+      sectionStates[cfg.id] = {
+        kind: 'coding',
+        problems: banks.technical,
+        submissions: {},
         completed: false,
       };
     } else {

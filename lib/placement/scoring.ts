@@ -4,6 +4,7 @@ import type { Question } from '@/lib/types';
 import { PLACEMENT_SECTIONS, SPEAKING_TASKS } from '@/lib/placement/config';
 import type {
   PlacementCandidate,
+  PlacementCodingSubmission,
   PlacementMcqAnswerMap,
   PlacementScorecard,
   PlacementSectionId,
@@ -104,6 +105,32 @@ export function scoreSpeakingSection(
   };
 }
 
+export function scoreCodingSection(
+  submissions: Record<string, PlacementCodingSubmission>,
+  marks: number,
+): {
+  earned: number;
+  percent: number;
+  solved: number;
+  totalProblems: number;
+} {
+  const rows = Object.values(submissions);
+  if (!rows.length) return { earned: 0, percent: 0, solved: 0, totalProblems: 0 };
+  let passed = 0;
+  let total = 0;
+  let solved = 0;
+  for (const row of rows) {
+    const rowTotal = Math.max(0, row.totalCases);
+    const rowPassed = Math.max(0, Math.min(row.passedCases, rowTotal));
+    passed += rowPassed;
+    total += rowTotal;
+    if (rowTotal > 0 && rowPassed === rowTotal) solved += 1;
+  }
+  const earned = total > 0 ? roundTo((passed / total) * marks, 2) : 0;
+  const percent = marks > 0 ? roundTo((earned / marks) * 100, 2) : 0;
+  return { earned, percent, solved, totalProblems: rows.length };
+}
+
 function readinessLabel(percent: number): PlacementScorecard['placementReadiness'] {
   if (percent >= 80) return 'Excellent';
   if (percent >= 65) return 'Strong';
@@ -188,6 +215,20 @@ export function computePlacementScorecard(
         total: state.questions.length,
       };
       sections.push(row);
+      if (cfg.id === 'technical') technicalRating = res.percent;
+    } else if (cfg.kind === 'coding' && state?.kind === 'coding') {
+      const res = scoreCodingSection(state.submissions, cfg.marks);
+      earnedMarks += res.earned;
+      sections.push({
+        sectionId: cfg.id,
+        name: cfg.name,
+        marks: cfg.marks,
+        earned: res.earned,
+        percent: res.percent,
+        correct: res.solved,
+        wrong: Math.max(0, res.totalProblems - res.solved),
+        total: res.totalProblems,
+      });
       if (cfg.id === 'technical') technicalRating = res.percent;
     } else if (cfg.kind === 'speaking' && state?.kind === 'speaking') {
       const res = scoreSpeakingSection(state.responses, cfg.marks);

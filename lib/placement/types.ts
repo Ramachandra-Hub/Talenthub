@@ -1,4 +1,6 @@
 import type { Question } from '@/lib/types';
+import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
+import type { CodingLanguageId } from '@/lib/coding/languages';
 
 export type PlacementSectionId =
   | 'technical'
@@ -8,7 +10,7 @@ export type PlacementSectionId =
   | 'logic'
   | 'intelligence';
 
-export type PlacementSectionKind = 'mcq' | 'speaking';
+export type PlacementSectionKind = 'mcq' | 'speaking' | 'coding';
 
 export type PlacementSectionConfig = {
   id: PlacementSectionId;
@@ -85,9 +87,24 @@ export type PlacementSpeakingResponse = {
   contentMatch: number;
 };
 
+export type PlacementCodingSubmission = {
+  problemId: string;
+  language: CodingLanguageId;
+  sourceCode: string;
+  passedCases: number;
+  totalCases: number;
+  lastRunAt: string;
+};
+
 export type PlacementSectionState =
   | { kind: 'mcq'; questions: Question[]; answers: PlacementMcqAnswerMap; completed: boolean }
-  | { kind: 'speaking'; responses: PlacementSpeakingResponse[]; completed: boolean };
+  | { kind: 'speaking'; responses: PlacementSpeakingResponse[]; completed: boolean }
+  | {
+      kind: 'coding';
+      problems: ProgrammingProblem[];
+      submissions: Record<string, PlacementCodingSubmission>;
+      completed: boolean;
+    };
 
 export type PlacementSession = {
   version: 1;

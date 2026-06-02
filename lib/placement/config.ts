@@ -21,13 +21,11 @@ export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
     name: 'Technical Assessment',
     short: 'Technical',
     description:
-      'Department-aligned MCQs covering subject fundamentals, scenarios, and real-world applications.',
+      'Coding-only section with 3 easy practical problems. Write and run code in the compiler.',
     icon: '🛠️',
-    kind: 'mcq',
+    kind: 'coding',
     marks: 20,
     durationSec: 20 * 60,
-    questionCount: 20,
-    negativeMarking: 0.25,
   },
   {
     id: 'speaking',
