@@ -107,6 +107,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const scheduleId = searchParams.get('scheduleId')?.trim() ?? '';
 
+  const { reconcileElevateXStaleInProgressPrisma } = await import(
+    '@/lib/db/test-attempts-prisma'
+  );
+  await reconcileElevateXStaleInProgressPrisma().catch(() => undefined);
+
   const [liveSchedules, endedSchedules] = await Promise.all([
     listLiveExamSchedulesPrisma(),
     listRecentlyEndedExamSchedulesPrisma(),

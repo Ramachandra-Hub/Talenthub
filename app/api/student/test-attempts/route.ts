@@ -12,6 +12,7 @@ import {
   ensureStudentUserRowPrisma,
   fetchAttemptsForUserPrisma,
   finalizeTestAttemptPrisma,
+  reconcileElevateXStaleInProgressPrisma,
   resolveStudentProfilePrisma,
   linkProctorViolationsPrisma,
   syncStudentRollNumberPrisma,
@@ -197,6 +198,9 @@ export async function POST(request: Request) {
     }
 
     await appendStudentDashboardStatPrisma(userId, statEntry);
+    if (isElevateXTestId(testId)) {
+      await reconcileElevateXStaleInProgressPrisma();
+    }
     await releaseStudentSessionPrisma(userId);
     const attempts = await fetchStudentDashboardStatsPrisma(userId);
     const saved = attempts.find((row) => String(row.id) === String(id));

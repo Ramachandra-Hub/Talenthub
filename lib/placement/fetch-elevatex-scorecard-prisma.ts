@@ -42,6 +42,26 @@ export async function fetchElevateXScorecardForAttemptPrisma(
       if (scorecard) {
         return { scorecard, attemptId: row.id, userId: row.userId };
       }
+      const { findCompletedElevateXAttemptForUser } = await import(
+        '@/lib/elevatex/completed-attempt'
+      );
+      const fallback = await findCompletedElevateXAttemptForUser(row.userId);
+      if (fallback) {
+        const completedRow = await prisma.testAttempt.findUnique({
+          where: { id: fallback.id },
+          select: { id: true, userId: true, answers: true },
+        });
+        const fromCompleted = completedRow
+          ? parseElevateXScorecardFromAnswers(completedRow.answers)
+          : null;
+        if (fromCompleted) {
+          return {
+            scorecard: fromCompleted,
+            attemptId: completedRow!.id,
+            userId: completedRow!.userId,
+          };
+        }
+      }
     }
   }
 

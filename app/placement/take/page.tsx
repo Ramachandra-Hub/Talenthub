@@ -307,6 +307,8 @@ export default function PlacementTakePage() {
       submitGuardRef.current = true;
       setSubmitting(true);
       setSubmitError(null);
+      sessionRef.current = { ...session, submitted: true };
+      setSession((prev) => (prev ? { ...prev, submitted: true } : prev));
 
       try {
         const scorecard = computePlacementScorecard(session);
@@ -389,6 +391,12 @@ export default function PlacementTakePage() {
       } catch (err) {
         submitGuardRef.current = false;
         setSubmitting(false);
+        setSession((prev) => {
+          if (!prev) return prev;
+          const restored = { ...prev, submitted: false };
+          sessionRef.current = restored;
+          return restored;
+        });
         setSubmitError(
           err instanceof Error ? err.message : 'Submit failed. Please try again.',
         );

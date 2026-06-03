@@ -15,6 +15,8 @@ import {
 import { roundScorePercent } from '@/lib/format-score';
 import { resolveTestIdForInsertPrisma } from '@/lib/db/resolve-test-id-for-insert';
 import { ELEVATEX_EXAM_NAME, isElevateXTestId } from '@/lib/elevatex';
+import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
+import { isCompletedAttemptStatus } from '@/lib/attempt-status';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 
 function elevateXTitleWhere(): PrismaTypes.TestAttemptWhereInput {
@@ -38,6 +40,55 @@ export class AttemptDeadlineError extends Error {
   constructor() {
     super('Exam time is already over.');
   }
+}
+
+/** Close stray autosave rows after a student has submitted ElevateX. */
+export async function reconcileElevateXStaleInProgressPrisma(): Promise<number> {
+  const completed = await prisma.testAttempt.findMany({
+    where: {
+      ...elevateXTitleWhere(),
+      status: { in: ['completed', 'submitted'] },
+      completedAt: { not: null },
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+    take: 3000,
+  });
+  const userIds = completed.map((r) => r.userId);
+  if (!userIds.length) return 0;
+
+  const result = await prisma.testAttempt.updateMany({
+    where: {
+      userId: { in: userIds },
+      status: { in: ['in_progress', 'started', 'active'] },
+      ...elevateXTitleWhere(),
+    },
+    data: {
+      status: 'abandoned',
+      completedAt: new Date(),
+    },
+  });
+  return result.count;
+}
+
+async function abandonOtherElevateXInProgress(
+  tx: PrismaTypes.TransactionClient,
+  userId: string,
+  keepAttemptId: string,
+  completedAt: Date,
+): Promise<void> {
+  await tx.testAttempt.updateMany({
+    where: {
+      userId,
+      id: { not: keepAttemptId },
+      status: { in: ['in_progress', 'started', 'active'] },
+      ...elevateXTitleWhere(),
+    },
+    data: {
+      status: 'abandoned',
+      completedAt,
+    },
+  });
 }
 
 type AttemptConstraintGlobal = {
@@ -273,10 +324,15 @@ export async function finalizeTestAttemptPrisma(input: {
               where: {
                 id: input.attemptId.trim(),
                 userId: input.userId,
-                status: 'in_progress',
               },
             })
           : null;
+      if (
+        candidate &&
+        isCompletedAttemptStatus(candidate.status, candidate.completedAt?.toISOString() ?? null)
+      ) {
+        throw new AttemptConflictError(candidate.id);
+      }
       if (!candidate) {
         const openWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
           ? {
@@ -320,6 +376,9 @@ export async function finalizeTestAttemptPrisma(input: {
           },
           select: { id: true, timeTaken: true },
         });
+        if (isElevateXTestId(input.testId)) {
+          await abandonOtherElevateXInProgress(tx, input.userId, updated.id, now);
+        }
         return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedSec };
       }
 
@@ -340,6 +399,9 @@ export async function finalizeTestAttemptPrisma(input: {
         },
         select: { id: true, timeTaken: true },
       });
+      if (isElevateXTestId(input.testId)) {
+        await abandonOtherElevateXInProgress(tx, input.userId, created.id, now);
+      }
       return { id: created.id, elapsedSec: created.timeTaken ?? elapsedSec };
     });
   } catch (error) {
@@ -376,6 +438,28 @@ export async function upsertExamProgressPrisma(input: {
   proctorViolationCount?: number;
 }): Promise<{ id: string }> {
   await ensureAttemptConstraintsPrisma();
+
+  if (isElevateXTestId(input.testId)) {
+    const done = await findCompletedElevateXAttemptForUser(input.userId);
+    if (done) return { id: done.id };
+  } else {
+    const prior = await findCompletedAttemptForTestPrisma(input.userId, input.testId);
+    if (prior) return { id: prior.id };
+  }
+
+  if (input.attemptId?.trim()) {
+    const row = await prisma.testAttempt.findFirst({
+      where: { id: input.attemptId.trim(), userId: input.userId },
+      select: { id: true, status: true, completedAt: true },
+    });
+    if (
+      row &&
+      isCompletedAttemptStatus(row.status, row.completedAt?.toISOString() ?? null)
+    ) {
+      return { id: row.id };
+    }
+  }
+
   const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const now = new Date();
   const proctorMeta =
@@ -407,14 +491,26 @@ export async function upsertExamProgressPrisma(input: {
     if (updated.count > 0) return { id: input.attemptId };
   }
 
+  const openWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
+    ? {
+        userId: input.userId,
+        status: { in: ['in_progress', 'started', 'active'] },
+        ...elevateXTitleWhere(),
+      }
+    : {
+        userId: input.userId,
+        status: { in: ['in_progress', 'started', 'active'] },
+        testId: resolvedTestId,
+      };
+
   const open = await prisma.testAttempt.findMany({
-    where: { userId: input.userId, status: 'in_progress' },
+    where: openWhere,
     orderBy: { createdAt: 'desc' },
-    take: 20,
+    take: 5,
     select: { id: true, testId: true },
   });
 
-  const existing = open.find((row) => testIdsMatch(row.testId, input.testId));
+  const existing = open[0];
   if (existing) {
     await prisma.testAttempt.update({
       where: { id: existing.id },
