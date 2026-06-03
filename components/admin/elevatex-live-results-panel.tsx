@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatScorePercentLabel } from '@/lib/format-score';
+import { fetchWithAuth } from '@/lib/fetch-with-auth';
 import { PLACEMENT_SECTIONS } from '@/lib/placement/config';
 import type { PlacementSectionId } from '@/lib/placement/types';
 import { ElevateXScorecardReportModal } from '@/components/admin/elevatex-scorecard-report-modal';
@@ -44,38 +45,103 @@ type Payload = {
   refreshed_at?: string;
 };
 
+type CloseExamResponse = {
+  ok?: boolean;
+  error?: string;
+  attempts_closed?: number;
+  modules_ended?: number;
+  schedules_ended?: number;
+  submitted_count?: number;
+  with_scorecard?: number;
+  exam_window_open?: boolean;
+  refreshed_at?: string;
+};
+
 const POLL_MS = 3000;
 
 export function ElevateXLiveResultsPanel({ className }: { className?: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const refreshGen = useRef(0);
+  const dataRef = useRef<Payload | null>(null);
+  const busyRef = useRef(false);
+  dataRef.current = data;
   const scorecardModal = useElevateXScorecardModal();
 
   const refresh = useCallback(async () => {
+    const gen = ++refreshGen.current;
+    setBusy(true);
+    busyRef.current = true;
     try {
-      const res = await fetch('/api/admin/elevatex/results', {
-        credentials: 'include',
-        cache: 'no-store',
-      });
+      const res = await fetchWithAuth('/api/admin/elevatex/results', { cache: 'no-store' });
+      if (gen !== refreshGen.current) return;
+
       if (!res.ok) {
-        setError('Could not load ElevateX submissions');
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        const msg = json.error ?? `Could not load ElevateX submissions (${res.status})`;
+        if (!dataRef.current) setError(msg);
+        else setActionMessage(msg);
         return;
       }
+
       const json = (await res.json()) as Payload;
+      if (gen !== refreshGen.current) return;
       setData(json);
       setError(null);
+      setActionMessage(null);
     } catch {
-      setError('Could not load ElevateX submissions');
+      if (gen !== refreshGen.current) return;
+      const msg = 'Could not load ElevateX submissions. Check your connection and try again.';
+      if (!dataRef.current) setError(msg);
+      else setActionMessage(msg);
     } finally {
-      setLoading(false);
+      if (gen === refreshGen.current) {
+        setLoading(false);
+        setBusy(false);
+        busyRef.current = false;
+      }
     }
   }, []);
+
+  const closeExamAndRefresh = useCallback(async () => {
+    setBusy(true);
+    busyRef.current = true;
+    setActionMessage(null);
+    try {
+      const res = await fetchWithAuth('/api/admin/elevatex/close-exam', {
+        method: 'POST',
+        cache: 'no-store',
+      });
+      const json = (await res.json().catch(() => ({}))) as CloseExamResponse;
+      if (!res.ok || !json.ok) {
+        setActionMessage(json.error ?? `Close exam failed (${res.status}). Sign in as admin and try again.`);
+        return;
+      }
+      const parts: string[] = [];
+      if ((json.modules_ended ?? 0) + (json.schedules_ended ?? 0) > 0) {
+        parts.push('exam window closed');
+      }
+      if ((json.attempts_closed ?? 0) > 0) {
+        parts.push(`${json.attempts_closed} attempt(s) finalized`);
+      }
+      parts.push(
+        `${json.submitted_count ?? 0} submitted · ${json.with_scorecard ?? 0} with full report`,
+      );
+      setActionMessage(parts.join(' · '));
+    } catch {
+      setActionMessage('Close exam request failed. Check network and try again.');
+    } finally {
+      await refresh();
+    }
+  }, [refresh]);
 
   useEffect(() => {
     void refresh();
     const t = setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh();
+      if (document.visibilityState === 'visible' && !busyRef.current) void refresh();
     }, POLL_MS);
     return () => clearInterval(t);
   }, [refresh]);
@@ -96,10 +162,24 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className={cn('rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800', className)}>
-        {error}
+        <p>{error}</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-3"
+          disabled={busy}
+          onClick={() => {
+            setLoading(true);
+            setError(null);
+            void refresh();
+          }}
+        >
+          {busy ? 'Retrying…' : 'Retry'}
+        </Button>
       </div>
     );
   }
@@ -123,29 +203,43 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
               {data?.summary.in_progress_count ?? 0} writing now · {data?.summary.submitted_count ?? 0}{' '}
               submitted · avg {formatScorePercentLabel(data?.summary.avg_score ?? 0)} · auto-refresh{' '}
               {POLL_MS / 1000}s · click roll or report for full section PDF
+              {data?.refreshed_at ? (
+                <span className="block text-[10px] text-slate-500 mt-0.5 tabular-nums">
+                  Last updated {new Date(data.refreshed_at).toLocaleTimeString()}
+                </span>
+              ) : null}
             </p>
+            {actionMessage ? (
+              <p
+                className={cn(
+                  'text-xs mt-1',
+                  actionMessage.includes('failed') || actionMessage.includes('Could not')
+                    ? 'text-red-700'
+                    : 'text-emerald-800',
+                )}
+              >
+                {actionMessage}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={async () => {
-                try {
-                  await fetch('/api/admin/elevatex/close-exam', {
-                    method: 'POST',
-                    credentials: 'include',
-                  });
-                } catch {
-                  /* ignore */
-                }
-                void refresh();
-              }}
+              disabled={busy}
+              onClick={() => void closeExamAndRefresh()}
             >
-              Close exam &amp; refresh reports
+              {busy ? 'Working…' : 'Close exam & refresh reports'}
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
-              Refresh
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void refresh()}
+            >
+              {busy ? 'Refreshing…' : 'Refresh'}
             </Button>
           </div>
         </div>

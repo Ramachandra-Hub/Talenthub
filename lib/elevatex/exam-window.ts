@@ -124,11 +124,41 @@ export async function isElevateXExamWindowOpenPrisma(now = Date.now()): Promise<
   return false;
 }
 
+/** Admin: mark ElevateX module + exam schedules ended so the window closes and reports can finalize. */
+export async function closeElevateXExamWindowPrisma(now = new Date()): Promise<{
+  modulesEnded: number;
+  schedulesEnded: number;
+}> {
+  const [modulesEnded, schedulesEnded] = await Promise.all([
+    prisma.evaloraModuleSchedule.updateMany({
+      where: {
+        moduleKey: ELEVATEX_MODULE_KEY,
+        status: { in: ['live', 'scheduled'] },
+      },
+      data: { status: 'ended', endsAt: now, updatedAt: now },
+    }),
+    prisma.examSchedule.updateMany({
+      where: {
+        status: { in: ['live', 'scheduled'] },
+        OR: [
+          { title: { contains: 'ElevateX', mode: 'insensitive' } },
+          { title: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+        ],
+      },
+      data: { status: 'ended', endsAt: now, updatedAt: now },
+    }),
+  ]);
+
+  return { modulesEnded: modulesEnded.count, schedulesEnded: schedulesEnded.count };
+}
+
 /**
  * When the exam window has ended, close open ElevateX autosave rows so admin sees completed reports.
  */
-export async function finalizeOpenElevateXAttemptsAfterExamPrisma(): Promise<number> {
-  if (await isElevateXExamWindowOpenPrisma()) return 0;
+export async function finalizeOpenElevateXAttemptsAfterExamPrisma(options?: {
+  force?: boolean;
+}): Promise<number> {
+  if (!options?.force && (await isElevateXExamWindowOpenPrisma())) return 0;
 
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const openRows = await prisma.testAttempt.findMany({
