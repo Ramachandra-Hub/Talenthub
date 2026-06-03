@@ -7,6 +7,7 @@ import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ensurePrismaEnv } from './ensure-prisma-env.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const isVercel = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
@@ -83,6 +84,7 @@ function isValidPostgresUrl(url) {
 console.log('═══ PrepIndia Vercel + AWS RDS build ═══\n');
 if (isVercel) console.log('Environment: Vercel\n');
 
+ensurePrismaEnv();
 normalizeDatabaseEnvUrls();
 
 if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
@@ -101,8 +103,7 @@ if (!dbUrl) {
   console.log('✓ DATABASE_URL is set\n');
 }
 
-// postinstall already runs generate; repeat here so Vercel build is self-contained.
-run('prisma', ['generate'], { optional: isVercel, label: 'prisma generate (optional if postinstall ran)' });
+run('prisma', ['generate'], { label: 'prisma generate' });
 
 const pushAtBuild =
   process.env.VERCEL_DB_PUSH_AT_BUILD === 'true' ||

@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/vercel-build.mjs",
     "vercel-build": "node scripts/vercel-build.mjs",
     "verify:vercel-aws-env": "node scripts/verify-vercel-aws-env.mjs",
     "verify:rds": "node scripts/verify-rds-connectivity.mjs",
@@ -14,7 +17,7 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit && next build",
-    "postinstall": "prisma generate",
+    "postinstall": "node scripts/postinstall.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
