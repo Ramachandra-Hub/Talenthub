@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/auth';
 import type { AppRole, ResolvedUser } from '@/lib/roles';
 import { prisma } from '@/lib/prisma';
 import { resolveAppUserById, roleAllows } from '@/lib/roles-prisma';
 import { verifyPassword } from '@/lib/password';
+import { getSafeSession } from '@/lib/auth/safe-session';
+import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
+import { getDatabaseSetupErrors } from '@/lib/postgres-url';
 
 export type PrismaAuthContext = {
   user: { id: string; email?: string };
@@ -11,7 +13,6 @@ export type PrismaAuthContext = {
 };
 
 import { useAwsStack } from '@/lib/aws/stack';
-import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
 
 export function usePrismaAuth(): boolean {
   return useAwsStack();
@@ -44,29 +45,63 @@ export async function requirePrismaAuth(
   allowedRoles?: AppRole[],
   request?: Request,
 ): Promise<{ ctx: PrismaAuthContext } | { response: NextResponse }> {
-  await autoEnsureRdsSchema();
+  const configErrors = getDatabaseSetupErrors();
+  if (configErrors.length) {
+    return {
+      response: NextResponse.json(
+        { error: 'Server misconfigured', hint: configErrors.join(' ') },
+        { status: 503 },
+      ),
+    };
+  }
 
   const bearer = request?.headers.get('Authorization');
   const token = bearer?.startsWith('Bearer ') ? bearer.slice(7).trim() : null;
 
   if (token) {
-    const ctx = await resolveFromBearerToken(token);
-    if (!ctx) {
-      return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+    try {
+      const ctx = await resolveFromBearerToken(token);
+      if (!ctx) {
+        return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+      }
+      if (!roleAllows(allowedRoles, ctx.resolved.role)) {
+        return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+      }
+      return { ctx };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const { remediation } = classifyDatabaseError(message);
+      return {
+        response: NextResponse.json(
+          { error: 'Database unavailable', hint: remediation[0] ?? message },
+          { status: 503 },
+        ),
+      };
     }
-    if (!roleAllows(allowedRoles, ctx.resolved.role)) {
-      return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-    }
-    return { ctx };
   }
 
-  const session = await auth();
+  const session = await getSafeSession();
   const userId = session?.user?.id;
   if (!userId) {
     return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
 
-  const resolved = await resolveAppUserById(userId);
+  let resolved: ResolvedUser | null;
+  try {
+    resolved = await resolveAppUserById(userId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const { remediation } = classifyDatabaseError(message);
+    return {
+      response: NextResponse.json(
+        {
+          error: 'Database unavailable',
+          hint: remediation[0] ?? message,
+        },
+        { status: 503 },
+      ),
+    };
+  }
   if (!resolved) {
     return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { getSafeSession } from '@/lib/auth/safe-session';
 import { useAwsStack } from '@/lib/aws/stack';
 import { requireAuth as requireAuthRds } from '@/lib/server-auth';
 import type { AppRole } from '@/lib/roles';
@@ -29,7 +29,7 @@ export async function requireAppAuth(
     };
   }
 
-  const session = await auth();
+  const session = await getSafeSession();
   const user = session?.user;
   if (!user?.id) {
     return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };

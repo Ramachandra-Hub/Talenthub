@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { getSafeSession } from '@/lib/auth/safe-session';
 import { resolveAppUserById } from '@/lib/roles-prisma';
 import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getDatabaseSetupErrors } from '@/lib/postgres-url';
@@ -37,7 +37,7 @@ export async function GET(_request: NextRequest) {
       );
     }
 
-    const session = await auth();
+    const session = await getSafeSession();
     const user = session?.user;
     if (!user?.id) {
       return NextResponse.json({ isAdmin: false, authenticated: false });
@@ -79,11 +79,9 @@ export async function GET(_request: NextRequest) {
         isAdmin: false,
         authenticated: false,
         error: 'Admin session check failed',
-        hint: message.includes('AUTH_SECRET')
-          ? 'Set AUTH_SECRET in Vercel environment variables and redeploy.'
-          : 'Check Vercel function logs for /api/admin/me and verify DATABASE_URL with ?sslmode=require.',
+        hint: 'Sign in again at /auth/login/admin. If this persists, set AUTH_SECRET and DATABASE_URL in Vercel and redeploy.',
       },
-      { status: 500 },
+      { status: 503 },
     );
   }
 }

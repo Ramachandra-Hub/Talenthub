@@ -73,10 +73,23 @@ export function getDatabaseSetupErrors(): string[] {
     raw.includes('REPLACE_WITH') ||
     raw.includes('PASSWORD@') ||
     raw.includes('YOUR_RDS_PASSWORD') ||
-    raw.includes('YOUR_PASSWORD')
+    raw.includes('YOUR_PASSWORD') ||
+    raw.includes('prisma_build@127.0.0.1')
   ) {
-    errors.push('DATABASE_URL is still a placeholder — replace YOUR_RDS_PASSWORD with your RDS master password.');
+    errors.push(
+      'DATABASE_URL is still a placeholder — set your real AWS RDS URL in Vercel → Environment Variables (Production), then redeploy.',
+    );
     return errors;
+  }
+
+  const authSecret = process.env.AUTH_SECRET?.trim() ?? '';
+  if (
+    authSecret.includes('vercel-build-placeholder') ||
+    authSecret === 'build-time-placeholder-replace-in-vercel-dashboard-min-32-chars-long'
+  ) {
+    errors.push(
+      'AUTH_SECRET is still a build placeholder — generate one (openssl rand -base64 32) and set it in Vercel, then redeploy.',
+    );
   }
 
   if (isValidPostgresConnectionUrl(raw)) return errors;
