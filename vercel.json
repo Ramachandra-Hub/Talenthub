@@ -1,15 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm install --frozen-lockfile",
+  "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm run vercel-build",
   "regions": ["bom1"],
   "env": {
     "USE_AWS_STACK": "true",
     "USE_PRISMA_AUTH": "true",
     "NEXT_PUBLIC_USE_AWS_STACK": "true",
-    "AUTO_RDS_SCHEMA": "true",
-    "NODE_ENV": "production"
+    "AUTO_RDS_SCHEMA": "true"
   },
   "functions": {
     "app/api/setup/rds/route.ts": {

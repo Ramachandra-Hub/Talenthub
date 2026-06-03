@@ -101,7 +101,8 @@ if (!dbUrl) {
   console.log('✓ DATABASE_URL is set\n');
 }
 
-run('prisma', ['generate']);
+// postinstall already runs generate; repeat here so Vercel build is self-contained.
+run('prisma', ['generate'], { optional: isVercel, label: 'prisma generate (optional if postinstall ran)' });
 
 const pushAtBuild =
   process.env.VERCEL_DB_PUSH_AT_BUILD === 'true' ||
