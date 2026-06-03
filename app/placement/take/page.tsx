@@ -13,6 +13,7 @@ import {
   PLACEMENT_TOTAL_MARKS,
   PLACEMENT_TOTAL_SEC,
   SPEAKING_TASKS,
+  describeTechnicalSection,
   findDepartment,
 } from '@/lib/placement/config';
 import { computePlacementScorecard } from '@/lib/placement/scoring';
@@ -42,7 +43,7 @@ import type {
 } from '@/lib/placement/types';
 import SpeakingSection from '@/components/placement/speaking-section';
 import { PlacementMcqRunner } from '@/components/placement/placement-mcq-runner';
-import { PlacementCodingSection } from '@/components/placement/placement-coding-section';
+import { PlacementTechnicalSection } from '@/components/placement/placement-technical-section';
 import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
@@ -482,17 +483,31 @@ export default function PlacementTakePage() {
       if (!prev) return prev;
       const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
       const state = prev.sectionStates[cfg.id as PlacementSectionId];
-      if (!state || state.kind !== 'mcq') return prev;
-      const nextAnswers = { ...state.answers };
-      if (value === null) delete nextAnswers[questionId];
-      else nextAnswers[questionId] = value;
-      return {
-        ...prev,
-        sectionStates: {
-          ...prev.sectionStates,
-          [cfg.id]: { ...state, answers: nextAnswers },
-        },
-      };
+      if (state?.kind === 'mcq') {
+        const nextAnswers = { ...state.answers };
+        if (value === null) delete nextAnswers[questionId];
+        else nextAnswers[questionId] = value;
+        return {
+          ...prev,
+          sectionStates: {
+            ...prev.sectionStates,
+            [cfg.id]: { ...state, answers: nextAnswers },
+          },
+        };
+      }
+      if (state?.kind === 'technical' && state.mcq) {
+        const nextAnswers = { ...state.mcq.answers };
+        if (value === null) delete nextAnswers[questionId];
+        else nextAnswers[questionId] = value;
+        return {
+          ...prev,
+          sectionStates: {
+            ...prev.sectionStates,
+            [cfg.id]: { ...state, mcq: { ...state.mcq, answers: nextAnswers } },
+          },
+        };
+      }
+      return prev;
     });
   };
 
@@ -521,20 +536,40 @@ export default function PlacementTakePage() {
       if (!prev) return prev;
       const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
       const state = prev.sectionStates[cfg.id as PlacementSectionId];
-      if (!state || state.kind !== 'coding') return prev;
-      return {
-        ...prev,
-        sectionStates: {
-          ...prev.sectionStates,
-          [cfg.id]: {
-            ...state,
-            submissions: {
-              ...state.submissions,
-              [submission.problemId]: submission,
+      if (state?.kind === 'coding') {
+        return {
+          ...prev,
+          sectionStates: {
+            ...prev.sectionStates,
+            [cfg.id]: {
+              ...state,
+              submissions: {
+                ...state.submissions,
+                [submission.problemId]: submission,
+              },
             },
           },
-        },
-      };
+        };
+      }
+      if (state?.kind === 'technical' && state.coding) {
+        return {
+          ...prev,
+          sectionStates: {
+            ...prev.sectionStates,
+            [cfg.id]: {
+              ...state,
+              coding: {
+                ...state.coding,
+                submissions: {
+                  ...state.coding.submissions,
+                  [submission.problemId]: submission,
+                },
+              },
+            },
+          },
+        };
+      }
+      return prev;
     });
   };
 
@@ -547,6 +582,15 @@ export default function PlacementTakePage() {
       if (cfg.kind === 'mcq' && state?.kind === 'mcq') {
         total += state.questions.length;
         answered += Object.values(state.answers).filter(Boolean).length;
+      } else if (state?.kind === 'technical') {
+        if (state.mcq) {
+          total += state.mcq.questions.length;
+          answered += Object.values(state.mcq.answers).filter(Boolean).length;
+        }
+        if (state.coding) {
+          total += state.coding.problems.length;
+          answered += Object.keys(state.coding.submissions).length;
+        }
       } else if (cfg.kind === 'coding' && state?.kind === 'coding') {
         total += state.problems.length;
         answered += Object.keys(state.submissions).length;
@@ -678,6 +722,17 @@ export default function PlacementTakePage() {
             const counter =
               state?.kind === 'mcq'
                 ? `${Object.values(state.answers).filter(Boolean).length}/${state.questions.length}`
+                : state?.kind === 'technical'
+                  ? [
+                      state.mcq
+                        ? `MCQ ${Object.values(state.mcq.answers).filter(Boolean).length}/${state.mcq.questions.length}`
+                        : '',
+                      state.coding
+                        ? `Code ${Object.keys(state.coding.submissions).length}/${state.coding.problems.length}`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
                 : state?.kind === 'coding'
                   ? `${Object.keys(state.submissions).length}/${state.problems.length}`
                 : state?.kind === 'speaking'
@@ -725,7 +780,14 @@ export default function PlacementTakePage() {
                   Section {session.currentSectionIndex + 1} of {PLACEMENT_SECTIONS.length}
                 </p>
                 <h2 className="text-xl font-bold text-slate-900 mt-1">{currentSection.name}</h2>
-                <p className="text-sm text-slate-600 mt-1">{currentSection.description}</p>
+                <p className="text-sm text-slate-600 mt-1">
+                  {currentSection.id === 'technical'
+                    ? describeTechnicalSection(
+                        session.candidate.technicalFormat,
+                        dept?.name ?? session.candidate.departmentId,
+                      )
+                    : currentSection.description}
+                </p>
               </div>
               <div className="text-right shrink-0">
                 <p className="text-3xl font-bold text-[#1e3a5f]">{currentSection.marks}</p>
@@ -734,7 +796,15 @@ export default function PlacementTakePage() {
             </div>
           </Card>
 
-          {sectionState?.kind === 'mcq' ? (
+          {sectionState?.kind === 'technical' ? (
+            <PlacementTechnicalSection
+              format={sectionState.format}
+              mcq={sectionState.mcq}
+              coding={sectionState.coding}
+              onMcqAnswerChange={setMcqAnswer}
+              onCodingSubmissionChange={saveCodingSubmission}
+            />
+          ) : sectionState?.kind === 'mcq' ? (
             <PlacementMcqRunner
               key={currentSection.id}
               sectionId={currentSection.id}
@@ -743,10 +813,14 @@ export default function PlacementTakePage() {
               onAnswerChange={setMcqAnswer}
             />
           ) : sectionState?.kind === 'coding' ? (
-            <PlacementCodingSection
-              problems={sectionState.problems}
-              submissions={sectionState.submissions}
-              onSubmissionChange={saveCodingSubmission}
+            <PlacementTechnicalSection
+              format="coding"
+              coding={{
+                problems: sectionState.problems,
+                submissions: sectionState.submissions,
+              }}
+              onMcqAnswerChange={setMcqAnswer}
+              onCodingSubmissionChange={saveCodingSubmission}
             />
           ) : sectionState?.kind === 'speaking' ? (
             <SpeakingSection

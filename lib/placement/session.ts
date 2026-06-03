@@ -1,17 +1,79 @@
-import { PLACEMENT_SECTIONS, PLACEMENT_TOTAL_SEC, getPlacementSection } from '@/lib/placement/config';
+import {
+  PLACEMENT_SECTIONS,
+  PLACEMENT_TOTAL_SEC,
+  defaultTechnicalFormatForDepartment,
+  getPlacementSection,
+} from '@/lib/placement/config';
 import { buildPlacementQuestions } from '@/lib/placement/question-banks';
 import type {
   PlacementCandidate,
   PlacementSectionId,
   PlacementSectionState,
   PlacementSession,
+  PlacementTechnicalFormat,
 } from '@/lib/placement/types';
 
 type McqSectionId = Exclude<PlacementSectionId, 'speaking' | 'technical'>;
 
+function buildTechnicalState(
+  format: PlacementTechnicalFormat,
+  banks: ReturnType<typeof buildPlacementQuestions>,
+  existing?: PlacementSectionState,
+): PlacementSectionState {
+  const prev =
+    existing?.kind === 'technical'
+      ? existing
+      : existing?.kind === 'coding'
+        ? {
+            kind: 'technical' as const,
+            format,
+            coding: {
+              problems: existing.problems,
+              submissions: existing.submissions,
+            },
+            completed: existing.completed,
+          }
+        : existing?.kind === 'mcq'
+          ? {
+              kind: 'technical' as const,
+              format,
+              mcq: { questions: existing.questions, answers: existing.answers },
+              completed: existing.completed,
+            }
+          : undefined;
+
+  const state: PlacementSectionState = {
+    kind: 'technical',
+    format,
+    completed: prev?.kind === 'technical' ? prev.completed : false,
+  };
+
+  if (format === 'mcq' || format === 'both') {
+    state.mcq = {
+      questions: banks.technicalMcq,
+      answers: prev?.kind === 'technical' ? (prev.mcq?.answers ?? {}) : {},
+    };
+  }
+  if (format === 'coding' || format === 'both') {
+    state.coding = {
+      problems: banks.technicalCoding,
+      submissions:
+        prev?.kind === 'technical' ? (prev.coding?.submissions ?? {}) : {},
+    };
+  }
+  return state;
+}
+
 /** Fill missing/empty section pools (e.g. resumed sessions or older drafts). */
 export function repairPlacementSession(session: PlacementSession): PlacementSession {
-  const banks = buildPlacementQuestions(session.candidate.seed, session.candidate.departmentId);
+  const format =
+    session.candidate.technicalFormat ??
+    defaultTechnicalFormatForDepartment(session.candidate.departmentId);
+  const banks = buildPlacementQuestions(
+    session.candidate.seed,
+    session.candidate.departmentId,
+    format,
+  );
   const sectionStates = { ...session.sectionStates };
   let changed = false;
 
@@ -40,20 +102,21 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
       continue;
     }
 
-    if (cfg.id === 'technical' && cfg.kind === 'coding') {
+    if (cfg.id === 'technical' && cfg.kind === 'technical') {
       const state = sectionStates.technical;
-      const needsRepair =
-        !state ||
-        state.kind !== 'coding' ||
-        !Array.isArray(state.problems) ||
-        state.problems.length < 1;
-      if (!needsRepair) continue;
-      sectionStates.technical = {
-        kind: 'coding',
-        problems: banks.technical,
-        submissions: state?.kind === 'coding' ? state.submissions : {},
-        completed: state?.kind === 'coding' ? state.completed : false,
-      };
+      const needsMcq =
+        (format === 'mcq' || format === 'both') &&
+        (!state ||
+          state.kind !== 'technical' ||
+          !state.mcq?.questions?.length);
+      const needsCoding =
+        (format === 'coding' || format === 'both') &&
+        (!state ||
+          state.kind !== 'technical' ||
+          !state.coding?.problems?.length);
+      if (!needsMcq && !needsCoding && state?.kind === 'technical') continue;
+
+      sectionStates.technical = buildTechnicalState(format, banks, state);
       changed = true;
     }
   }
@@ -63,7 +126,11 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
     changed = true;
   }
 
-  return changed ? { ...session, sectionStates } : session;
+  const candidate = session.candidate.technicalFormat
+    ? session.candidate
+    : { ...session.candidate, technicalFormat: format };
+
+  return changed ? { ...session, candidate, sectionStates } : session;
 }
 
 export const PLACEMENT_DRAFT_CANDIDATE_KEY = 'placement:candidate';
@@ -125,7 +192,8 @@ export function getPlacementCompletedAttemptId(hallTicket: string): string | nul
 
 /** Build the initial session given a candidate. Resets if storage already has one. */
 export function buildPlacementSession(candidate: PlacementCandidate): PlacementSession {
-  const banks = buildPlacementQuestions(candidate.seed, candidate.departmentId);
+  const format = candidate.technicalFormat;
+  const banks = buildPlacementQuestions(candidate.seed, candidate.departmentId, format);
   const sectionStates = {} as Record<PlacementSectionId, PlacementSectionState>;
 
   for (const cfg of PLACEMENT_SECTIONS) {
@@ -137,13 +205,8 @@ export function buildPlacementSession(candidate: PlacementCandidate): PlacementS
         answers: {},
         completed: false,
       };
-    } else if (cfg.kind === 'coding' && cfg.id === 'technical') {
-      sectionStates[cfg.id] = {
-        kind: 'coding',
-        problems: banks.technical,
-        submissions: {},
-        completed: false,
-      };
+    } else if (cfg.kind === 'technical') {
+      sectionStates[cfg.id] = buildTechnicalState(format, banks);
     } else {
       sectionStates[cfg.id] = {
         kind: 'speaking',
@@ -207,7 +270,6 @@ export function saveSession(session: PlacementSession): void {
   const synced = syncSessionTimer(session);
   try {
     window.sessionStorage.setItem(PLACEMENT_DRAFT_SESSION_KEY, JSON.stringify(synced));
-    // Mirror to localStorage so a refresh / disconnect can resume on the same device.
     window.localStorage.setItem(
       `${PLACEMENT_DRAFT_SESSION_KEY}:${synced.candidate.hallTicket}`,
       JSON.stringify(synced),

@@ -2,8 +2,12 @@ import type {
   PlacementDepartment,
   PlacementSectionConfig,
   PlacementSectionId,
+  PlacementTechnicalFormat,
   SpeakingTask,
 } from '@/lib/placement/types';
+
+export const TECHNICAL_MCQ_COUNT = 20;
+export const TECHNICAL_CODING_COUNT = 3;
 
 import {
   ELEVATEX_EXAM_NAME,
@@ -21,9 +25,9 @@ export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
     name: 'Technical Assessment',
     short: 'Technical',
     description:
-      'Coding-only section with 3 easy practical problems. Write and run code in the compiler.',
+      'Branch-specific technical skills — MCQs, coding, or both (set before you start).',
     icon: '🛠️',
-    kind: 'coding',
+    kind: 'technical',
     marks: 20,
     durationSec: 20 * 60,
   },
@@ -100,33 +104,85 @@ export function getPlacementSection(id: PlacementSectionId): PlacementSectionCon
 
 /** Built-in departments — aligned with RCEE (rcee.ac.in). */
 export const PLACEMENT_DEPARTMENTS: PlacementDepartment[] = [
-  { id: 'civil', name: 'Civil Engineering', technicalCategory: 'civil' },
-  { id: 'mech', name: 'Mechanical Engineering', technicalCategory: 'mechanical' },
-  { id: 'eee', name: 'Electrical & Electronics Engineering', technicalCategory: 'generic' },
-  { id: 'ece', name: 'Electronics & Communication Engineering', technicalCategory: 'ece' },
-  { id: 'cse', name: 'Computer Science Engineering', technicalCategory: 'cse' },
+  { id: 'civil', name: 'Civil Engineering', technicalCategory: 'civil', defaultTechnicalFormat: 'mcq' },
+  { id: 'mech', name: 'Mechanical Engineering', technicalCategory: 'mechanical', defaultTechnicalFormat: 'mcq' },
+  { id: 'eee', name: 'Electrical & Electronics Engineering', technicalCategory: 'generic', defaultTechnicalFormat: 'mcq' },
+  { id: 'ece', name: 'Electronics & Communication Engineering', technicalCategory: 'ece', defaultTechnicalFormat: 'mcq' },
+  { id: 'cse', name: 'Computer Science Engineering', technicalCategory: 'cse', defaultTechnicalFormat: 'coding' },
   {
     id: 'cse-cyber',
     name: 'Computer Science Engineering (Cyber Security)',
     technicalCategory: 'cyber',
+    defaultTechnicalFormat: 'both',
   },
   {
     id: 'cse-iot',
     name: 'Computer Science Engineering (Internet of Things)',
     technicalCategory: 'cse',
+    defaultTechnicalFormat: 'both',
   },
   {
     id: 'aids',
     name: 'Artificial Intelligence and Data Science',
     technicalCategory: 'aiml',
+    defaultTechnicalFormat: 'both',
   },
   {
     id: 'aiml',
     name: 'Artificial Intelligence & Machine Learning',
     technicalCategory: 'aiml',
+    defaultTechnicalFormat: 'both',
   },
-  { id: 'bba', name: 'Business Administration', technicalCategory: 'generic' },
+  { id: 'bba', name: 'Business Administration', technicalCategory: 'generic', defaultTechnicalFormat: 'mcq' },
 ];
+
+export function defaultTechnicalFormatForDepartment(departmentId: string): PlacementTechnicalFormat {
+  return findDepartment(departmentId)?.defaultTechnicalFormat ?? 'mcq';
+}
+
+export function technicalDurationSec(format: PlacementTechnicalFormat): number {
+  if (format === 'both') return 30 * 60;
+  return 20 * 60;
+}
+
+export function technicalMarkSplit(format: PlacementTechnicalFormat): {
+  mcq: number;
+  coding: number;
+} {
+  switch (format) {
+    case 'mcq':
+      return { mcq: 20, coding: 0 };
+    case 'coding':
+      return { mcq: 0, coding: 20 };
+    case 'both':
+      return { mcq: 10, coding: 10 };
+  }
+}
+
+export function describeTechnicalSection(
+  format: PlacementTechnicalFormat,
+  departmentName: string,
+): string {
+  switch (format) {
+    case 'mcq':
+      return `${departmentName} — ${TECHNICAL_MCQ_COUNT} unique department MCQs (no repeats within your paper). Negative marking may apply.`;
+    case 'coding':
+      return `${departmentName} — exactly ${TECHNICAL_CODING_COUNT} unique coding problems from a large bank. Each problem has multiple hidden test cases with explanations after you run them. Use the in-browser compiler.`;
+    case 'both':
+      return `${departmentName} — ${TECHNICAL_MCQ_COUNT} unique department MCQs plus ${TECHNICAL_CODING_COUNT} unique coding problems (non-repeating). Complete both parts in this section.`;
+  }
+}
+
+export function technicalSectionSummary(format: PlacementTechnicalFormat): string {
+  switch (format) {
+    case 'mcq':
+      return `${TECHNICAL_MCQ_COUNT} MCQs`;
+    case 'coding':
+      return `${TECHNICAL_CODING_COUNT} coding problems`;
+    case 'both':
+      return `${TECHNICAL_MCQ_COUNT} MCQs + ${TECHNICAL_CODING_COUNT} coding`;
+  }
+}
 
 export function findDepartment(id: string): PlacementDepartment | null {
   return PLACEMENT_DEPARTMENTS.find((d) => d.id === id) ?? null;

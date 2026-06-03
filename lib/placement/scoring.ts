@@ -1,7 +1,11 @@
 import { formatScorePercentLabel } from '@/lib/format-score';
 import { answersMatchMcq } from '@/lib/practice-mappers';
 import type { Question } from '@/lib/types';
-import { PLACEMENT_SECTIONS, SPEAKING_TASKS } from '@/lib/placement/config';
+import {
+  PLACEMENT_SECTIONS,
+  SPEAKING_TASKS,
+  technicalMarkSplit,
+} from '@/lib/placement/config';
 import type {
   PlacementCandidate,
   PlacementCodingSubmission,
@@ -215,7 +219,40 @@ export function computePlacementScorecard(
         total: state.questions.length,
       };
       sections.push(row);
-      if (cfg.id === 'technical') technicalRating = res.percent;
+    } else if (cfg.kind === 'technical' && state?.kind === 'technical') {
+      const split = technicalMarkSplit(state.format);
+      let earned = 0;
+      let correct = 0;
+      let wrong = 0;
+      let total = 0;
+      if (state.mcq && split.mcq > 0) {
+        const res = scoreMcqSection(state.mcq.questions, state.mcq.answers, split.mcq, 0.25);
+        earned += res.earned;
+        correct += res.correct;
+        wrong += res.wrong;
+        total += state.mcq.questions.length;
+      }
+      if (state.coding && split.coding > 0) {
+        const res = scoreCodingSection(state.coding.submissions, split.coding);
+        earned += res.earned;
+        correct += res.solved;
+        wrong += Math.max(0, res.totalProblems - res.solved);
+        total += res.totalProblems;
+      }
+      earned = roundTo(earned, 2);
+      const percent = cfg.marks > 0 ? roundTo((earned / cfg.marks) * 100, 2) : 0;
+      earnedMarks += earned;
+      technicalRating = percent;
+      sections.push({
+        sectionId: cfg.id,
+        name: cfg.name,
+        marks: cfg.marks,
+        earned,
+        percent,
+        correct,
+        wrong,
+        total,
+      });
     } else if (cfg.kind === 'coding' && state?.kind === 'coding') {
       const res = scoreCodingSection(state.submissions, cfg.marks);
       earnedMarks += res.earned;
@@ -308,9 +345,10 @@ export function buildCandidate(input: {
   departmentId: string;
   collegeName?: string | null;
   examName?: string | null;
+  technicalFormat: PlacementCandidate['technicalFormat'];
 }): PlacementCandidate {
   const startedAt = new Date().toISOString();
-  const seedSource = `${input.hallTicket || 'no-ht'}|${input.fullName || 'anon'}|${startedAt}`;
+  const seedSource = `${input.hallTicket || 'no-ht'}|${input.fullName || 'anon'}|${input.departmentId}|${startedAt}`;
   return {
     fullName: input.fullName.trim() || 'Candidate',
     hallTicket: input.hallTicket.trim() || `gen-${Date.now()}`,
@@ -319,5 +357,6 @@ export function buildCandidate(input: {
     examName: input.examName ?? null,
     startedAt,
     seed: seedSource,
+    technicalFormat: input.technicalFormat,
   };
 }

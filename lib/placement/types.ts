@@ -10,7 +10,10 @@ export type PlacementSectionId =
   | 'logic'
   | 'intelligence';
 
-export type PlacementSectionKind = 'mcq' | 'speaking' | 'coding';
+export type PlacementSectionKind = 'mcq' | 'speaking' | 'coding' | 'technical';
+
+/** How the Technical section is delivered for this student. */
+export type PlacementTechnicalFormat = 'mcq' | 'coding' | 'both';
 
 export type PlacementSectionConfig = {
   id: PlacementSectionId;
@@ -30,6 +33,8 @@ export type PlacementSectionConfig = {
 export type PlacementDepartment = {
   id: string;
   name: string;
+  /** Default technical delivery when the student does not override on the start screen. */
+  defaultTechnicalFormat: PlacementTechnicalFormat;
   /** Used to bias technical questions. */
   technicalCategory:
     | 'cse'
@@ -68,6 +73,8 @@ export type PlacementCandidate = {
   startedAt: string;
   /** Seed for deterministic question selection. */
   seed: string;
+  /** Technical section mode chosen for this attempt (branch + admin default). */
+  technicalFormat: PlacementTechnicalFormat;
 };
 
 export type PlacementMcqAnswerMap = Record<string, string | null>;
@@ -103,6 +110,16 @@ export type PlacementSectionState =
       kind: 'coding';
       problems: ProgrammingProblem[];
       submissions: Record<string, PlacementCodingSubmission>;
+      completed: boolean;
+    }
+  | {
+      kind: 'technical';
+      format: PlacementTechnicalFormat;
+      mcq?: { questions: Question[]; answers: PlacementMcqAnswerMap };
+      coding?: {
+        problems: ProgrammingProblem[];
+        submissions: Record<string, PlacementCodingSubmission>;
+      };
       completed: boolean;
     };
 

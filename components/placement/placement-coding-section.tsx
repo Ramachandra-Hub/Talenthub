@@ -130,7 +130,8 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
         }
         const ok = outputsMatch(json.stdout ?? '', tc.expectedOutput);
         if (ok) passed += 1;
-        lines.push(`Case ${i + 1}: ${ok ? 'PASS' : 'FAIL'} (expected "${tc.expectedOutput}")`);
+        const explain = tc.explanation ? ` — ${tc.explanation}` : '';
+        lines.push(`Case ${i + 1}: ${ok ? 'PASS' : 'FAIL'} (expected "${tc.expectedOutput}")${explain}`);
       } catch {
         lines.push(`Case ${i + 1}: failed to run`);
       }
@@ -174,7 +175,25 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
       <div className="lg:col-span-3 space-y-4">
         <Card className="p-4 border-slate-200">
           <h2 className="text-lg font-bold text-slate-900">{active.title}</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#1e3a5f] mt-1">
+            {problems.length} unique coding problems in your exam (non-repeating)
+          </p>
+          {active.examPurpose ? (
+            <p className="text-sm text-slate-600 mt-2 rounded-lg bg-slate-50 border border-slate-200 p-3">
+              <span className="font-semibold text-slate-800">What this tests: </span>
+              {active.examPurpose}
+            </p>
+          ) : null}
           <p className="text-sm text-slate-700 mt-2">{active.statement}</p>
+          {active.studentGuide ? (
+            <p className="text-sm text-slate-600 mt-2 rounded-lg bg-blue-50/80 border border-blue-100 p-3">
+              <span className="font-semibold text-slate-800">How to approach: </span>
+              {active.studentGuide}
+            </p>
+          ) : null}
+          <p className="text-xs text-slate-500 mt-2">
+            {active.testCases.length} test cases (sample + hidden). Run all to see explanations for each case.
+          </p>
           <div className="grid sm:grid-cols-2 gap-3 mt-3 text-xs">
             <div>
               <p className="font-semibold">Sample input</p>

@@ -1,6 +1,8 @@
 export type ProgrammingTestCase = {
   input: string;
   expectedOutput: string;
+  /** Shown to students after running tests — what this case checks. */
+  explanation?: string;
 };
 
 export type ProgrammingProblem = {
@@ -13,6 +15,10 @@ export type ProgrammingProblem = {
   sampleInput: string;
   sampleOutput: string;
   hint?: string;
+  /** Plain-language guide shown in ElevateX technical coding. */
+  studentGuide?: string;
+  /** What skill this problem evaluates in the exam. */
+  examPurpose?: string;
   /** Used on Submit to grade (includes sample). */
   testCases: ProgrammingTestCase[];
 };

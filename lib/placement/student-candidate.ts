@@ -1,8 +1,12 @@
 import { COLLEGE } from '@/lib/college-brand';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
-import { PLACEMENT_DEPARTMENTS, PLACEMENT_EXAM_NAME } from '@/lib/placement/config';
+import {
+  PLACEMENT_DEPARTMENTS,
+  PLACEMENT_EXAM_NAME,
+  defaultTechnicalFormatForDepartment,
+} from '@/lib/placement/config';
 import { buildCandidate } from '@/lib/placement/scoring';
-import type { PlacementCandidate } from '@/lib/placement/types';
+import type { PlacementCandidate, PlacementTechnicalFormat } from '@/lib/placement/types';
 
 /** Map college profile branch name to ElevateX placement department id. */
 export function placementDepartmentIdFromBranch(branch: string | null | undefined): string {
@@ -65,12 +69,20 @@ export function studentElevateXProfileFromAuth(
 
 export function buildElevateXCandidateFromStudent(
   profile: StudentElevateXProfile,
+  options?: {
+    departmentId?: string;
+    technicalFormat?: PlacementTechnicalFormat;
+  },
 ): PlacementCandidate {
+  const departmentId = options?.departmentId ?? profile.departmentId;
+  const technicalFormat =
+    options?.technicalFormat ?? defaultTechnicalFormatForDepartment(departmentId);
   return buildCandidate({
     fullName: profile.fullName,
     hallTicket: profile.hallTicket,
-    departmentId: profile.departmentId,
+    departmentId,
     collegeName: profile.collegeName,
     examName: PLACEMENT_EXAM_NAME,
+    technicalFormat,
   });
 }
