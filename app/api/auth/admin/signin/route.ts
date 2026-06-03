@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { signIn } from '@/auth';
 import { getAuthSetupErrors } from '@/lib/auth/config-check';
 import { ensureAdminUser } from '@/lib/roles-prisma';
-import { DEFAULT_ADMIN_EMAIL } from '@/lib/admin-defaults';
+import {
+  getConfiguredAdminEmail,
+  getConfiguredAdminPassword,
+  isAllowlistedAdminEmail,
+} from '@/lib/admin-defaults';
 import { adminAuthEmail } from '@/lib/college-auth';
-import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
+import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
+import { bootstrapRdsAdmin } from '@/lib/db/seed-rds-baseline';
+import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
@@ -18,8 +24,6 @@ export async function POST(request: NextRequest) {
       { status: 503 },
     );
   }
-
-  await autoEnsureRdsSchema();
 
   let body: { email?: string; password?: string; username?: string };
   try {
@@ -35,30 +39,77 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
   }
 
-  const result = await signIn('admin', {
-    username: emailInput,
-    password,
-    redirect: false,
-  });
+  const normalizedEmail = adminAuthEmail(emailInput);
+
+  try {
+    await ensureSchemaForAuth();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: 'Database not ready for login.', hint: message },
+      { status: 503 },
+    );
+  }
+
+  if (
+    isAllowlistedAdminEmail(normalizedEmail) &&
+    password === getConfiguredAdminPassword()
+  ) {
+    try {
+      await bootstrapRdsAdmin();
+    } catch (err) {
+      console.error('[admin signin] bootstrap failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      const { remediation } = classifyDatabaseError(message);
+      return NextResponse.json(
+        {
+          error: 'Could not create admin account in database.',
+          hint: remediation[0] ?? message,
+        },
+        { status: 503 },
+      );
+    }
+  }
+
+  let result: Awaited<ReturnType<typeof signIn>>;
+  try {
+    result = await signIn('admin', {
+      username: emailInput,
+      password,
+      redirect: false,
+    });
+  } catch (err) {
+    console.error('[admin signin] signIn failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const { remediation } = classifyDatabaseError(message);
+    return NextResponse.json(
+      {
+        error: 'Sign-in failed.',
+        hint: remediation[0] ?? message,
+      },
+      { status: 503 },
+    );
+  }
 
   if (result?.error) {
+    const configuredEmail = adminAuthEmail(getConfiguredAdminEmail());
     const hint =
-      emailInput !== DEFAULT_ADMIN_EMAIL
-        ? ` Use the admin email issued by the examination cell (e.g. ${DEFAULT_ADMIN_EMAIL}).`
-        : ' Contact the examination cell if you need access.';
+      normalizedEmail !== configuredEmail
+        ? ` Use the admin email issued by the examination cell (e.g. ${configuredEmail}). Default password is set via PREPINDIA_ADMIN_PASSWORD in Vercel.`
+        : ' If this is a new deployment, confirm PREPINDIA_ADMIN_EMAIL and PREPINDIA_ADMIN_PASSWORD in Vercel match what you enter, then redeploy.';
     return NextResponse.json(
       {
         error: 'Invalid email or password.',
         hint,
-        attemptedEmail: emailInput,
+        attemptedEmail: normalizedEmail,
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
   try {
     const user = await prisma.user.findUnique({
-      where: { email: adminAuthEmail(emailInput) },
+      where: { email: normalizedEmail },
       select: { id: true, email: true },
     });
 
@@ -68,15 +119,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      email: user?.email ?? emailInput,
+      email: user?.email ?? normalizedEmail,
       userId: user?.id,
     });
   } catch (err) {
     console.error('[admin signin] post-auth lookup failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const { remediation } = classifyDatabaseError(message);
     return NextResponse.json(
       {
         error: 'Database connection failed.',
-        hint: 'Check DATABASE_URL in .env.local and that RDS is reachable from your network.',
+        hint: remediation[0] ?? message,
       },
       { status: 503 },
     );

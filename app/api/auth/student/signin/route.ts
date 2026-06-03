@@ -26,7 +26,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: 401 });
+      const status = result.error.includes('not configured') ||
+        result.error.includes('Database') ||
+        result.error.includes('schema')
+        ? 503
+        : 401;
+      return NextResponse.json({ error: result.error }, { status });
     }
 
     const res = NextResponse.json({
@@ -37,9 +42,9 @@ export async function POST(request: NextRequest) {
     return copyAuthSessionCookiesToResponse(res);
   } catch (err) {
     console.error('[student signin]', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Sign in failed' },
-      { status: 500 },
-    );
+    const message = err instanceof Error ? err.message : 'Sign in failed';
+    const status =
+      message.includes('schema') || message.includes('Database') ? 503 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

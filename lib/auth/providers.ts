@@ -1,7 +1,7 @@
 import Credentials from 'next-auth/providers/credentials';
 import type { Provider } from 'next-auth/providers';
 import { prisma } from '@/lib/prisma';
-import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
+import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
 import { bootstrapRdsAdmin } from '@/lib/db/seed-rds-baseline';
 import { verifyPassword } from '@/lib/password';
 import {
@@ -20,10 +20,9 @@ import { normalizeRoll } from '@/lib/exam-schedule-slots';
 export type AppRole = 'admin' | 'student';
 
 async function tryBootstrapAdminFromEnv(email: string, password: string) {
-  if (process.env.NODE_ENV === 'production') return;
   if (!isAllowlistedAdminEmail(email)) return;
   if (password !== getConfiguredAdminPassword()) return;
-  if (email !== adminAuthEmail(getConfiguredAdminEmail())) return;
+  if (adminAuthEmail(email) !== adminAuthEmail(getConfiguredAdminEmail())) return;
 
   await bootstrapRdsAdmin();
 }
@@ -38,7 +37,7 @@ export function buildAuthProviders(): Provider[] {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        await autoEnsureRdsSchema();
+        await ensureSchemaForAuth();
         const roll = normalizeRoll(String(credentials?.rollNumber ?? ''));
         const password = String(credentials?.password ?? '');
         const rollErr = validateRollNumber(roll);
@@ -73,7 +72,7 @@ export function buildAuthProviders(): Provider[] {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        await autoEnsureRdsSchema();
+        await ensureSchemaForAuth();
         const username = String(credentials?.username ?? '').trim();
         const password = String(credentials?.password ?? '');
         if (!username || validatePassword(password)) return null;

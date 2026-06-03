@@ -1,7 +1,8 @@
 import { signIn } from '@/auth';
 import { studentAuthEmail } from '@/lib/college-auth';
 import { normalizeRoll } from '@/lib/exam-schedule-slots';
-import { autoEnsureRdsSchema } from '@/lib/db/auto-ensure-rds';
+import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
+import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getAuthSetupErrors } from '@/lib/auth/config-check';
 import { prisma } from '@/lib/prisma';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
@@ -27,7 +28,13 @@ export async function runStudentCredentialSignIn(
     return { error: `Login is not configured: ${setupErrors.join(' ')}` };
   }
 
-  await autoEnsureRdsSchema();
+  try {
+    await ensureSchemaForAuth();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const { remediation } = classifyDatabaseError(message);
+    return { error: remediation[0] ?? message };
+  }
 
   const rollNumber = normalizeRoll(input.rollNumber);
   const password = input.password ?? '';
@@ -38,18 +45,30 @@ export async function runStudentCredentialSignIn(
     return { error: 'Roll number and password are required.' };
   }
 
-  const result = await signIn('student', {
-    rollNumber,
-    password,
-    redirect: false,
-  });
+  let result: Awaited<ReturnType<typeof signIn>>;
+  try {
+    result = await signIn('student', {
+      rollNumber,
+      password,
+      redirect: false,
+    });
+  } catch (err) {
+    console.error('[student signin] signIn failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('schema') || message.includes('Database tables')) {
+      return { error: message };
+    }
+    return { error: 'Sign-in failed. Check server logs or database connectivity.' };
+  }
 
   if (result?.error) {
     return { error: 'Invalid roll number or password.' };
   }
 
   const email = studentAuthEmail(rollNumber);
-  const user = await prisma.user.findFirst({
+  let user;
+  try {
+    user = await prisma.user.findFirst({
     where: {
       OR: [
         { rollNumber },
@@ -57,7 +76,13 @@ export async function runStudentCredentialSignIn(
         { email },
       ],
     },
-  });
+    });
+  } catch (err) {
+    console.error('[student signin] user lookup failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    const { remediation } = classifyDatabaseError(message);
+    return { error: remediation[0] ?? 'Database connection failed.' };
+  }
 
   if (!user) {
     return {
