@@ -12,7 +12,7 @@ import {
   emptySlots,
 } from '@/components/exam-builder/exam-slot-schedule-panel';
 import { ElevateXLiveInfo } from '@/components/elevatex/elevatex-live-info';
-import { ElevateXTechnicalFormatPanel } from '@/components/admin/elevatex-technical-format-panel';
+import { ElevateXTechnicalFormatSection } from '@/components/admin/elevatex-technical-format-section';
 import { ACADEMIC_YEARS } from '@/lib/college-brand';
 import { ELEVATEX_EXAM_NAME, ELEVATEX_MODULE_KEY } from '@/lib/elevatex';
 import type { ElevateXAdminState } from '@/lib/elevatex-admin';
@@ -221,9 +221,16 @@ export function ElevateXSlotAdminSection() {
         </div>
       </div>
 
-      <ElevateXTechnicalFormatPanel
-        requestId={state?.requestId ?? null}
-        initialFormats={state?.technicalFormats ?? {}}
+      <ElevateXTechnicalFormatSection
+        state={
+          state
+            ? {
+                requestId: state.requestId,
+                technicalFormats: state.technicalFormats,
+              }
+            : null
+        }
+        onFormatsSaved={() => void load()}
       />
 
       <div>

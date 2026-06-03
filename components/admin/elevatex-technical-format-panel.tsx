@@ -20,9 +20,10 @@ const FORMAT_OPTIONS: { id: PlacementTechnicalFormat; label: string }[] = [
 type Props = {
   requestId: string | null;
   initialFormats: ElevateXTechnicalFormatsMap;
+  onSaved?: () => void;
 };
 
-export function ElevateXTechnicalFormatPanel({ requestId, initialFormats }: Props) {
+export function ElevateXTechnicalFormatPanel({ requestId, initialFormats, onSaved }: Props) {
   const [formats, setFormats] = useState<ElevateXTechnicalFormatsMap>(initialFormats);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export function ElevateXTechnicalFormatPanel({ requestId, initialFormats }: Prop
       const json = (await res.json()) as { error?: string; message?: string };
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
       setSuccess(json.message ?? 'Technical formats saved.');
+      onSaved?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {

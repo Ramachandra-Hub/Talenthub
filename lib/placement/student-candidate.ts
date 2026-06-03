@@ -19,6 +19,7 @@ export function placementDepartmentIdFromBranch(branch: string | null | undefine
   if (lower.includes('iot')) return 'cse-iot';
   if (lower.includes('artificial') && lower.includes('machine')) return 'aiml';
   if (lower.includes('data science') || lower.includes('aids')) return 'aids';
+  if (lower.includes('mca') || lower.includes('master of computer')) return 'mca';
   if (lower.includes('computer') || lower.includes('cse')) return 'cse';
   if (lower.includes('electronics') || lower.includes('ece')) return 'ece';
   if (lower.includes('mechanical') || lower.includes('mech')) return 'mech';

@@ -264,8 +264,9 @@ export function ExamBuilderControls({
         <>
           <ElevateXLiveInfo compact />
           <StatusAlert variant="info">
-            ElevateX uses a fixed 6-section paper (60 minutes, 100 marks). Configure the 8 student
-            time slots and roster below, then publish.
+            ElevateX uses a fixed 6-section paper (60 minutes, 100 marks). Set each branch&apos;s
+            technical section to MCQs only, coding only, or both in the panel below, then configure
+            slots and publish.
           </StatusAlert>
         </>
       ) : null}

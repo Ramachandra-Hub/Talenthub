@@ -133,6 +133,12 @@ export const PLACEMENT_DEPARTMENTS: PlacementDepartment[] = [
     technicalCategory: 'aiml',
     defaultTechnicalFormat: 'both',
   },
+  {
+    id: 'mca',
+    name: 'Master of Computer Applications (MCA)',
+    technicalCategory: 'cse',
+    defaultTechnicalFormat: 'both',
+  },
   { id: 'bba', name: 'Business Administration', technicalCategory: 'generic', defaultTechnicalFormat: 'mcq' },
 ];
 

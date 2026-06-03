@@ -16,6 +16,7 @@ import {
   emptySlots,
 } from '@/components/exam-builder/exam-slot-schedule-panel';
 import { McqUploadFormatGuide } from '@/components/exam-builder/mcq-upload-format-guide';
+import { ElevateXTechnicalFormatSection } from '@/components/admin/elevatex-technical-format-section';
 import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
 import { getExamBuilderTestType } from '@/lib/exam-builder/test-catalog';
 import { isElevateXBuilderTestType } from '@/lib/exam-builder/elevatex-exam';
@@ -250,6 +251,10 @@ export default function AdminExamBuilderPage() {
           }}
           catalogRefreshToken={catalogRefresh}
         />
+
+        {isElevateX ? (
+          <ElevateXTechnicalFormatSection />
+        ) : null}
 
         {!isElevateX && !isManual ? (
           <QuestionBankUploadPanel

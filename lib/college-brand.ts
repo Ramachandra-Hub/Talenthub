@@ -26,6 +26,7 @@ export const DEPARTMENTS = [
   'Computer Science Engineering (Internet of Things)',
   'Artificial Intelligence and Data Science',
   'Artificial Intelligence & Machine Learning',
+  'Master of Computer Applications (MCA)',
   'Business Administration',
 ] as const;
 
