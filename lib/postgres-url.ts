@@ -172,6 +172,15 @@ export function stripDriverUnsafeUrlParams(url: string): string {
     .replace(/\?$/, '');
 }
 
+/** DIRECT_URL / migrations: drop Prisma pool cap (not needed for db push). */
+export function withoutPoolLimit(url: string): string {
+  return url
+    .replace(/([?&])connection_limit=\d+/gi, '$1')
+    .replace(/\?&/g, '?')
+    .replace(/[?&]$/g, '')
+    .replace(/\?$/, '');
+}
+
 /** Serverless-friendly query params for Vercel + RDS (Prisma reads connection_limit from URL). */
 export function withServerlessDbParams(url: string): string {
   let out = withAwsRdsSsl(url);

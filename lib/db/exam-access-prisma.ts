@@ -67,7 +67,15 @@ export async function checkStudentExamAccessPrisma(input: {
   rollNumber?: string;
   now?: number;
 }): Promise<ExamAccessResult> {
-  const schedules = await schedulesForTestPrisma(input.testId.trim());
+  const testId = input.testId.trim();
+
+  // ElevateX: never block autosave/submit on legacy exam_schedules, roster, or dept/year mismatch.
+  // Go-live uses evalora_module_schedules; duplicate placement_full rows caused mass 403s on Vercel.
+  if (isElevateXTestId(testId)) {
+    return { allowed: true, schedule: null };
+  }
+
+  const schedules = await schedulesForTestPrisma(testId);
 
   if (schedules.length === 0) {
     return { allowed: true, schedule: null };
@@ -137,6 +145,9 @@ export async function assertStudentCanTakeTestPrisma(
   testId: string,
   profile: { branch: string | null; academic_year: string | null; roll_number?: string | null },
 ): Promise<ExamAccessResult> {
+  if (isElevateXTestId(testId)) {
+    return assertStudentCanReportProgressPrisma(userId, testId, profile);
+  }
   return checkStudentExamAccessPrisma({
     testId,
     department: profile.branch ?? '',
