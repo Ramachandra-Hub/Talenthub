@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
+import { isElevateXAttemptMeta, parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import {
   resolveStoredPercent,
   testIdsMatch,
@@ -18,7 +19,13 @@ function parseStatAttempts(raw: unknown): DashboardStatEntry[] {
   });
 }
 
-function rowScore(row: AttemptRow): number {
+function rowScore(row: AttemptRow, testName: string): number {
+  if (isElevateXAttemptMeta(row.test_id, row.test_title ?? testName)) {
+    const scorecard = parseElevateXScorecardFromAnswers(row.answers);
+    if (scorecard && typeof scorecard.percentage === 'number') {
+      return resolveStoredPercent(scorecard.percentage, null, null);
+    }
+  }
   return resolveStoredPercent(
     row.percentage_score != null ? Number(row.percentage_score) : null,
     row.score != null ? Number(row.score) : null,
@@ -38,12 +45,18 @@ function inferAttemptStatus(row: AttemptRow): string {
 
 function attemptFromRow(row: AttemptRow, testName: string): RollupAttempt {
   const created = String(row.created_at ?? row.started_at ?? new Date().toISOString());
+  const elevatexId =
+    row.test_id != null && String(row.test_id).trim()
+      ? String(row.test_id)
+      : isElevateXAttemptMeta(row.test_id, row.test_title ?? testName)
+        ? 'placement_full'
+        : null;
   return {
     id: String(row.id),
     user_id: String(row.user_id ?? ''),
-    test_id: row.test_id != null ? String(row.test_id) : null,
+    test_id: elevatexId,
     test_name: testName,
-    score: rowScore(row),
+    score: rowScore(row, testName),
     status: inferAttemptStatus(row),
     created_at: created,
     completed_at: row.completed_at ? String(row.completed_at) : null,

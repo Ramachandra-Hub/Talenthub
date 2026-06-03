@@ -1,6 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
+import {
+  getIstDayBoundsIso,
+  getTodayDateKeyInIST,
+  isInstantOnDateKey,
+} from '@/lib/admin/report-date-filter';
 import { ELEVATEX_EXAM_NAME, ELEVATEX_TEST_ID, isElevateXAttemptTitle } from '@/lib/elevatex';
 import { PLACEMENT_SECTIONS } from '@/lib/placement/config';
 import {
@@ -95,6 +100,9 @@ function rowFromParts(input: {
     scorecard?.candidate.hallTicket?.trim() ||
     input.rollNumber?.trim() ||
     rollNumberFromUser(input.email);
+  const submittedAt =
+    input.completedAt ??
+    (isCompletedAttemptStatus(input.status, input.completedAt) ? input.createdAt : null);
 
   return {
     attempt_id: input.attemptId,
@@ -108,51 +116,135 @@ function rowFromParts(input: {
     earned_marks: scorecard?.earnedMarks ?? 0,
     total_marks: scorecard?.totalMarks ?? 100,
     status: input.status,
-    submitted_at: input.completedAt,
+    submitted_at: submittedAt,
     sections: sectionsFromScorecard(scorecard),
     has_full_scorecard: Boolean(scorecard),
   };
 }
 
-/** All ElevateX submissions for admin (live exam + reports). */
-export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminResultRow[]> {
-  const adminIds = new Set(
+type ElevateXStudentUser = {
+  id: string;
+  email: string;
+  fullName: string | null;
+  rollNumber: string | null;
+  branch: string | null;
+};
+
+const elevatexTitleWhere = () => ({
+  OR: [
+    { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+    { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+  ],
+});
+
+async function loadAdminUserIds(): Promise<Set<string>> {
+  return new Set(
     (await prisma.adminUser.findMany({ select: { userId: true } })).map((a) => a.userId),
   );
+}
 
-  const users = await prisma.user.findMany({
-    where: { adminUser: null },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      rollNumber: true,
-      branch: true,
-    },
-    take: 5000,
-  });
+function isStudentUser(
+  user: { id: string; email: string | null } | null | undefined,
+  adminIds: Set<string>,
+): user is ElevateXStudentUser {
+  if (!user?.email) return false;
+  if (adminIds.has(user.id)) return false;
+  if (user.email.includes('@admin.')) return false;
+  return true;
+}
 
-  const userById = new Map(
-    users
-      .filter((u) => u.email && !adminIds.has(u.id) && !u.email.includes('@admin.'))
-      .map((u) => [u.id, u]),
-  );
+async function loadStudentUsersByIds(
+  userIds: string[],
+  adminIds: Set<string>,
+): Promise<Map<string, ElevateXStudentUser>> {
+  const unique = [...new Set(userIds.filter(Boolean))];
+  const map = new Map<string, ElevateXStudentUser>();
+  if (!unique.length) return map;
 
+  const chunkSize = 200;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const users = await prisma.user.findMany({
+      where: { id: { in: chunk }, adminUser: null },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        rollNumber: true,
+        branch: true,
+      },
+    });
+    for (const u of users) {
+      if (isStudentUser(u, adminIds)) map.set(u.id, u);
+    }
+  }
+  return map;
+}
+
+function mergeElevateXResult(
+  byUser: Map<string, ElevateXAdminResultRow>,
+  mapped: ElevateXAdminResultRow,
+  userId: string,
+): void {
+  const prev = byUser.get(userId);
+  if (
+    !prev ||
+    new Date(mapped.submitted_at ?? mapped.attempt_id) >
+      new Date(prev.submitted_at ?? prev.attempt_id)
+  ) {
+    byUser.set(userId, mapped);
+  }
+}
+
+/** All ElevateX submissions for admin (live exam + reports). */
+export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminResultRow[]> {
+  const adminIds = await loadAdminUserIds();
   const byUser = new Map<string, ElevateXAdminResultRow>();
 
   const attemptRows = await prisma.testAttempt.findMany({
-    where: {
-      OR: [
-        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-      ],
-    },
+    where: elevatexTitleWhere(),
     orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
-    take: 2000,
+    take: 3000,
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          rollNumber: true,
+          branch: true,
+        },
+      },
+    },
   });
 
-  for (const row of attemptRows) {
-    const user = userById.get(row.userId);
+  const todayKey = getTodayDateKeyInIST();
+  const { start, end } = getIstDayBoundsIso(todayKey);
+  const todayRows = await prisma.testAttempt.findMany({
+    where: {
+      ...elevatexTitleWhere(),
+      completedAt: { gte: new Date(start), lte: new Date(end) },
+    },
+    orderBy: { completedAt: 'desc' },
+    take: 800,
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          rollNumber: true,
+          branch: true,
+        },
+      },
+    },
+  });
+
+  const seenAttemptIds = new Set<string>();
+  for (const row of [...todayRows, ...attemptRows]) {
+    if (seenAttemptIds.has(row.id)) continue;
+    seenAttemptIds.add(row.id);
+    const user = isStudentUser(row.user, adminIds) ? row.user : null;
     if (!user) continue;
     const mapped = rowFromParts({
       attemptId: row.id,
@@ -177,14 +269,7 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
     if (!mapped.submitted_at && !isCompletedAttemptStatus(mapped.status, mapped.submitted_at)) {
       continue;
     }
-    const prev = byUser.get(row.userId);
-    if (
-      !prev ||
-      new Date(mapped.submitted_at ?? mapped.attempt_id) >
-        new Date(prev.submitted_at ?? prev.attempt_id)
-    ) {
-      byUser.set(row.userId, mapped);
-    }
+    mergeElevateXResult(byUser, mapped, row.userId);
   }
 
   const statRows = await prisma.studentDashboardStat.findMany({
@@ -192,6 +277,9 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
     select: { userId: true, payload: true },
     take: 5000,
   });
+
+  const statUserIds = statRows.map((s) => s.userId);
+  const userById = await loadStudentUsersByIds(statUserIds, adminIds);
 
   for (const stat of statRows) {
     const user = userById.get(stat.userId);
@@ -217,14 +305,7 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
         answers: entry.answers,
       });
       if (!mapped) continue;
-      const prev = byUser.get(stat.userId);
-      if (
-        !prev ||
-        new Date(mapped.submitted_at ?? mapped.attempt_id) >
-          new Date(prev.submitted_at ?? prev.attempt_id)
-      ) {
-        byUser.set(stat.userId, mapped);
-      }
+      mergeElevateXResult(byUser, mapped, stat.userId);
     }
   }
 
@@ -235,39 +316,37 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
   });
 }
 
+/** ElevateX submissions on a given IST calendar day (defaults to today). */
+export async function loadElevateXResultsForDateKeyPrisma(
+  dateKey: string = getTodayDateKeyInIST(),
+): Promise<ElevateXAdminResultRow[]> {
+  const all = await loadElevateXAdminResultsPrisma();
+  return all.filter((r) => isInstantOnDateKey(r.submitted_at, dateKey));
+}
+
 /** Students currently in the exam (autosave / heartbeat, not yet submitted). */
 export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgressRow[]> {
-  const adminIds = new Set(
-    (await prisma.adminUser.findMany({ select: { userId: true } })).map((a) => a.userId),
-  );
-  const users = await prisma.user.findMany({
-    where: { adminUser: null },
-    select: { id: true, email: true, fullName: true, rollNumber: true },
-    take: 5000,
-  });
-  const userById = new Map(
-    users
-      .filter((u) => u.email && !adminIds.has(u.id) && !u.email.includes('@admin.'))
-      .map((u) => [u.id, u]),
-  );
+  const adminIds = await loadAdminUserIds();
 
   const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
   const rows = await prisma.testAttempt.findMany({
     where: {
       createdAt: { gte: since },
       status: { in: ['in_progress', 'started', 'active'] },
-      OR: [
-        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-      ],
+      ...elevatexTitleWhere(),
     },
     orderBy: { createdAt: 'desc' },
     take: 300,
+    include: {
+      user: {
+        select: { id: true, email: true, fullName: true, rollNumber: true },
+      },
+    },
   });
 
   const byUser = new Map<string, ElevateXInProgressRow>();
   for (const row of rows) {
-    const user = userById.get(row.userId);
+    const user = isStudentUser(row.user, adminIds) ? row.user : null;
     if (!user) continue;
     if (!isInProgressStatus(row.status) || row.completedAt) continue;
     const partial = resolveStoredPercent(
@@ -291,9 +370,13 @@ export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgress
     where: { lastHeartbeat: { gte: heartbeatCutoff } },
     take: 200,
   });
+  const sessionUserById = await loadStudentUsersByIds(
+    sessions.map((s) => s.userId),
+    adminIds,
+  );
   for (const session of sessions) {
     if (byUser.has(session.userId)) continue;
-    const user = userById.get(session.userId);
+    const user = sessionUserById.get(session.userId);
     if (!user) continue;
     byUser.set(session.userId, {
       attempt_id: `session-${session.userId}`,

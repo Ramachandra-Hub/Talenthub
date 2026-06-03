@@ -2,6 +2,7 @@ import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import type { RollupAttempt, RollupStudent } from '@/lib/admin/attempts-rollup';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
+import { loadElevateXResultsForDateKeyPrisma } from '@/lib/admin/elevatex-results-prisma';
 import { averageScorePercent, roundRatePercent, roundScorePercent } from '@/lib/format-score';
 import { ELEVATEX_EXAM_NAME, ELEVATEX_TEST_ID } from '@/lib/elevatex';
 import { isElevateXAttemptMeta } from '@/lib/placement/scorecard-payload';
@@ -175,6 +176,49 @@ export async function loadElevateXTodayReportFast(
   dateKey: string,
   reportDateLabel: string,
 ): Promise<TestReportsPayload> {
+  const prismaRows = await loadElevateXResultsForDateKeyPrisma(dateKey);
+  if (prismaRows.length > 0) {
+    const rows: TestReportRow[] = sortTestReportRows(
+      prismaRows.map((r) => ({
+        attempt_id: r.attempt_id,
+        user_id: r.user_id,
+        student_name: r.student_name,
+        email: r.email,
+        roll_number: r.roll_number,
+        branch: r.branch,
+        academic_year: null,
+        test_id: ELEVATEX_TEST_ID,
+        test_name: ELEVATEX_EXAM_NAME,
+        exam_type: 'elevatex' as const,
+        score: roundScorePercent(r.overall_score),
+        status: r.status,
+        completed_at: r.submitted_at,
+        created_at: r.submitted_at ?? new Date().toISOString(),
+        time_taken_sec: null,
+      })),
+    );
+    const completedRows = rows.filter((r) => isCompletedAttemptStatus(r.status, r.completed_at));
+    const scores = completedRows.map((r) => r.score);
+    const passed = scores.filter((s) => s >= 40).length;
+    const userIds = [...new Set(rows.map((r) => r.user_id))];
+    return {
+      exam_type: 'elevatex',
+      report_date: dateKey,
+      report_date_label: reportDateLabel,
+      summary: {
+        total_attempts: rows.length,
+        in_progress_count: rows.length - completedRows.length,
+        completed_count: completedRows.length,
+        unique_students: userIds.length,
+        avg_score: scores.length > 0 ? averageScorePercent(scores) : 0,
+        pass_rate: scores.length > 0 ? roundRatePercent((passed / scores.length) * 100) : 0,
+        highest_score: scores.length > 0 ? roundScorePercent(Math.max(...scores)) : 0,
+      },
+      tests: [{ id: ELEVATEX_TEST_ID, name: ELEVATEX_EXAM_NAME, attempt_count: rows.length }],
+      rows,
+    };
+  }
+
   const bounds = getIstDayBoundsIso(dateKey);
   const seenIds = new Set<string>();
 

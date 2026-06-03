@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import {
   loadElevateXAdminResultsPrisma,
   loadElevateXInProgressPrisma,
+  loadElevateXResultsForDateKeyPrisma,
 } from '@/lib/admin/elevatex-results-prisma';
+import { getTodayDateKeyInIST } from '@/lib/admin/report-date-filter';
 import { requireAuth } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
@@ -11,9 +13,11 @@ export async function GET() {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
-  const [rowsRaw, inProgress] = await Promise.all([
+  const todayKey = getTodayDateKeyInIST();
+  const [rowsRaw, inProgress, todayRows] = await Promise.all([
     loadElevateXAdminResultsPrisma(),
     loadElevateXInProgressPrisma(),
+    loadElevateXResultsForDateKeyPrisma(todayKey),
   ]);
   const rows = [...rowsRaw].sort(
     (a, b) =>
@@ -24,8 +28,11 @@ export async function GET() {
   return NextResponse.json({
     rows,
     in_progress: inProgress,
+    today_key: todayKey,
+    today_rows: todayRows,
     summary: {
       submitted_count: submitted.length,
+      submitted_today_count: todayRows.length,
       in_progress_count: inProgress.length,
       with_scorecard: rows.filter((r) => r.has_full_scorecard).length,
       avg_score:

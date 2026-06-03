@@ -4,7 +4,11 @@ import {
   loadAdminStudentsPrisma,
   loadAllAttemptsRollupPrisma,
 } from '@/lib/admin/attempts-rollup-prisma';
+import { loadElevateXResultsForDateKeyPrisma } from '@/lib/admin/elevatex-results-prisma';
 import { listLiveExamSchedulesPrisma } from '@/lib/admin/live-dashboard-prisma';
+import { getTodayDateKeyInIST } from '@/lib/admin/report-date-filter';
+import type { RollupAttempt } from '@/lib/admin/attempts-rollup';
+import { ELEVATEX_TEST_ID } from '@/lib/elevatex';
 import { averageScorePercent } from '@/lib/format-score';
 import { prisma } from '@/lib/prisma';
 
@@ -14,12 +18,39 @@ export async function GET() {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
-  const [students, { attempts }, categories, liveSchedules] = await Promise.all([
+  const [students, rollup, categories, liveSchedules, elevatexToday] = await Promise.all([
     loadAdminStudentsPrisma(),
     loadAllAttemptsRollupPrisma(),
     prisma.testCategory.findMany({ select: { id: true, name: true, slug: true } }),
     listLiveExamSchedulesPrisma(),
+    loadElevateXResultsForDateKeyPrisma(getTodayDateKeyInIST()),
   ]);
+
+  let { attempts } = rollup;
+  const attemptIds = new Set(attempts.map((a) => a.id));
+  const elevatexMerged: RollupAttempt[] = [];
+  for (const row of elevatexToday) {
+    if (!row.submitted_at) continue;
+    if (attemptIds.has(row.attempt_id)) continue;
+    elevatexMerged.push({
+      id: row.attempt_id,
+      user_id: row.user_id,
+      test_id: ELEVATEX_TEST_ID,
+      test_name: `ElevateX · ${row.branch ?? 'Department'}`,
+      score: row.overall_score,
+      status: row.status,
+      created_at: row.submitted_at,
+      completed_at: row.submitted_at,
+      time_taken: null,
+      source: 'test_attempts',
+    });
+    attemptIds.add(row.attempt_id);
+  }
+  if (elevatexMerged.length > 0) {
+    attempts = [...elevatexMerged, ...attempts].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  }
 
   const tests = await prisma.test.findMany({
     select: { id: true, title: true, name: true, categoryId: true },
