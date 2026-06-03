@@ -12,6 +12,7 @@ import {
   emptySlots,
 } from '@/components/exam-builder/exam-slot-schedule-panel';
 import { ElevateXLiveInfo } from '@/components/elevatex/elevatex-live-info';
+import { ElevateXTechnicalFormatPanel } from '@/components/admin/elevatex-technical-format-panel';
 import { ACADEMIC_YEARS } from '@/lib/college-brand';
 import { ELEVATEX_EXAM_NAME, ELEVATEX_MODULE_KEY } from '@/lib/elevatex';
 import type { ElevateXAdminState } from '@/lib/elevatex-admin';
@@ -219,6 +220,11 @@ export function ElevateXSlotAdminSection() {
           />
         </div>
       </div>
+
+      <ElevateXTechnicalFormatPanel
+        requestId={state?.requestId ?? null}
+        initialFormats={state?.technicalFormats ?? {}}
+      />
 
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">

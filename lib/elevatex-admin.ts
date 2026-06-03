@@ -25,6 +25,15 @@ import {
   type RosterProvisionResult,
 } from '@/lib/roster-student-provision';
 import { enrichSlotsWithPasswords } from '@/lib/roster-credentials-export';
+import {
+  defaultElevateXTechnicalFormats,
+  mergeElevateXTechnicalFormats,
+  parseElevateXTechnicalConfig,
+  resolveTechnicalFormatForDepartment,
+  serializeElevateXTechnicalConfig,
+  type ElevateXTechnicalFormatsMap,
+} from '@/lib/placement/elevatex-technical-config';
+import type { PlacementTechnicalFormat } from '@/lib/placement/types';
 
 export type ElevateXAdminSlotStatus = {
   slot_number: number;
@@ -45,12 +54,14 @@ export type ElevateXAdminState = {
   title: string;
   slots: ElevateXAdminSlotStatus[];
   scheduleSlots: ExamScheduleSlotInput[];
+  /** Admin-only: technical section format per branch (students cannot change). */
+  technicalFormats: ElevateXTechnicalFormatsMap;
 };
 
 export async function fetchElevateXAdminState(admin: DbServiceClient): Promise<ElevateXAdminState> {
   const { data: request } = await admin
     .from('faculty_exam_requests')
-    .select('id, title, published_test_id, schedule_slots_json, uses_slot_scheduling, status')
+    .select('id, title, topic, published_test_id, schedule_slots_json, uses_slot_scheduling, status')
     .eq('test_type', ELEVATEX_BUILDER_TEST_TYPE_ID)
     .eq('status', 'approved')
     .order('created_at', { ascending: false })
@@ -86,11 +97,16 @@ export async function fetchElevateXAdminState(admin: DbServiceClient): Promise<E
     };
   });
 
+  const technicalFormats = mergeElevateXTechnicalFormats(
+    parseElevateXTechnicalConfig(request?.topic as string | null | undefined),
+  );
+
   return {
     published: Boolean(request?.published_test_id),
     requestId,
     testId: ELEVATEX_TEST_ID,
     title: String(request?.title ?? ELEVATEX_EXAM_NAME),
+    technicalFormats,
     slots,
     scheduleSlots: scheduleSlots.length
       ? scheduleSlots
@@ -179,6 +195,7 @@ export async function publishElevateXFromAdmin(
     creatorUserId: input.creatorUserId,
     primaryDepartment: 'All departments',
     title: input.title.trim() || ELEVATEX_EXAM_NAME,
+    topic: serializeElevateXTechnicalConfig(defaultElevateXTechnicalFormats()),
     description: input.description ?? null,
     targetYears: input.targetYears,
     durationMinutes: 60,
@@ -363,6 +380,53 @@ export async function goLiveElevateXSlot(
 }
 
 /** Re-create / reset AWS RDS logins from the published ElevateX roster (fixes CSV login issues). */
+export async function saveElevateXTechnicalFormats(
+  admin: DbServiceClient,
+  requestId: string,
+  formats: ElevateXTechnicalFormatsMap,
+): Promise<{ message: string }> {
+  const merged = mergeElevateXTechnicalFormats(formats);
+  for (const value of Object.values(merged)) {
+    if (value !== 'mcq' && value !== 'coding' && value !== 'both') {
+      throw new Error('Invalid technical format in configuration.');
+    }
+  }
+
+  const { error } = await admin
+    .from('faculty_exam_requests')
+    .update({
+      topic: serializeElevateXTechnicalConfig(merged),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', requestId);
+
+  if (error) throw new Error(error.message);
+
+  return {
+    message: 'Technical section formats saved. Students will use these settings for their branch.',
+  };
+}
+
+/** Resolve format for a student branch from the published ElevateX request (server-authoritative). */
+export async function fetchElevateXTechnicalFormatForDepartment(
+  admin: DbServiceClient,
+  departmentId: string,
+): Promise<PlacementTechnicalFormat> {
+  const { data: request } = await admin
+    .from('faculty_exam_requests')
+    .select('topic')
+    .eq('test_type', ELEVATEX_BUILDER_TEST_TYPE_ID)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return resolveTechnicalFormatForDepartment(
+    departmentId,
+    parseElevateXTechnicalConfig(request?.topic as string | null | undefined),
+  );
+}
+
 export async function reprovisionElevateXRoster(
   admin: DbServiceClient,
   requestId: string,

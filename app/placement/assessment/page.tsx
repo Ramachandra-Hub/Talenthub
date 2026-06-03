@@ -11,7 +11,6 @@ import { createProctorSessionId } from '@/lib/exam-v2/proctoring';
 import { getElevateXTestId } from '@/lib/placement/elevatex-attempt';
 import { COLLEGE } from '@/lib/college-brand';
 import {
-  PLACEMENT_DEPARTMENTS,
   PLACEMENT_EXAM_NAME,
   PLACEMENT_EXAM_TAGLINE,
   PLACEMENT_SECTIONS,
@@ -22,7 +21,6 @@ import {
   technicalSectionSummary,
 } from '@/lib/placement/config';
 import type { PlacementTechnicalFormat } from '@/lib/placement/types';
-import { cn } from '@/lib/utils';
 import { formatScorePercentLabel } from '@/lib/format-score';
 import {
   buildElevateXCandidateFromStudent,
@@ -56,12 +54,9 @@ export default function PlacementAssessmentStartPage() {
   } | null>(null);
   const [showProctorGate, setShowProctorGate] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
-  const [departmentId, setDepartmentId] = useState('cse');
-  const [technicalFormat, setTechnicalFormat] = useState<PlacementTechnicalFormat>('coding');
+  const [technicalFormat, setTechnicalFormat] = useState<PlacementTechnicalFormat>('mcq');
 
   const totalMinutes = Math.round(PLACEMENT_TOTAL_SEC / 60);
-  const selectedDept =
-    PLACEMENT_DEPARTMENTS.find((d) => d.id === departmentId) ?? PLACEMENT_DEPARTMENTS[4]!;
 
   const loadStudent = useCallback(async () => {
     try {
@@ -92,11 +87,13 @@ export default function PlacementAssessmentStartPage() {
         { full_name, branch, college },
       );
       setProfile(studentProfile);
-      setDepartmentId(studentProfile.departmentId);
-      setTechnicalFormat(defaultTechnicalFormatForDepartment(studentProfile.departmentId));
 
       const localCompletedId = getPlacementCompletedAttemptId(studentProfile.hallTicket);
       const status = await fetchElevateXAttemptStatus(studentProfile.hallTicket);
+      const fmt =
+        status.technicalFormat ??
+        defaultTechnicalFormatForDepartment(studentProfile.departmentId);
+      setTechnicalFormat(fmt);
       const completedAttemptId =
         status.completed && status.attemptId
           ? status.attemptId
@@ -163,10 +160,7 @@ export default function PlacementAssessmentStartPage() {
       return;
     }
 
-    const candidate = buildElevateXCandidateFromStudent(profile, {
-      departmentId,
-      technicalFormat,
-    });
+    const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat });
     const session = buildPlacementSession(candidate);
     saveCandidateDraft(candidate);
     saveSession(session);
@@ -222,67 +216,23 @@ export default function PlacementAssessmentStartPage() {
             you are ready.
           </p>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 mb-6 text-sm">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 mb-6 text-sm space-y-2">
             <p className="font-semibold text-slate-900">{profile.fullName}</p>
-            <p className="text-slate-600 mt-1">
+            <p className="text-slate-600">
               Roll: <span className="font-mono font-medium text-slate-800">{profile.hallTicket}</span>
             </p>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white p-4 mb-6 space-y-4">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Branch / department
-              </label>
-              <select
-                className="mt-1 w-full h-10 rounded-md border border-slate-300 px-3 text-sm"
-                value={departmentId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setDepartmentId(id);
-                  setTechnicalFormat(defaultTechnicalFormatForDepartment(id));
-                }}
-                disabled={Boolean(priorAttempt) || starting}
-              >
-                {PLACEMENT_DEPARTMENTS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                Technical section format
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    { id: 'mcq' as const, label: 'MCQs only (20)' },
-                    { id: 'coding' as const, label: 'Coding only (3)' },
-                    { id: 'both' as const, label: 'Both (20 MCQ + 3 coding)' },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={Boolean(priorAttempt) || starting}
-                    onClick={() => setTechnicalFormat(opt.id)}
-                    className={cn(
-                      'rounded-lg border px-3 py-2 text-xs font-semibold transition',
-                      technicalFormat === opt.id
-                        ? 'border-[#1e3a5f] bg-[#1e3a5f] text-white'
-                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300',
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-slate-600 mt-3 leading-relaxed">
-                {describeTechnicalSection(technicalFormat, selectedDept.name)}
-              </p>
-            </div>
+            <p className="text-slate-600">
+              Branch: <span className="font-medium text-slate-800">{profile.departmentName}</span>
+            </p>
+            <p className="text-slate-600">
+              Technical section (set by admin):{' '}
+              <span className="font-medium text-slate-800">
+                {technicalSectionSummary(technicalFormat)}
+              </span>
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed pt-1 border-t border-slate-200">
+              {describeTechnicalSection(technicalFormat, profile.departmentName)}
+            </p>
           </div>
 
           <ElevateXLiveInfo className="mb-6" />
@@ -399,8 +349,8 @@ export default function PlacementAssessmentStartPage() {
             ))}
           </ul>
           <p className="text-xs text-slate-500 mt-4">
-            All MCQ sections use unique questions per student (no repeated stems in your paper). Technical
-            format: {technicalSectionSummary(technicalFormat)} for {selectedDept.name}.
+            All sections use unique questions per student. Your technical format is configured by the
+            examination cell for your branch — you cannot change it here.
           </p>
         </Card>
       </div>

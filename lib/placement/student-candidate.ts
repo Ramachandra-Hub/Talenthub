@@ -1,10 +1,6 @@
 import { COLLEGE } from '@/lib/college-brand';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
-import {
-  PLACEMENT_DEPARTMENTS,
-  PLACEMENT_EXAM_NAME,
-  defaultTechnicalFormatForDepartment,
-} from '@/lib/placement/config';
+import { PLACEMENT_DEPARTMENTS, PLACEMENT_EXAM_NAME } from '@/lib/placement/config';
 import { buildCandidate } from '@/lib/placement/scoring';
 import type { PlacementCandidate, PlacementTechnicalFormat } from '@/lib/placement/types';
 
@@ -67,22 +63,17 @@ export function studentElevateXProfileFromAuth(
   };
 }
 
+/** technicalFormat must come from admin config (API), not from student UI. */
 export function buildElevateXCandidateFromStudent(
   profile: StudentElevateXProfile,
-  options?: {
-    departmentId?: string;
-    technicalFormat?: PlacementTechnicalFormat;
-  },
+  options: { technicalFormat: PlacementTechnicalFormat },
 ): PlacementCandidate {
-  const departmentId = options?.departmentId ?? profile.departmentId;
-  const technicalFormat =
-    options?.technicalFormat ?? defaultTechnicalFormatForDepartment(departmentId);
   return buildCandidate({
     fullName: profile.fullName,
     hallTicket: profile.hallTicket,
-    departmentId,
+    departmentId: profile.departmentId,
     collegeName: profile.collegeName,
     examName: PLACEMENT_EXAM_NAME,
-    technicalFormat,
+    technicalFormat: options.technicalFormat,
   });
 }

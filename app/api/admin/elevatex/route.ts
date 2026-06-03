@@ -9,7 +9,9 @@ import {
   saveElevateXSlot,
   goLiveElevateXSlot,
   reprovisionElevateXRoster,
+  saveElevateXTechnicalFormats,
 } from '@/lib/elevatex-admin';
+import type { ElevateXTechnicalFormatsMap } from '@/lib/placement/elevatex-technical-config';
 import { parseScheduleSlotsJson } from '@/lib/exam-schedule-slots';
 import { ELEVATEX_EXAM_NAME } from '@/lib/elevatex';
 
@@ -75,6 +77,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'requestId required' }, { status: 400 });
       }
       const result = await reprovisionElevateXRoster(admin, requestId);
+      return NextResponse.json(result);
+    }
+
+    if (action === 'save_technical_formats') {
+      const requestId = String(body.requestId ?? '');
+      const raw = body.technicalFormats;
+      if (!requestId || !raw || typeof raw !== 'object') {
+        return NextResponse.json({ error: 'requestId and technicalFormats required' }, { status: 400 });
+      }
+      const formats = raw as ElevateXTechnicalFormatsMap;
+      for (const v of Object.values(formats)) {
+        if (v !== 'mcq' && v !== 'coding' && v !== 'both') {
+          return NextResponse.json({ error: 'Invalid technical format value' }, { status: 400 });
+        }
+      }
+      const result = await saveElevateXTechnicalFormats(admin, requestId, formats);
       return NextResponse.json(result);
     }
 

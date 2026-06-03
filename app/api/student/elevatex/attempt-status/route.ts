@@ -4,6 +4,9 @@ import {
   findCompletedElevateXAttempt,
   normalizeRollNumber,
 } from '@/lib/elevatex/completed-attempt';
+import { fetchElevateXTechnicalFormatForDepartment } from '@/lib/elevatex-admin';
+import { getDbService } from '@/lib/db/get-db-service';
+import { placementDepartmentIdFromBranch } from '@/lib/placement/student-candidate';
 import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
 
 export const dynamic = 'force-dynamic';
@@ -19,9 +22,19 @@ export async function GET(request: Request) {
     const rollParam = url.searchParams.get('rollNumber')?.trim() ?? '';
     let rollNumber = rollParam ? normalizeRollNumber(rollParam) : '';
 
+    const profile = await resolveStudentProfilePrisma(session.user.id);
     if (!rollNumber) {
-      const profile = await resolveStudentProfilePrisma(session.user.id);
       rollNumber = profile.roll_number ? normalizeRollNumber(profile.roll_number) : '';
+    }
+
+    const departmentId = placementDepartmentIdFromBranch(profile.branch);
+
+    const admin = getDbService();
+    let technicalFormat = undefined as Awaited<
+      ReturnType<typeof fetchElevateXTechnicalFormatForDepartment>
+    > | undefined;
+    if (admin) {
+      technicalFormat = await fetchElevateXTechnicalFormatForDepartment(admin, departmentId);
     }
 
     const prior = await findCompletedElevateXAttempt({
@@ -30,7 +43,11 @@ export async function GET(request: Request) {
     });
 
     if (!prior) {
-      return NextResponse.json({ completed: false });
+      return NextResponse.json({
+        completed: false,
+        departmentId,
+        technicalFormat,
+      });
     }
 
     return NextResponse.json({
@@ -38,6 +55,8 @@ export async function GET(request: Request) {
       attemptId: prior.id,
       score: prior.score,
       completedAt: prior.completed_at,
+      departmentId,
+      technicalFormat,
     });
   } catch (err) {
     console.error('[elevatex/attempt-status]', err);

@@ -1,10 +1,14 @@
 import { ELEVATEX_TEST_ID } from '@/lib/elevatex';
+import type { PlacementTechnicalFormat } from '@/lib/placement/types';
 
 export type ElevateXAttemptStatus = {
   completed: boolean;
   attemptId?: string;
   score?: number;
   completedAt?: string | null;
+  /** Server-resolved from admin config (students cannot override). */
+  technicalFormat?: PlacementTechnicalFormat;
+  departmentId?: string;
 };
 
 export function getElevateXTestId(): string {
