@@ -66,8 +66,8 @@ export async function POST(request: Request) {
 
   const loaded = await fetchElevateXScorecardForAttemptPrisma(attemptId);
   return NextResponse.json({
-    ok: true,
     ...result,
+    ok: true,
     scorecard: 'scorecard' in loaded ? loaded.scorecard : null,
   });
 }

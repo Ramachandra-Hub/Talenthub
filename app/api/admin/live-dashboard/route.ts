@@ -8,13 +8,16 @@ import {
   listLiveExamSchedulesPrisma,
   loadElevateXLiveSubmittedUserIdsPrisma,
   loadElevateXSessionSubmittedEntriesPrisma,
-  loadAdminStudentsPrisma,
   mergeInProgressIntoLiveBoards,
   mergeInProgressIntoWritingNow,
   mergeSessionSubmittedIntoLiveBoards,
 } from '@/lib/admin/live-dashboard-prisma';
+import { loadAdminStudentsPrisma } from '@/lib/admin/attempts-rollup-prisma';
 import { liveSessionSince } from '@/lib/admin/live-exam-session';
-import { loadElevateXInProgressPrisma } from '@/lib/admin/elevatex-results-prisma';
+import {
+  loadElevateXInProgressPrisma,
+  type ElevateXInProgressRow,
+} from '@/lib/admin/elevatex-results-prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,8 +49,10 @@ export async function GET(request: Request) {
           sessionSince,
           forceDuringLiveAdmin: true,
         })
-      : Promise.resolve([]),
-    sessionSince != null ? loadAdminStudentsPrisma() : Promise.resolve([]),
+      : Promise.resolve([] as ElevateXInProgressRow[]),
+    sessionSince != null
+      ? loadAdminStudentsPrisma()
+      : Promise.resolve([] as Awaited<ReturnType<typeof loadAdminStudentsPrisma>>),
   ]);
 
   const sessionSubmittedEntries =
