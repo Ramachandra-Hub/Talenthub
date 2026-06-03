@@ -6,6 +6,7 @@ import {
   buildLiveExamBoardPrisma,
   isElevateXSchedule,
   listLiveExamSchedulesPrisma,
+  loadElevateXLiveSubmittedUserIdsPrisma,
   mergeInProgressIntoLiveBoards,
   mergeInProgressIntoWritingNow,
 } from '@/lib/admin/live-dashboard-prisma';
@@ -25,10 +26,17 @@ export async function GET(request: Request) {
   const elevatexSchedule = liveSchedules.find((s) => isElevateXSchedule(s)) ?? null;
   const sessionSince = elevatexSchedule ? liveSessionSince(elevatexSchedule) : undefined;
 
+  const submittedFromDb =
+    sessionSince != null
+      ? await loadElevateXLiveSubmittedUserIdsPrisma(sessionSince)
+      : new Set<string>();
+
   const [boardsRaw, writingRaw, elevatexInProgress] = await Promise.all([
     liveSchedules.length ? buildAllLiveExamBoardsPrisma(liveSchedules) : Promise.resolve([]),
     liveSchedules.length
-      ? buildAllLiveWritingActivityPrisma(liveSchedules)
+      ? buildAllLiveWritingActivityPrisma(liveSchedules, {
+          sessionSubmittedUserIds: submittedFromDb,
+        })
       : Promise.resolve([]),
     liveSchedules.length
       ? loadElevateXInProgressPrisma(
@@ -37,12 +45,12 @@ export async function GET(request: Request) {
       : Promise.resolve([]),
   ]);
 
-  const submittedUserIds = new Set(
-    boardsRaw
-      .flatMap((b) => b.entries)
-      .filter((e) => e.submitted_at)
-      .map((e) => e.user_id),
-  );
+  const submittedUserIds = new Set(submittedFromDb);
+  for (const b of boardsRaw) {
+    for (const e of b.entries) {
+      if (e.submitted_at) submittedUserIds.add(e.user_id);
+    }
+  }
   const boards = mergeInProgressIntoLiveBoards(
     boardsRaw,
     elevatexInProgress,

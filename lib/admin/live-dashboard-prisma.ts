@@ -19,6 +19,7 @@ import type { RollupAttempt } from '@/lib/admin/attempts-rollup';
 import type { ElevateXInProgressRow } from '@/lib/admin/elevatex-results-prisma';
 import type { LiveBoardEntry, LiveExamBoard, LiveWritingEntry } from '@/lib/admin/live-dashboard-data';
 import { attemptInLiveExamSession, liveSessionSince } from '@/lib/admin/live-exam-session';
+import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
 
 function mapSchedule(row: {
@@ -206,12 +207,32 @@ function toBoardEntry(
     user_id: attempt.user_id,
     roll_number: student.roll_number,
     student_name: student.full_name?.trim() || student.email || 'Student',
-    score: writing ? attempt.score : attempt.score,
-    status: writing ? 'in_progress' : attempt.status,
+    score: attempt.score,
+    status: submitted ? 'completed' : writing ? 'in_progress' : attempt.status,
     submitted_at: submitted ? attempt.completed_at ?? attempt.created_at : null,
-    updated_at: attempt.created_at,
+    updated_at: attempt.completed_at ?? attempt.created_at,
     rank,
   };
+}
+
+/** User ids who submitted ElevateX during the current live session (for live dashboard). */
+export async function loadElevateXLiveSubmittedUserIdsPrisma(
+  sessionSince: Date,
+): Promise<Set<string>> {
+  const rows = await prisma.testAttempt.findMany({
+    where: {
+      status: { in: ['completed', 'submitted'] },
+      completedAt: { not: null, gte: sessionSince },
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+      ],
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+    take: 3000,
+  });
+  return new Set(rows.map((r) => r.userId));
 }
 
 export async function buildLiveExamBoardPrisma(
@@ -233,19 +254,28 @@ export async function buildLiveExamBoardPrisma(
       ),
   );
 
-  // Pull fresh in-progress ElevateX rows (autosave) even if rollup cache is stale.
+  // Pull fresh ElevateX rows (autosave + submit) even if rollup cache is stale.
   if (isElevateXSchedule(schedule)) {
     const since = liveSessionSince(schedule);
     const liveRows = await prisma.testAttempt.findMany({
       where: {
-        createdAt: { gte: since },
-        OR: [
-          { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-          { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+        AND: [
+          {
+            OR: [
+              { createdAt: { gte: since } },
+              { completedAt: { gte: since } },
+            ],
+          },
+          {
+            OR: [
+              { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+              { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+            ],
+          },
         ],
       },
-      orderBy: { createdAt: 'desc' },
-      take: 300,
+      orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 500,
     });
     for (const row of liveRows) {
       const created_at = row.createdAt.toISOString();
@@ -253,18 +283,23 @@ export async function buildLiveExamBoardPrisma(
       if (!attemptInLiveExamSession({ created_at, completed_at }, schedule)) continue;
 
       const status = String(row.status ?? '').toLowerCase();
-      const score = resolveStoredPercent(
-        row.percentageScore != null ? Number(row.percentageScore) : null,
-        row.score != null ? Number(row.score) : null,
-        row.totalScore != null ? Number(row.totalScore) : null,
-      );
+      const scorecard = parseElevateXScorecardFromAnswers(row.answers);
+      const score = scorecard
+        ? scorecard.percentage
+        : resolveStoredPercent(
+            row.percentageScore != null ? Number(row.percentageScore) : null,
+            row.score != null ? Number(row.score) : null,
+            row.totalScore != null ? Number(row.totalScore) : null,
+          );
       matched.push({
         id: row.id,
         user_id: row.userId,
         test_id: row.testId,
         test_name: row.testTitle ?? ELEVATEX_EXAM_NAME,
         score,
-        status: status || (row.completedAt ? 'completed' : 'in_progress'),
+        status: row.completedAt
+          ? 'completed'
+          : status || 'in_progress',
         created_at,
         completed_at,
         time_taken: row.timeTaken,
@@ -360,7 +395,6 @@ export async function buildAllLiveWritingActivityPrisma(
         where: {
           status: { in: ['completed', 'submitted'] },
           completedAt: { not: null, gte: sessionSince },
-          createdAt: { gte: sessionSince },
           OR: [
             { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
             { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
@@ -422,6 +456,9 @@ export function mergeInProgressIntoLiveBoards(
       if (submittedUserIds?.has(row.user_id)) continue;
       const existing = byUser.get(row.user_id);
       if (existing?.submitted_at) continue;
+      if (existing && isCompletedAttemptStatus(existing.status, existing.submitted_at)) {
+        continue;
+      }
       if (existing) {
         if (!existing.submitted_at) {
           existing.score = Math.max(existing.score, row.partial_score);

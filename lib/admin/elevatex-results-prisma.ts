@@ -366,7 +366,6 @@ async function loadElevateXSubmittedUserIds(sessionSince?: Date): Promise<Set<st
     where: {
       status: { in: ['completed', 'submitted'] },
       completedAt: { not: null, ...(since ? { gte: since } : {}) },
-      ...(since ? { createdAt: { gte: since } } : {}),
       ...elevatexTitleWhere(),
     },
     select: { userId: true },
