@@ -24,6 +24,13 @@ export async function GET(request: Request) {
     searchParams.get('date')?.trim() ||
     (searchParams.get('today') === '1' ? 'today' : undefined);
 
+  if (examType === 'elevatex') {
+    const { finalizeOpenElevateXAttemptsAfterExamPrisma } = await import(
+      '@/lib/elevatex/exam-window'
+    );
+    await finalizeOpenElevateXAttemptsAfterExamPrisma().catch(() => undefined);
+  }
+
   const payload = await loadTestReportsPayload(admin, examType, testId, scheduleId, {
     dateFilter,
   });

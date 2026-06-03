@@ -125,9 +125,29 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
               {POLL_MS / 1000}s · click roll or report for full section PDF
             </p>
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
-            Refresh
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await fetch('/api/admin/elevatex/close-exam', {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
+                } catch {
+                  /* ignore */
+                }
+                void refresh();
+              }}
+            >
+              Close exam &amp; refresh reports
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {(data?.in_progress?.length ?? 0) > 0 ? (

@@ -3,6 +3,8 @@ import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import type { RollupAttempt, RollupStudent } from '@/lib/admin/attempts-rollup';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
 import { loadElevateXResultsForDateKeyPrisma } from '@/lib/admin/elevatex-results-prisma';
+import { isElevateXExamWindowOpenPrisma } from '@/lib/elevatex/exam-window';
+import { isInProgressStatus } from '@/lib/attempt-status';
 import { averageScorePercent, roundRatePercent, roundScorePercent } from '@/lib/format-score';
 import { ELEVATEX_EXAM_NAME, ELEVATEX_TEST_ID } from '@/lib/elevatex';
 import { isElevateXAttemptMeta } from '@/lib/placement/scorecard-payload';
@@ -226,7 +228,13 @@ export async function loadElevateXTodayReportFast(
   for (const a of fromTable) seenIds.add(a.id);
 
   const fromStats = await loadTodayElevateXFromDashboardStats(admin, dateKey, seenIds);
-  const merged = latestAttemptPerUser([...fromTable, ...fromStats]);
+  let merged = latestAttemptPerUser([...fromTable, ...fromStats]);
+  const examOpen = await isElevateXExamWindowOpenPrisma();
+  if (!examOpen) {
+    merged = merged.filter(
+      (a) => isCompletedAttemptStatus(a.status, a.completed_at) && !isInProgressStatus(a.status),
+    );
+  }
 
   const userIds = [...new Set(merged.map((a) => a.user_id).filter(Boolean))];
   const studentById = await loadStudentsForIds(admin, userIds);

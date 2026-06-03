@@ -7,6 +7,11 @@ import {
   isInstantOnDateKey,
 } from '@/lib/admin/report-date-filter';
 import { ELEVATEX_EXAM_NAME, ELEVATEX_TEST_ID, isElevateXAttemptTitle } from '@/lib/elevatex';
+import {
+  elevateXTestAttemptWhere,
+  finalizeOpenElevateXAttemptsAfterExamPrisma,
+  isElevateXExamWindowOpenPrisma,
+} from '@/lib/elevatex/exam-window';
 import { PLACEMENT_SECTIONS } from '@/lib/placement/config';
 import {
   isElevateXAttemptMeta,
@@ -103,9 +108,13 @@ function rowFromParts(input: {
   const submittedAt =
     input.completedAt != null && String(input.completedAt).trim()
       ? input.completedAt
-      : isCompletedAttemptStatus(input.status, input.completedAt)
+      : scorecard || isCompletedAttemptStatus(input.status, input.completedAt)
         ? input.createdAt
         : null;
+  const status =
+    scorecard || isCompletedAttemptStatus(input.status, input.completedAt)
+      ? 'completed'
+      : input.status;
 
   return {
     attempt_id: input.attemptId,
@@ -118,7 +127,7 @@ function rowFromParts(input: {
     overall_score: scorecard ? scorecard.percentage : input.score,
     earned_marks: scorecard?.earnedMarks ?? 0,
     total_marks: scorecard?.totalMarks ?? 100,
-    status: input.status,
+    status,
     submitted_at: submittedAt,
     sections: sectionsFromScorecard(scorecard),
     has_full_scorecard: Boolean(scorecard),
@@ -133,12 +142,7 @@ type ElevateXStudentUser = {
   branch: string | null;
 };
 
-const elevatexTitleWhere = () => ({
-  OR: [
-    { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-    { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-  ],
-});
+const elevatexTitleWhere = elevateXTestAttemptWhere;
 
 async function loadAdminUserIds(): Promise<Set<string>> {
   return new Set(
@@ -214,11 +218,16 @@ function mergeElevateXResult(
 }
 
 /** All ElevateX submissions for admin (live exam + reports). */
-export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminResultRow[]> {
+async function ensureElevateXExamClosedForAdmin(): Promise<void> {
   const { reconcileElevateXStaleInProgressPrisma } = await import(
     '@/lib/db/test-attempts-prisma'
   );
   await reconcileElevateXStaleInProgressPrisma().catch(() => undefined);
+  await finalizeOpenElevateXAttemptsAfterExamPrisma().catch(() => undefined);
+}
+
+export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminResultRow[]> {
+  await ensureElevateXExamClosedForAdmin();
 
   const adminIds = await loadAdminUserIds();
   const byUser = new Map<string, ElevateXAdminResultRow>();
@@ -288,7 +297,11 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
       answers: row.answers,
     });
     if (!mapped) continue;
-    if (!mapped.submitted_at && !isCompletedAttemptStatus(mapped.status, mapped.submitted_at)) {
+    if (
+      !mapped.submitted_at &&
+      !mapped.has_full_scorecard &&
+      !isCompletedAttemptStatus(mapped.status, mapped.submitted_at)
+    ) {
       continue;
     }
     mergeElevateXResult(byUser, mapped, row.userId);
@@ -380,6 +393,11 @@ async function loadElevateXSubmittedUserIds(): Promise<Set<string>> {
 
 /** Students currently in the exam (autosave / heartbeat, not yet submitted). */
 export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgressRow[]> {
+  await ensureElevateXExamClosedForAdmin();
+  if (!(await isElevateXExamWindowOpenPrisma())) {
+    return [];
+  }
+
   const adminIds = await loadAdminUserIds();
   const submittedUserIds = await loadElevateXSubmittedUserIds();
 

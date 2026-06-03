@@ -107,10 +107,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const scheduleId = searchParams.get('scheduleId')?.trim() ?? '';
 
-  const { reconcileElevateXStaleInProgressPrisma } = await import(
-    '@/lib/db/test-attempts-prisma'
+  const { finalizeOpenElevateXAttemptsAfterExamPrisma } = await import(
+    '@/lib/elevatex/exam-window'
   );
-  await reconcileElevateXStaleInProgressPrisma().catch(() => undefined);
+  await finalizeOpenElevateXAttemptsAfterExamPrisma().catch(() => undefined);
 
   const [liveSchedules, endedSchedules] = await Promise.all([
     listLiveExamSchedulesPrisma(),
