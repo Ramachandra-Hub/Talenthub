@@ -8,10 +8,7 @@
     "USE_PRISMA_AUTH": "true",
     "NEXT_PUBLIC_USE_AWS_STACK": "true",
     "AUTO_RDS_SCHEMA": "true",
-    "AUTH_TRUST_HOST": "true",
-    "DATABASE_URL": "postgresql://prisma_build:prisma_build@127.0.0.1:5432/prisma_build?sslmode=disable",
-    "DIRECT_URL": "postgresql://prisma_build:prisma_build@127.0.0.1:5432/prisma_build?sslmode=disable",
-    "AUTH_SECRET": "vercel-build-placeholder-auth-secret-must-replace-in-dashboard"
+    "AUTH_TRUST_HOST": "true"
   },
   "functions": {
     "app/api/setup/rds/route.ts": {

@@ -55,17 +55,27 @@ function describeInvalidDatabaseUrl(raw: string): string {
   return 'DATABASE_URL must start with postgresql:// (see .env.local.example). On Vercel, do not wrap the value in quotes.';
 }
 
+function isVercelRuntime(): boolean {
+  return process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
+}
+
+function envSetupHint(): string {
+  if (isVercelRuntime()) {
+    return 'Vercel → Project → Settings → Environment Variables → Production: set DATABASE_URL, DIRECT_URL, AUTH_SECRET, AUTH_URL, then Redeploy.';
+  }
+  return 'Copy .env.local.example to .env.local and paste your AWS RDS DATABASE_URL and AUTH_SECRET, then restart npm run dev.';
+}
+
 /** Detect common copy-paste mistakes (psql CLI, shell export, hostname only). */
 export function getDatabaseSetupErrors(): string[] {
   normalizeDatabaseEnvUrls();
 
   const errors: string[] = [];
   const raw = process.env.DATABASE_URL?.trim() ?? '';
+  const hint = envSetupHint();
 
   if (!raw) {
-    errors.push(
-      'DATABASE_URL is not set. Copy .env.local.example to .env.local and paste your RDS URL.',
-    );
+    errors.push(`DATABASE_URL is not set. ${hint}`);
     return errors;
   }
 
@@ -74,21 +84,22 @@ export function getDatabaseSetupErrors(): string[] {
     raw.includes('PASSWORD@') ||
     raw.includes('YOUR_RDS_PASSWORD') ||
     raw.includes('YOUR_PASSWORD') ||
-    raw.includes('prisma_build@127.0.0.1')
+    raw.includes('prisma_build@127.0.0.1') ||
+    raw.includes('generate-with-openssl')
   ) {
-    errors.push(
-      'DATABASE_URL is still a placeholder — set your real AWS RDS URL in Vercel → Environment Variables (Production), then redeploy.',
-    );
+    errors.push(`DATABASE_URL is still a placeholder. ${hint}`);
     return errors;
   }
 
   const authSecret = process.env.AUTH_SECRET?.trim() ?? '';
   if (
+    !authSecret ||
     authSecret.includes('vercel-build-placeholder') ||
-    authSecret === 'build-time-placeholder-replace-in-vercel-dashboard-min-32-chars-long'
+    authSecret === 'build-time-placeholder-replace-in-vercel-dashboard-min-32-chars-long' ||
+    authSecret.includes('generate-with-openssl')
   ) {
     errors.push(
-      'AUTH_SECRET is still a build placeholder — generate one (openssl rand -base64 32) and set it in Vercel, then redeploy.',
+      `AUTH_SECRET is missing or still a placeholder (use: openssl rand -base64 32). ${hint}`,
     );
   }
 
