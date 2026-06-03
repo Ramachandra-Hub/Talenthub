@@ -71,6 +71,20 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
     [submissions],
   );
 
+  const activeProblemId = active?.id ?? '';
+
+  const setSourceCode = useCallback((sourceCode: string) => {
+    if (!activeProblemId) return;
+    setEditors((prev) => {
+      const row = prev[activeProblemId];
+      if (!row || row.sourceCode === sourceCode) return prev;
+      return {
+        ...prev,
+        [activeProblemId]: { ...row, sourceCode },
+      };
+    });
+  }, [activeProblemId]);
+
   if (!active || !editor) {
     return <Card className="p-6 text-center text-slate-600">No coding questions available.</Card>;
   }
@@ -89,17 +103,6 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
       };
     });
   };
-
-  const setSourceCode = useCallback((sourceCode: string) => {
-    setEditors((prev) => {
-      const row = prev[active.id];
-      if (!row || row.sourceCode === sourceCode) return prev;
-      return {
-        ...prev,
-        [active.id]: { ...row, sourceCode },
-      };
-    });
-  }, [active.id]);
 
   const runAndGrade = async () => {
     const state = editorsRef.current[active.id];
