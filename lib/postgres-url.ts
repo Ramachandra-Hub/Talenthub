@@ -158,6 +158,20 @@ export function withServerlessDbParams(url: string): string {
   return out;
 }
 
+function normalizeDbEnvValue(key: (typeof DB_ENV_KEYS)[number], url: string): string {
+  const base = withServerlessDbParams(url);
+  return key === 'DATABASE_URL' ? withLocalDevDbParams(base) : base;
+}
+
+/** Local dev needs more than one Prisma connection when the admin dashboard polls live data. */
+export function withLocalDevDbParams(url: string): string {
+  const onVercel = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
+  if (onVercel || process.env.NODE_ENV === 'production') return url;
+  let out = url.replace(/([?&])connection_limit=\d+/gi, '$1');
+  out = out.replace(/\?&/g, '?').replace(/[?&]$/g, '');
+  return appendQueryParam(out, 'connection_limit=5');
+}
+
 /** Patch env before Prisma/postgres clients connect (safe to call repeatedly). */
 export function normalizeDatabaseEnvUrls(): void {
   for (const key of DB_ENV_KEYS) {
@@ -175,9 +189,9 @@ export function normalizeDatabaseEnvUrls(): void {
   if (primary) {
     const repaired = tryRepairDatabaseUrl(primary);
     if (repaired && repaired !== primary) {
-      process.env.DATABASE_URL = withServerlessDbParams(repaired);
+      process.env.DATABASE_URL = withLocalDevDbParams(withServerlessDbParams(repaired));
       if (!process.env.DIRECT_URL?.trim() || !isValidPostgresConnectionUrl(process.env.DIRECT_URL)) {
-        process.env.DIRECT_URL = process.env.DATABASE_URL;
+        process.env.DIRECT_URL = withServerlessDbParams(repaired);
       }
     }
   }
@@ -186,17 +200,17 @@ export function normalizeDatabaseEnvUrls(): void {
     const raw = process.env[key]?.trim();
     if (!raw || raw.includes('YOUR_') || raw.includes('REPLACE_WITH')) continue;
     if (!isValidPostgresConnectionUrl(raw)) continue;
-    process.env[key] = withServerlessDbParams(raw);
+    process.env[key] = normalizeDbEnvValue(key, raw);
   }
 
   const db = process.env.DATABASE_URL?.trim();
   const direct = process.env.DIRECT_URL?.trim();
   if (db && isValidPostgresConnectionUrl(db)) {
-    const normalizedDb = withServerlessDbParams(db);
+    const normalizedDb = withLocalDevDbParams(withServerlessDbParams(db));
     process.env.DATABASE_URL = normalizedDb;
 
     if (!direct || !isValidPostgresConnectionUrl(direct)) {
-      process.env.DIRECT_URL = normalizedDb;
+      process.env.DIRECT_URL = withServerlessDbParams(withoutPoolLimit(db));
       return;
     }
 
@@ -224,9 +238,9 @@ export function normalizeDatabaseEnvUrls(): void {
       const database = process.env.RDS_NAME?.trim() || 'postgres';
       const built = `postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}?sslmode=require`;
       if (isValidPostgresConnectionUrl(built)) {
-        process.env.DATABASE_URL = withServerlessDbParams(built);
+        process.env.DATABASE_URL = withLocalDevDbParams(withServerlessDbParams(built));
         if (!isValidPostgresConnectionUrl(process.env.DIRECT_URL ?? '')) {
-          process.env.DIRECT_URL = process.env.DATABASE_URL;
+          process.env.DIRECT_URL = withServerlessDbParams(built);
         }
       }
     }

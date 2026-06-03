@@ -94,100 +94,105 @@ export function AdminDashboard() {
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const applyDashboardPayload = (payload: {
+    stats: typeof stats;
+    students: DashboardStudent[];
+    attempts: DashboardAttemptRow[];
+    tests: Array<{ id: string; name: string; category_id: string }>;
+    categories: Array<{ id: string; name: string; slug: string }>;
+  }) => {
+    setAllAttempts(payload.attempts ?? []);
+    const testsById = new Map<string, { name: string; category_id: string }>();
+    for (const t of payload.tests ?? []) {
+      testsById.set(String(t.id), {
+        name: t.name,
+        category_id: t.category_id ?? '',
+      });
+    }
+    setTestsMap(testsById);
+    setCategories(payload.categories ?? []);
+
+    const students = payload.students ?? [];
+    const recent = [...students]
+      .sort((a, b) => {
+        const bt = b.latestAttemptAt ? new Date(b.latestAttemptAt).getTime() : 0;
+        const at = a.latestAttemptAt ? new Date(a.latestAttemptAt).getTime() : 0;
+        return bt - at;
+      })
+      .slice(0, 8);
+    const top = [...students]
+      .filter((s) => s.attempts > 0)
+      .sort((a, b) => b.highestScore - a.highestScore)
+      .slice(0, 5);
+
+    setStats(payload.stats);
+    setRecentStudents(recent);
+    setTopStudents(top);
+    setAllStudents(students);
+  };
+
+  const fetchDashboardStats = async (signal?: AbortSignal) => {
+    const statsRes = await fetch('/api/admin/dashboard-stats', {
+      credentials: 'include',
+      cache: 'no-store',
+      signal,
+    });
+    if (!statsRes.ok) {
+      throw new Error('Failed to load dashboard stats');
+    }
+    return (await statsRes.json()) as {
+      stats: typeof stats;
+      students: DashboardStudent[];
+      attempts: DashboardAttemptRow[];
+      tests: Array<{ id: string; name: string; category_id: string }>;
+      categories: Array<{ id: string; name: string; slug: string }>;
+    };
+  };
 
   useEffect(() => {
     const checkAdminAccess = async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 45_000);
       try {
-        const meRes = await fetch('/api/admin/me', { credentials: 'include' });
+        setLoadError(null);
+        const meRes = await fetch('/api/admin/me', {
+          credentials: 'include',
+          signal: controller.signal,
+        });
         const { json: me } = await readJsonResponse<{ isAdmin?: boolean; hint?: string }>(meRes);
         if (!meRes.ok || !me.isAdmin) {
           if (me.hint) console.error('[admin dashboard]', me.hint);
+          setLoading(false);
           router.push('/auth/login/admin');
           return;
         }
 
         setIsAdmin(true);
 
-        const statsRes = await fetch('/api/admin/dashboard-stats', { credentials: 'include' });
-        if (!statsRes.ok) {
-          throw new Error('Failed to load dashboard stats');
-        }
-        const payload = (await statsRes.json()) as {
-          stats: typeof stats;
-          students: DashboardStudent[];
-          attempts: DashboardAttemptRow[];
-          tests: Array<{ id: string; name: string; category_id: string }>;
-          categories: Array<{ id: string; name: string; slug: string }>;
-        };
-
-        setAllAttempts(payload.attempts ?? []);
-        const testsById = new Map<string, { name: string; category_id: string }>();
-        for (const t of payload.tests ?? []) {
-          testsById.set(String(t.id), {
-            name: t.name,
-            category_id: t.category_id ?? '',
-          });
-        }
-        setTestsMap(testsById);
-        setCategories(payload.categories ?? []);
-
-        const students = payload.students ?? [];
-        const recent = [...students]
-          .sort((a, b) => {
-            const bt = b.latestAttemptAt ? new Date(b.latestAttemptAt).getTime() : 0;
-            const at = a.latestAttemptAt ? new Date(a.latestAttemptAt).getTime() : 0;
-            return bt - at;
-          })
-          .slice(0, 8);
-        const top = [...students]
-          .filter((s) => s.attempts > 0)
-          .sort((a, b) => b.highestScore - a.highestScore)
-          .slice(0, 5);
-
-        setStats(payload.stats);
-        setRecentStudents(recent);
-        setTopStudents(top);
-        setAllStudents(students);
+        const payload = await fetchDashboardStats(controller.signal);
+        applyDashboardPayload(payload);
       } catch (error) {
         console.error('Error loading admin dashboard:', error);
+        const message =
+          error instanceof Error && error.name === 'AbortError'
+            ? 'Dashboard load timed out. Check RDS connectivity, then refresh.'
+            : error instanceof Error
+              ? error.message
+              : 'Failed to load admin dashboard';
+        setLoadError(message);
       } finally {
+        window.clearTimeout(timeout);
         setLoading(false);
       }
     };
 
     const reloadStats = async () => {
       try {
-        const statsRes = await fetch('/api/admin/dashboard-stats', { credentials: 'include' });
-        if (!statsRes.ok) return;
-        const payload = (await statsRes.json()) as {
-          stats: typeof stats;
-          students: DashboardStudent[];
-          attempts: DashboardAttemptRow[];
-          tests: Array<{ id: string; name: string; category_id: string }>;
-          categories: Array<{ id: string; name: string; slug: string }>;
-        };
-        setAllAttempts(payload.attempts ?? []);
-        const testsById = new Map<string, { name: string; category_id: string }>();
-        for (const t of payload.tests ?? []) {
-          testsById.set(String(t.id), { name: t.name, category_id: t.category_id ?? '' });
-        }
-        setTestsMap(testsById);
-        setCategories(payload.categories ?? []);
-        setStats(payload.stats);
-        setAllStudents(payload.students ?? []);
-        const recent = [...(payload.students ?? [])]
-          .sort((a, b) => {
-            const bt = b.latestAttemptAt ? new Date(b.latestAttemptAt).getTime() : 0;
-            const at = a.latestAttemptAt ? new Date(a.latestAttemptAt).getTime() : 0;
-            return bt - at;
-          })
-          .slice(0, 8);
-        const top = [...(payload.students ?? [])]
-          .filter((s) => s.attempts > 0)
-          .sort((a, b) => b.highestScore - a.highestScore)
-          .slice(0, 5);
-        setRecentStudents(recent);
-        setTopStudents(top);
+        const payload = await fetchDashboardStats();
+        applyDashboardPayload(payload);
+        setLoadError(null);
       } catch {
         // ignore background refresh errors
       }
@@ -219,7 +224,18 @@ export function AdminDashboard() {
       };
       if (!res.ok) throw new Error(json.error ?? 'Reset failed');
       setResetMessage(json.message ?? 'All student data cleared. Admin dashboard refreshed.');
-      window.location.reload();
+      setLoading(true);
+      try {
+        const payload = await fetchDashboardStats();
+        applyDashboardPayload(payload);
+        setLoadError(null);
+      } catch (err) {
+        setLoadError(
+          err instanceof Error ? err.message : 'Cleared data but dashboard refresh failed — reload the page.',
+        );
+      } finally {
+        setLoading(false);
+      }
     } catch (err) {
       setResetMessage(err instanceof Error ? err.message : 'Reset failed');
     } finally {
@@ -322,7 +338,6 @@ export function AdminDashboard() {
     return (
       <>
         {dashboardModals}
-        <LiveExamDashboard />
         <LoadingScreen message="Loading admin dashboard…" className="min-h-[40vh]" />
       </>
     );
@@ -605,7 +620,31 @@ export function AdminDashboard() {
   return (
     <>
       {dashboardModals}
-      <LiveExamDashboard />
+      {loadError ? (
+        <Card className="mb-6 border-red-200 bg-red-50/90 p-4">
+          <p className="text-sm font-semibold text-red-950">Could not load dashboard data</p>
+          <p className="text-sm text-red-900/80 mt-1">{loadError}</p>
+          <Button
+            variant="outline"
+            className="mt-3 border-red-300 text-red-950"
+            onClick={() => {
+              setLoading(true);
+              setLoadError(null);
+              void fetchDashboardStats()
+                .then((payload) => {
+                  applyDashboardPayload(payload);
+                })
+                .catch((err) => {
+                  setLoadError(err instanceof Error ? err.message : 'Retry failed');
+                })
+                .finally(() => setLoading(false));
+            }}
+          >
+            Retry
+          </Button>
+        </Card>
+      ) : null}
+      <LiveExamDashboard deferPollMs={2500} />
       <Card className="mb-6 border-amber-200 bg-amber-50/80 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-amber-950">Exam day prep</p>

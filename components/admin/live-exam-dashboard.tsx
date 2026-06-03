@@ -63,6 +63,11 @@ type LiveWritingEntry = LiveBoardEntry & {
   test_title: string;
 };
 
+type LiveExamDashboardProps = {
+  /** Wait before polling so initial admin stats can use the DB connection first. */
+  deferPollMs?: number;
+};
+
 function readDownloadedReportIds(): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
@@ -206,7 +211,7 @@ function PodiumCard({
   );
 }
 
-export function LiveExamDashboard() {
+export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
   const [schedules, setSchedules] = useState<LiveSchedule[]>([]);
   const [boards, setBoards] = useState<LiveBoard[]>([]);
   const [endedSchedules, setEndedSchedules] = useState<LiveSchedule[]>([]);
@@ -317,25 +322,37 @@ export function LiveExamDashboard() {
   }, [maybeAutoDownloadEndedSlots]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+    const startDelay = window.setTimeout(() => {
+      if (!cancelled) void refresh();
+    }, Math.max(0, deferPollMs));
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startDelay);
+    };
+  }, [refresh, deferPollMs]);
 
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
 
-    tick();
-    const timer = setInterval(tick, POLL_MS);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const startTimer = window.setTimeout(() => {
+      timer = setInterval(tick, POLL_MS);
+    }, Math.max(0, deferPollMs));
+
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
-      clearInterval(timer);
+      window.clearTimeout(startTimer);
+      if (timer) clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh]);
+  }, [refresh, deferPollMs]);
 
   if (loading) {
     return (
