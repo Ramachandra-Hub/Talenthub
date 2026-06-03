@@ -124,23 +124,21 @@ export async function GET(request: Request) {
   const submittedUserIds = new Set(
     elevatexSubmitted.filter((r) => r.submitted_at).map((r) => r.user_id),
   );
-  const boards = mergeInProgressIntoLiveBoards(boardsRaw, elevatexInProgress, submittedUserIds);
+  const inProgressFiltered = elevatexInProgress.filter((r) => !submittedUserIds.has(r.user_id));
+  const boards = mergeInProgressIntoLiveBoards(boardsRaw, inProgressFiltered, submittedUserIds);
   const endedBoards = mergeInProgressIntoLiveBoards(
     endedBoardsRaw,
-    elevatexInProgress,
+    inProgressFiltered,
     submittedUserIds,
   );
   const writing_now = mergeInProgressIntoWritingNow(
     writingRaw,
-    elevatexInProgress,
+    inProgressFiltered,
     liveSchedules,
     submittedUserIds,
   );
-
-  const hasElevateXActivity =
-    elevatexSubmitted.length > 0 ||
-    elevatexInProgress.length > 0 ||
-    writing_now.length > 0;
+  const writingFiltered = writing_now.filter((r) => !submittedUserIds.has(r.user_id));
+  const hasElevateXActivity = inProgressFiltered.length > 0 || writingFiltered.length > 0;
 
   const schedule =
     (scheduleId ? liveSchedules.find((s) => s.id === scheduleId) : null) ??
@@ -176,9 +174,9 @@ export async function GET(request: Request) {
     ended_boards: endedBoards,
     ended_reports,
     board,
-    writing_now,
+    writing_now: writingFiltered,
     elevatex_submitted_count: elevatexSubmitted.length,
-    elevatex_in_progress_count: elevatexInProgress.length,
+    elevatex_in_progress_count: inProgressFiltered.length,
     refreshed_at: new Date().toISOString(),
   });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { executeCode } from '@/lib/coding/execute';
 import { parseCodingRunRequest } from '@/lib/coding/parse-run-request';
+import { requireAuth } from '@/lib/server-auth';
 import type { CodingLanguageId } from '@/lib/coding/languages';
 
 export const runtime = 'nodejs';
@@ -64,6 +65,9 @@ async function runPool(
 }
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth(['student', 'admin'], request);
+  if ('response' in authResult) return authResult.response;
+
   try {
     let body: unknown;
     try {

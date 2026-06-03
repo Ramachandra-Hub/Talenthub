@@ -2,12 +2,17 @@ import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { executeCode } from '@/lib/coding/execute';
 import { parseCodingRunRequest } from '@/lib/coding/parse-run-request';
+import { requireAuth } from '@/lib/server-auth';
 import { auth } from '@/auth';
 import { useAwsStack } from '@/lib/aws/stack';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
+  const authResult = await requireAuth(['student', 'admin'], request);
+  if ('response' in authResult) return authResult.response;
+
   try {
     let body: unknown;
     try {

@@ -194,7 +194,10 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
 
       setOutput(`${lines.join('\n')}\nResult: ${passed}/${testCases.length} passed`);
     } catch (err) {
-      setOutput(err instanceof Error ? err.message : 'Could not run your code. Check your connection.');
+      const msg = err instanceof Error ? err.message : 'Could not run your code.';
+      setOutput(
+        `${msg}\n\nIf this keeps failing, check you are logged in and try again in a few seconds.`,
+      );
     } finally {
       setRunning(false);
     }

@@ -1,4 +1,5 @@
 import type { CodingLanguageId } from '@/lib/coding/languages';
+import { fetchWithSession } from '@/lib/client-auth';
 import { outputsMatch } from '@/lib/coding/sample-problems';
 
 export type CodingRunResponse = {
@@ -16,10 +17,11 @@ export async function runCodingOnServer(
   sourceCode: string,
   stdin: string,
 ): Promise<CodingRunResponse> {
-  const res = await fetch('/api/v2/coding/run', {
+  const res = await fetchWithSession('/api/v2/coding/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ language, sourceCode, stdin }),
+    cache: 'no-store',
   });
   const data = (await res.json()) as CodingRunResponse;
   if (!res.ok) {
@@ -50,10 +52,11 @@ export async function runCodingBatchOnServer(
   sourceCode: string,
   inputs: string[],
 ): Promise<CodingRunResponse[]> {
-  const res = await fetch('/api/v2/coding/run-batch', {
+  const res = await fetchWithSession('/api/v2/coding/run-batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ language, sourceCode, inputs }),
+    cache: 'no-store',
   });
   const data = (await res.json()) as {
     results?: CodingRunResponse[];

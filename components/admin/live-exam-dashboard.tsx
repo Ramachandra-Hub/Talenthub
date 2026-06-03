@@ -280,11 +280,11 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
 
       setFetchError(null);
       const list = json.schedules ?? [];
-      const elevatexActive =
-        (json.elevatex_in_progress_count ?? 0) > 0 ||
-        (json.elevatex_submitted_count ?? 0) > 0 ||
-        (json.writing_now?.length ?? 0) > 0;
-      const isLive = (Boolean(json.live) && list.length > 0) || elevatexActive;
+      const isLive =
+        Boolean(json.live) &&
+        (list.length > 0 ||
+          (json.elevatex_in_progress_count ?? 0) > 0 ||
+          (json.writing_now?.length ?? 0) > 0);
       const liveBoards = json.boards?.length ? json.boards : [];
       const endedList = json.ended_schedules ?? [];
       const endedBoardList = json.ended_boards ?? [];
@@ -334,6 +334,8 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
   }, [refresh, deferPollMs]);
 
   useEffect(() => {
+    if (!live && !loading) return undefined;
+
     const tick = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
@@ -352,7 +354,7 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
       if (timer) clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh, deferPollMs]);
+  }, [refresh, deferPollMs, live, loading]);
 
   if (loading) {
     return (
@@ -373,7 +375,7 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
     );
   }
 
-  if (!showingLive && endedSchedules.length === 0) {
+  if (!showingLive) {
     return <ElevateXLiveResultsPanel className="mb-8" />;
   }
 

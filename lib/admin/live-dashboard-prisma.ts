@@ -63,10 +63,8 @@ function isElevateXSchedule(schedule: ExamScheduleRow): boolean {
 function isLiveForDashboard(schedule: ExamScheduleRow, now = Date.now()): boolean {
   if (schedule.status === 'ended') return false;
 
-  // ElevateX: if admin marked live, always show command centre (clock skew / ends_at bugs should not hide the board).
-  if (schedule.status === 'live' && isElevateXSchedule(schedule)) return true;
-
   const resolved = resolveExamScheduleStatus(schedule, now);
+  if (resolved.display === 'window_ended' || resolved.display === 'ended') return false;
   if (resolved.display === 'live' || isScheduleLiveNow(schedule, now)) return true;
 
   // Scheduled slot inside its window (students may already be on /placement/take).
@@ -114,13 +112,15 @@ export async function ensureElevateXLiveScheduleFallback(
       created_at: module.createdAt.toISOString(),
       updated_at: module.updatedAt.toISOString(),
     };
-    return [mapped];
+    if (isLiveForDashboard(mapped)) return [mapped];
   }
 
-  const since = new Date(Date.now() - 4 * 60 * 60 * 1000);
-  const recentActivity = await prisma.testAttempt.count({
+  const since = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const inProgressActivity = await prisma.testAttempt.count({
     where: {
       createdAt: { gte: since },
+      completedAt: null,
+      status: { in: ['in_progress', 'started', 'active'] },
       OR: [
         { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
         { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
@@ -128,12 +128,30 @@ export async function ensureElevateXLiveScheduleFallback(
     },
   });
 
-  const heartbeatCutoff = new Date(Date.now() - 15 * 60 * 1000);
-  const recentHeartbeats = await prisma.studentActiveSession.count({
-    where: { lastHeartbeat: { gte: heartbeatCutoff } },
+  const completedRows = await prisma.testAttempt.findMany({
+    where: {
+      status: { in: ['completed', 'submitted'] },
+      completedAt: { not: null },
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+      ],
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+    take: 3000,
   });
+  const submittedIds = new Set(completedRows.map((r) => r.userId));
 
-  if (recentActivity === 0 && recentHeartbeats === 0) return live;
+  const heartbeatCutoff = new Date(Date.now() - 10 * 60 * 1000);
+  const heartbeatSessions = await prisma.studentActiveSession.findMany({
+    where: { lastHeartbeat: { gte: heartbeatCutoff } },
+    select: { userId: true },
+    take: 200,
+  });
+  const recentHeartbeats = heartbeatSessions.filter((s) => !submittedIds.has(s.userId)).length;
+
+  if (inProgressActivity === 0 && recentHeartbeats === 0) return live;
 
   const nowIso = new Date().toISOString();
   return [
