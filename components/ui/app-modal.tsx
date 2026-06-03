@@ -39,7 +39,7 @@ export function AppModal({
         aria-label={ariaLabel}
         onClick={onClose}
       />
-      <div className="flex min-h-full items-start sm:items-center justify-center p-3 sm:p-6">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-6">
         <div
           className="relative z-[1] my-auto w-full"
           role="dialog"

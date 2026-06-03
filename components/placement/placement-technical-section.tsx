@@ -75,20 +75,21 @@ export function PlacementTechnicalSection({
             Coding ({coding.problems.length} problems)
           </button>
         </div>
-        {tab === 'mcq' ? (
+        <div className={tab === 'mcq' ? '' : 'hidden'}>
           <PlacementMcqRunner
             sectionId="technical"
             questions={mcq.questions}
             answers={mcq.answers}
             onAnswerChange={onMcqAnswerChange}
           />
-        ) : (
+        </div>
+        <div className={tab === 'coding' ? '' : 'hidden'}>
           <PlacementCodingSection
             problems={coding.problems}
             submissions={coding.submissions}
             onSubmissionChange={onCodingSubmissionChange}
           />
-        )}
+        </div>
       </div>
     );
   }

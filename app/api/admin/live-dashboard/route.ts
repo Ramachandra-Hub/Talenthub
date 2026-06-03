@@ -121,12 +121,20 @@ export async function GET(request: Request) {
       loadElevateXInProgressPrisma(),
     ]);
 
-  const boards = mergeInProgressIntoLiveBoards(boardsRaw, elevatexInProgress);
-  const endedBoards = mergeInProgressIntoLiveBoards(endedBoardsRaw, elevatexInProgress);
+  const submittedUserIds = new Set(
+    elevatexSubmitted.filter((r) => r.submitted_at).map((r) => r.user_id),
+  );
+  const boards = mergeInProgressIntoLiveBoards(boardsRaw, elevatexInProgress, submittedUserIds);
+  const endedBoards = mergeInProgressIntoLiveBoards(
+    endedBoardsRaw,
+    elevatexInProgress,
+    submittedUserIds,
+  );
   const writing_now = mergeInProgressIntoWritingNow(
     writingRaw,
     elevatexInProgress,
     liveSchedules,
+    submittedUserIds,
   );
 
   const hasElevateXActivity =

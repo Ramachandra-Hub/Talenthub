@@ -43,7 +43,7 @@ export function StudentSessionHeartbeat() {
     };
 
     const onExamRoute =
-      pathname?.startsWith('/placement') ||
+      pathname === '/placement/take' ||
       pathname?.startsWith('/tests/take') ||
       pathname?.startsWith('/exam/');
     const intervalMs = onExamRoute ? 30 * 1000 : 5 * 60 * 1000;

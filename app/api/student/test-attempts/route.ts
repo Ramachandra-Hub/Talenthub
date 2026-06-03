@@ -25,6 +25,7 @@ import { isElevateXTestId } from '@/lib/elevatex';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { prisma } from '@/lib/prisma';
+import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -196,6 +197,7 @@ export async function POST(request: Request) {
     }
 
     await appendStudentDashboardStatPrisma(userId, statEntry);
+    await releaseStudentSessionPrisma(userId);
     const attempts = await fetchStudentDashboardStatsPrisma(userId);
     const saved = attempts.find((row) => String(row.id) === String(id));
     const attempt: TestAttempt & { test: { name: string } } = saved ?? {

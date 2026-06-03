@@ -380,6 +380,10 @@ export default function PlacementTakePage() {
         markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);
         clearPlacementDrafts(scorecard.candidate.hallTicket);
         clearPlacementProctorSessionId();
+        void fetchWithSession('/api/auth/student/session-release', {
+          method: 'POST',
+          credentials: 'include',
+        }).catch(() => undefined);
         setShowSubmitConfirm(false);
         router.replace(`/placement/result/${attemptId}`);
       } catch (err) {

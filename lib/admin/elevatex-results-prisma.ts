@@ -324,9 +324,24 @@ export async function loadElevateXResultsForDateKeyPrisma(
   return all.filter((r) => isInstantOnDateKey(r.submitted_at, dateKey));
 }
 
+async function loadElevateXSubmittedUserIds(): Promise<Set<string>> {
+  const rows = await prisma.testAttempt.findMany({
+    where: {
+      status: { in: ['completed', 'submitted'] },
+      completedAt: { not: null },
+      ...elevatexTitleWhere(),
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+    take: 3000,
+  });
+  return new Set(rows.map((r) => r.userId));
+}
+
 /** Students currently in the exam (autosave / heartbeat, not yet submitted). */
 export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgressRow[]> {
   const adminIds = await loadAdminUserIds();
+  const submittedUserIds = await loadElevateXSubmittedUserIds();
 
   const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
   const rows = await prisma.testAttempt.findMany({
@@ -346,6 +361,7 @@ export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgress
 
   const byUser = new Map<string, ElevateXInProgressRow>();
   for (const row of rows) {
+    if (submittedUserIds.has(row.userId)) continue;
     const user = isStudentUser(row.user, adminIds) ? row.user : null;
     if (!user) continue;
     if (!isInProgressStatus(row.status) || row.completedAt) continue;
@@ -375,6 +391,7 @@ export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgress
     adminIds,
   );
   for (const session of sessions) {
+    if (submittedUserIds.has(session.userId)) continue;
     if (byUser.has(session.userId)) continue;
     const user = sessionUserById.get(session.userId);
     if (!user) continue;

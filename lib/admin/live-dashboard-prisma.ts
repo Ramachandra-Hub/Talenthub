@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { isScheduleLiveNow, resolveExamScheduleStatus } from '@/lib/exam-schedule';
-import { isCompletedAttemptStatus } from '@/lib/attempt-status';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import {
   ELEVATEX_EXAM_NAME,
@@ -211,6 +210,17 @@ export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> 
   return ensureElevateXLiveScheduleFallback(sorted);
 }
 
+/** Prefer completed attempts over stale in-progress autosave / heartbeat rows. */
+function pickBetterAttempt(prev: RollupAttempt, next: RollupAttempt): RollupAttempt {
+  const prevDone = isCompletedAttemptStatus(prev.status, prev.completed_at);
+  const nextDone = isCompletedAttemptStatus(next.status, next.completed_at);
+  if (prevDone && !nextDone) return prev;
+  if (!prevDone && nextDone) return next;
+  const prevAt = new Date(prev.completed_at ?? prev.created_at).getTime();
+  const nextAt = new Date(next.completed_at ?? next.created_at).getTime();
+  return nextAt >= prevAt ? next : prev;
+}
+
 function attemptMatchesSchedule(attempt: RollupAttempt, schedule: ExamScheduleRow): boolean {
   if (schedule.id === 'elevatex-activity-fallback') {
     return isElevateXAttemptTitle(attempt.test_name) || isElevateXTestId(attempt.test_id);
@@ -299,9 +309,7 @@ export async function buildLiveExamBoardPrisma(
   const latestByUser = new Map<string, RollupAttempt>();
   for (const a of matched) {
     const prev = latestByUser.get(a.user_id);
-    if (!prev || new Date(a.created_at) > new Date(prev.created_at)) {
-      latestByUser.set(a.user_id, a);
-    }
+    latestByUser.set(a.user_id, prev ? pickBetterAttempt(prev, a) : a);
   }
 
   const sorted = Array.from(latestByUser.values()).sort((a, b) => {
@@ -377,12 +385,28 @@ export async function buildAllLiveWritingActivityPrisma(
     take: 200,
   });
 
+  const elevatexSubmitted = await prisma.testAttempt.findMany({
+    where: {
+      status: { in: ['completed', 'submitted'] },
+      completedAt: { not: null },
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+      ],
+    },
+    select: { userId: true },
+    distinct: ['userId'],
+    take: 3000,
+  });
+  const submittedUserIds = new Set(elevatexSubmitted.map((r) => r.userId));
+
   const students = await loadAdminStudentsPrisma();
   const studentById = new Map(students.map((s) => [s.id, s]));
   const schedule =
     schedules.find((s) => isElevateXSchedule(s)) ?? schedules[0] ?? null;
 
   for (const session of activeSessions) {
+    if (submittedUserIds.has(session.userId)) continue;
     if (seen.has(session.userId) || !schedule) continue;
     const student = studentById.get(session.userId);
     if (!student) continue;
@@ -410,6 +434,7 @@ export async function buildAllLiveWritingActivityPrisma(
 export function mergeInProgressIntoLiveBoards(
   boards: LiveExamBoard[],
   inProgress: ElevateXInProgressRow[],
+  submittedUserIds?: Set<string>,
 ): LiveExamBoard[] {
   if (!inProgress.length) return boards;
 
@@ -420,7 +445,9 @@ export function mergeInProgressIntoLiveBoards(
     const byUser = new Map(entries.map((e) => [e.user_id, e]));
 
     for (const row of inProgress) {
+      if (submittedUserIds?.has(row.user_id)) continue;
       const existing = byUser.get(row.user_id);
+      if (existing?.submitted_at) continue;
       if (existing) {
         if (!existing.submitted_at) {
           existing.score = Math.max(existing.score, row.partial_score);
@@ -478,6 +505,7 @@ export function mergeInProgressIntoWritingNow(
   writing: LiveWritingEntry[],
   inProgress: ElevateXInProgressRow[],
   schedules: ExamScheduleRow[],
+  submittedUserIds?: Set<string>,
 ): LiveWritingEntry[] {
   const schedule =
     schedules.find((s) => isElevateXSchedule(s)) ?? schedules[0] ?? null;
@@ -487,8 +515,10 @@ export function mergeInProgressIntoWritingNow(
   const seen = new Set(rows.map((r) => r.user_id));
 
   for (const row of inProgress) {
+    if (submittedUserIds?.has(row.user_id)) continue;
     if (seen.has(row.user_id)) {
       const existing = rows.find((r) => r.user_id === row.user_id);
+      if (existing?.submitted_at) continue;
       if (existing && !existing.submitted_at) {
         existing.score = Math.max(existing.score, row.partial_score);
         existing.updated_at = row.updated_at;

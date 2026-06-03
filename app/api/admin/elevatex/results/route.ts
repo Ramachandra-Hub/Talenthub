@@ -24,16 +24,18 @@ export async function GET() {
       new Date(b.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
   );
   const submitted = rows.filter((r) => r.submitted_at);
+  const submittedUserIds = new Set(submitted.map((r) => r.user_id));
+  const inProgressFiltered = inProgress.filter((r) => !submittedUserIds.has(r.user_id));
 
   return NextResponse.json({
     rows,
-    in_progress: inProgress,
+    in_progress: inProgressFiltered,
     today_key: todayKey,
     today_rows: todayRows,
     summary: {
       submitted_count: submitted.length,
       submitted_today_count: todayRows.length,
-      in_progress_count: inProgress.length,
+      in_progress_count: inProgressFiltered.length,
       with_scorecard: rows.filter((r) => r.has_full_scorecard).length,
       avg_score:
         submitted.length > 0

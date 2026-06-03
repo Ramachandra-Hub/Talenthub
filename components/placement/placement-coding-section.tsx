@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CodeEditor } from '@/components/coding/code-editor';
@@ -9,9 +9,7 @@ import {
   getCodingLanguage,
   type CodingLanguageId,
 } from '@/lib/coding/languages';
-import { effectiveSourceCode } from '@/lib/coding/effective-source';
 import {
-  formatCodingRunOutput,
   gradeCodingTestCase,
   runCodingBatchOnServer,
   runCodingOnServer,
@@ -30,32 +28,36 @@ type EditorState = {
   sourceCode: string;
 };
 
+function initialEditorState(
+  problem: ProgrammingProblem,
+  saved?: PlacementCodingSubmission,
+): EditorState {
+  const lang = saved?.language ?? CODING_LANGUAGES[0].id;
+  const stub = CODING_LANGUAGES.find((l) => l.id === lang)?.stub ?? CODING_LANGUAGES[0].stub;
+  const source = saved?.sourceCode?.trim() ? saved.sourceCode : stub;
+  return { language: lang, sourceCode: source };
+}
+
 export function PlacementCodingSection({ problems, submissions, onSubmissionChange }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [running, setRunning] = useState(false);
-  const [output, setOutput] = useState<string>('Run code to view output.');
+  const [output, setOutput] = useState<string>('Write your solution, then click Run code to grade all test cases.');
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
+  const editorsRef = useRef(editors);
+  const initKeyRef = useRef('');
+
+  editorsRef.current = editors;
 
   const problemIds = useMemo(() => problems.map((p) => p.id).join('|'), [problems]);
 
   useEffect(() => {
-    setEditors((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const p of problems) {
-        if (next[p.id]) continue;
-        const saved = submissions[p.id];
-        const lang = saved?.language ?? CODING_LANGUAGES[0].id;
-        next[p.id] = {
-          language: lang,
-          sourceCode: saved?.sourceCode?.trim()
-            ? saved.sourceCode
-            : (CODING_LANGUAGES.find((l) => l.id === lang)?.stub ?? CODING_LANGUAGES[0].stub),
-        };
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
+    if (!problemIds || initKeyRef.current === problemIds) return;
+    initKeyRef.current = problemIds;
+    const next: Record<string, EditorState> = {};
+    for (const p of problems) {
+      next[p.id] = initialEditorState(p, submissions[p.id]);
+    }
+    setEditors(next);
   }, [problemIds, problems, submissions]);
 
   const active = problems[Math.min(activeIndex, Math.max(0, problems.length - 1))];
@@ -69,63 +71,54 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
     [submissions],
   );
 
-  const resolveSource = useCallback(
-    (state: EditorState) => effectiveSourceCode(state.sourceCode, state.language),
-    [],
-  );
-
   if (!active || !editor) {
     return <Card className="p-6 text-center text-slate-600">No coding questions available.</Card>;
   }
 
   const setLanguage = (langId: string) => {
     const lang = getCodingLanguage(langId).id;
-    setEditors((prev) => ({
-      ...prev,
-      [active.id]: {
-        language: lang,
-        sourceCode: CODING_LANGUAGES.find((l) => l.id === lang)?.stub ?? CODING_LANGUAGES[0].stub,
-      },
-    }));
+    setEditors((prev) => {
+      const current = prev[active.id];
+      const stub = CODING_LANGUAGES.find((l) => l.id === lang)?.stub ?? CODING_LANGUAGES[0].stub;
+      return {
+        ...prev,
+        [active.id]: {
+          language: lang,
+          sourceCode: current?.sourceCode?.trim() ? current.sourceCode : stub,
+        },
+      };
+    });
   };
 
-  const setSourceCode = (sourceCode: string) => {
-    if (!sourceCode.trim() && !editor.sourceCode.trim()) return;
-    setEditors((prev) => ({
-      ...prev,
-      [active.id]: { ...prev[active.id], sourceCode },
-    }));
-  };
+  const setSourceCode = useCallback((sourceCode: string) => {
+    setEditors((prev) => {
+      const row = prev[active.id];
+      if (!row || row.sourceCode === sourceCode) return prev;
+      return {
+        ...prev,
+        [active.id]: { ...row, sourceCode },
+      };
+    });
+  }, [active.id]);
 
-  const runWithInput = async (stdin: string) => {
-    setRunning(true);
-    setOutput('Running…');
-    try {
-      const data = await runCodingOnServer(editor.language, resolveSource(editor), stdin);
-      setOutput(formatCodingRunOutput(data));
-      return data;
-    } catch (err) {
-      setOutput(err instanceof Error ? err.message : 'Run failed. Check network/execution service.');
-      return null;
-    } finally {
-      setRunning(false);
+  const runAndGrade = async () => {
+    const state = editorsRef.current[active.id];
+    if (!state) return;
+
+    const source = state.sourceCode.trim();
+    if (!source) {
+      setOutput('Write your code in the editor before running.');
+      return;
     }
-  };
 
-  const runSample = async () => {
-    await runWithInput(active.sampleInput);
-  };
-
-  const runAllTests = async () => {
     if (!testCases.length) {
-      setOutput('No test cases are configured for this problem. Refresh the exam or contact the admin.');
+      setOutput('No test cases are configured for this problem. Contact the exam admin.');
       return;
     }
 
     setRunning(true);
-    setOutput(`Running ${testCases.length} test case(s)…`);
+    setOutput(`Running your code against ${testCases.length} test case(s)…`);
 
-    const source = resolveSource(editor);
     let passed = 0;
     const lines: string[] = [];
 
@@ -133,7 +126,7 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
       let batchResults: Awaited<ReturnType<typeof runCodingBatchOnServer>>;
       try {
         batchResults = await runCodingBatchOnServer(
-          editor.language,
+          state.language,
           source,
           testCases.map((tc) => tc.input),
         );
@@ -144,7 +137,7 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
         batchResults = [];
         for (const tc of testCases) {
           try {
-            batchResults.push(await runCodingOnServer(editor.language, source, tc.input));
+            batchResults.push(await runCodingOnServer(state.language, source, tc.input));
           } catch (oneErr) {
             batchResults.push({
               stdout: '',
@@ -163,7 +156,7 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
         lines.push(`Input: ${tc.input.replace(/\n/g, '\\n')}`);
 
         if (data.error) {
-          lines.push(`Status: ERROR`);
+          lines.push('Status: ERROR');
           lines.push(data.error);
           lines.push('');
           continue;
@@ -192,8 +185,8 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
 
       onSubmissionChange({
         problemId: active.id,
-        language: editor.language,
-        sourceCode: editor.sourceCode,
+        language: state.language,
+        sourceCode: source,
         passedCases: passed,
         totalCases: testCases.length,
         lastRunAt: new Date().toISOString(),
@@ -201,21 +194,29 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
 
       setOutput(`${lines.join('\n')}\nResult: ${passed}/${testCases.length} passed`);
     } catch (err) {
-      setOutput(err instanceof Error ? err.message : 'Run all test cases failed.');
+      setOutput(err instanceof Error ? err.message : 'Could not run your code. Check your connection.');
     } finally {
       setRunning(false);
     }
   };
 
+  const sub = submissions[active.id];
+  const lastScore =
+    sub && sub.totalCases > 0
+      ? `${sub.passedCases}/${sub.totalCases} cases passed`
+      : 'Not graded yet';
+
   return (
     <div className="grid lg:grid-cols-4 gap-4">
       <Card className="lg:col-span-1 p-4 border-slate-200">
         <h3 className="text-sm font-semibold text-slate-900 mb-3">Technical coding (3)</h3>
-        <p className="text-xs text-slate-600 mb-3">Solved fully: {solvedCount}/{problems.length}</p>
+        <p className="text-xs text-slate-600 mb-3">
+          Solved fully: {solvedCount}/{problems.length}
+        </p>
         <div className="space-y-2">
           {problems.map((p, i) => {
-            const sub = submissions[p.id];
-            const solved = sub && sub.totalCases > 0 && sub.passedCases === sub.totalCases;
+            const row = submissions[p.id];
+            const solved = row && row.totalCases > 0 && row.passedCases === row.totalCases;
             return (
               <button
                 key={p.id}
@@ -223,7 +224,9 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
                 className={`w-full text-left rounded-lg border px-3 py-2 text-sm ${i === activeIndex ? 'border-[#1e3a5f] bg-[#1e3a5f]/5' : 'border-slate-200'} `}
                 onClick={() => setActiveIndex(i)}
               >
-                <p className="font-semibold text-slate-900">{i + 1}. {p.title}</p>
+                <p className="font-semibold text-slate-900">
+                  {i + 1}. {p.title}
+                </p>
                 <p className="text-xs text-slate-600">{solved ? 'Solved' : 'Not solved'}</p>
               </button>
             );
@@ -251,7 +254,8 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
             </p>
           ) : null}
           <p className="text-xs text-slate-500 mt-2">
-            {testCases.length} test cases (sample + hidden). Run all to see stdout/stderr and explanations.
+            Run code grades your solution against all {testCases.length} test cases. Last result:{' '}
+            <span className="font-semibold text-slate-700">{lastScore}</span>
           </p>
           <div className="grid sm:grid-cols-2 gap-3 mt-3 text-xs">
             <div>
@@ -266,34 +270,35 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
         </Card>
 
         <Card className="p-4 border-slate-200">
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-2 mb-3 items-center">
             <select
               className="h-9 rounded border border-slate-300 px-2 text-sm"
               value={editor.language}
               onChange={(e) => setLanguage(e.target.value)}
             >
               {CODING_LANGUAGES.map((l) => (
-                <option key={l.id} value={l.id}>{l.label}</option>
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
               ))}
             </select>
-            <Button size="sm" variant="outline" disabled={running} onClick={() => void runSample()}>
-              Run sample
-            </Button>
-            <Button size="sm" disabled={running} onClick={() => void runAllTests()}>
-              {running ? 'Running…' : 'Run all test cases'}
+            <Button size="sm" disabled={running} onClick={() => void runAndGrade()}>
+              {running ? 'Running…' : 'Run code'}
             </Button>
           </div>
           <CodeEditor
-            key={`${active.id}-${editor.language}`}
+            key={active.id}
             language={editor.language}
-            value={resolveSource(editor)}
+            value={editor.sourceCode}
             onChange={setSourceCode}
             height="420px"
           />
         </Card>
 
         <Card className="p-4 border-slate-200">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Compiler output</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            Compiler output
+          </p>
           <pre className="text-sm whitespace-pre-wrap font-mono bg-slate-50 border rounded p-3 max-h-96 overflow-auto min-h-[4rem]">
             {output}
           </pre>
