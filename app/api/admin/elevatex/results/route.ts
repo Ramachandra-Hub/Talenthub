@@ -11,10 +11,14 @@ export async function GET() {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
-  const [rows, inProgress] = await Promise.all([
+  const [rowsRaw, inProgress] = await Promise.all([
     loadElevateXAdminResultsPrisma(),
     loadElevateXInProgressPrisma(),
   ]);
+  const rows = [...rowsRaw].sort(
+    (a, b) =>
+      new Date(b.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
+  );
   const submitted = rows.filter((r) => r.submitted_at);
 
   return NextResponse.json({

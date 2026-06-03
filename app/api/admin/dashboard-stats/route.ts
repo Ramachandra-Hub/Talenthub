@@ -67,8 +67,12 @@ export async function GET() {
       row.highestScore = a.score;
       row.highestTestName = a.test_name;
     }
-    if (!row.latestAttemptAt || new Date(a.created_at) > new Date(row.latestAttemptAt)) {
-      row.latestAttemptAt = a.created_at;
+    const activityAt = a.completed_at ?? a.created_at;
+    if (
+      activityAt &&
+      (!row.latestAttemptAt || new Date(activityAt) > new Date(row.latestAttemptAt))
+    ) {
+      row.latestAttemptAt = activityAt;
     }
     if (!scoresByUser.has(a.user_id)) scoresByUser.set(a.user_id, []);
     scoresByUser.get(a.user_id)!.push(a.score);

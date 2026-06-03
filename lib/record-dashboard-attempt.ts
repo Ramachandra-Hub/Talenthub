@@ -12,6 +12,8 @@ export type ExamKind = 'practice' | 'programming' | 'department' | 'competitive'
 export type RecordDashboardAttemptInput = {
   testId: string;
   testName: string;
+  /** Live exam autosave row — final submit updates this attempt instead of creating a duplicate. */
+  attemptId?: string;
   scorePercent: number;
   rawNetScore?: number;
   elapsedSec?: number;
@@ -101,6 +103,7 @@ export async function recordDashboardAttempt(
       body: JSON.stringify({
         testId: input.testId,
         testName: input.testName,
+        attemptId: input.attemptId,
         scorePercent: input.scorePercent,
         rawNetScore: input.rawNetScore ?? input.scorePercent,
         elapsedSec,

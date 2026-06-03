@@ -147,8 +147,8 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
         { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
       ],
     },
-    orderBy: { createdAt: 'desc' },
-    take: 500,
+    orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
+    take: 2000,
   });
 
   for (const row of attemptRows) {
@@ -174,7 +174,9 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
       answers: row.answers,
     });
     if (!mapped) continue;
-    if (!isCompletedAttemptStatus(mapped.status, mapped.submitted_at)) continue;
+    if (!mapped.submitted_at && !isCompletedAttemptStatus(mapped.status, mapped.submitted_at)) {
+      continue;
+    }
     const prev = byUser.get(row.userId);
     if (
       !prev ||
@@ -196,7 +198,9 @@ export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminRes
     if (!user) continue;
     for (const entry of parseStatAttempts(stat.payload)) {
       if (!isElevateXAttemptMeta(entry.test_id, entry.test_name)) continue;
-      if (!isCompletedAttemptStatus(entry.status, entry.completed_at)) continue;
+      if (!entry.completed_at && !isCompletedAttemptStatus(entry.status, entry.completed_at)) {
+        continue;
+      }
       const mapped = rowFromParts({
         attemptId: String(entry.id),
         userId: stat.userId,

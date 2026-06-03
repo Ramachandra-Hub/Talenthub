@@ -20,7 +20,7 @@ export function StudentSessionHeartbeat() {
     const sync = async () => {
       const user = await getClientUser();
       if (cancelled) return;
-      setActive(Boolean(user?.email?.includes('@student.') || user?.email?.includes('@')));
+      setActive(user?.role === 'student' || Boolean(user?.email));
     };
 
     void sync();
@@ -46,7 +46,7 @@ export function StudentSessionHeartbeat() {
       pathname?.startsWith('/placement') ||
       pathname?.startsWith('/tests/take') ||
       pathname?.startsWith('/exam/');
-    const intervalMs = onExamRoute ? 60 * 1000 : 5 * 60 * 1000;
+    const intervalMs = onExamRoute ? 30 * 1000 : 5 * 60 * 1000;
 
     ping();
     const timer = setInterval(ping, intervalMs);

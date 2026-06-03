@@ -1,4 +1,5 @@
 import { attemptActivityDateKey, formatDateKeyLabel } from '@/lib/admin/report-date-filter';
+import { isInProgressStatus } from '@/lib/attempt-status';
 import { formatScorePercentLabel, roundRatePercent } from '@/lib/format-score';
 import type { TableReportPayload } from '@/lib/reports/table-report';
 import type {
@@ -41,7 +42,15 @@ function attemptsForStudentOnDate(
       created_at: a.created_at ?? '',
       completed_at: a.completed_at ?? null,
     });
-    return key === dateKey;
+    if (key === dateKey) return true;
+    if (isInProgressStatus(a.status) && !a.completed_at) {
+      const startedKey = attemptActivityDateKey({
+        created_at: a.created_at ?? '',
+        completed_at: null,
+      });
+      return startedKey === dateKey;
+    }
+    return false;
   });
 }
 

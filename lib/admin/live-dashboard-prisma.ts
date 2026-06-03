@@ -10,13 +10,14 @@ import {
   isElevateXModule,
   isElevateXTestId,
 } from '@/lib/elevatex';
-import { isInProgressStatus } from '@/lib/attempt-status';
+import { isCompletedAttemptStatus, isInProgressStatus } from '@/lib/attempt-status';
 import { scheduleEndMs, scheduleStartMs } from '@/lib/exam-schedule';
 import {
   loadAdminStudentsPrisma,
   loadAllAttemptsRollupPrisma,
 } from '@/lib/admin/attempts-rollup-prisma';
 import type { RollupAttempt } from '@/lib/admin/attempts-rollup';
+import type { ElevateXInProgressRow } from '@/lib/admin/elevatex-results-prisma';
 import type { LiveBoardEntry, LiveExamBoard, LiveWritingEntry } from '@/lib/admin/live-dashboard-data';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
 
@@ -303,7 +304,12 @@ export async function buildLiveExamBoardPrisma(
     }
   }
 
-  const sorted = Array.from(latestByUser.values()).sort((a, b) => b.score - a.score);
+  const sorted = Array.from(latestByUser.values()).sort((a, b) => {
+    const aDone = isCompletedAttemptStatus(a.status, a.completed_at);
+    const bDone = isCompletedAttemptStatus(b.status, b.completed_at);
+    if (aDone !== bDone) return aDone ? -1 : 1;
+    return b.score - a.score;
+  });
   const entries: LiveBoardEntry[] = sorted.map((a, i) => {
     const student = studentById.get(a.user_id) ?? {
       roll_number: rollNumberFromUser(''),
@@ -391,6 +397,115 @@ export async function buildAllLiveWritingActivityPrisma(
       submitted_at: null,
       updated_at: session.lastHeartbeat.toISOString(),
       rank: 0,
+      schedule_id: schedule.id,
+      schedule_title: schedule.title,
+      test_title: schedule.title,
+    });
+  }
+
+  return rows;
+}
+
+/** Merge ElevateX autosave rows into live boards so leaderboard updates during the exam. */
+export function mergeInProgressIntoLiveBoards(
+  boards: LiveExamBoard[],
+  inProgress: ElevateXInProgressRow[],
+): LiveExamBoard[] {
+  if (!inProgress.length) return boards;
+
+  return boards.map((board) => {
+    if (!isElevateXSchedule(board.schedule)) return board;
+
+    const entries = [...board.entries];
+    const byUser = new Map(entries.map((e) => [e.user_id, e]));
+
+    for (const row of inProgress) {
+      const existing = byUser.get(row.user_id);
+      if (existing) {
+        if (!existing.submitted_at) {
+          existing.score = Math.max(existing.score, row.partial_score);
+          existing.status = 'in_progress';
+          existing.updated_at = row.updated_at;
+        }
+        continue;
+      }
+      const entry: LiveBoardEntry = {
+        attempt_id: row.attempt_id,
+        user_id: row.user_id,
+        roll_number: row.roll_number,
+        student_name: row.student_name,
+        score: row.partial_score,
+        status: 'in_progress',
+        submitted_at: null,
+        updated_at: row.updated_at,
+        rank: entries.length + 1,
+      };
+      entries.push(entry);
+      byUser.set(row.user_id, entry);
+    }
+
+    entries.sort((a, b) => {
+      if (Boolean(a.submitted_at) !== Boolean(b.submitted_at)) {
+        return a.submitted_at ? -1 : 1;
+      }
+      return b.score - a.score || a.roll_number.localeCompare(b.roll_number);
+    });
+    entries.forEach((e, i) => {
+      e.rank = i + 1;
+    });
+
+    const submitted = entries.filter((e) => e.submitted_at);
+    const top = submitted[0] ?? entries.find((e) => !e.submitted_at) ?? null;
+
+    return {
+      ...board,
+      entries,
+      submitted_count: submitted.length,
+      in_progress_count: entries.length - submitted.length,
+      highest_score: entries.length ? Math.max(...entries.map((e) => e.score)) : 0,
+      top_scorer: top
+        ? {
+            student_name: top.student_name,
+            roll_number: top.roll_number,
+            score: top.score,
+          }
+        : null,
+    };
+  });
+}
+
+export function mergeInProgressIntoWritingNow(
+  writing: LiveWritingEntry[],
+  inProgress: ElevateXInProgressRow[],
+  schedules: ExamScheduleRow[],
+): LiveWritingEntry[] {
+  const schedule =
+    schedules.find((s) => isElevateXSchedule(s)) ?? schedules[0] ?? null;
+  if (!schedule) return writing;
+
+  const rows = [...writing];
+  const seen = new Set(rows.map((r) => r.user_id));
+
+  for (const row of inProgress) {
+    if (seen.has(row.user_id)) {
+      const existing = rows.find((r) => r.user_id === row.user_id);
+      if (existing && !existing.submitted_at) {
+        existing.score = Math.max(existing.score, row.partial_score);
+        existing.updated_at = row.updated_at;
+      }
+      continue;
+    }
+    seen.add(row.user_id);
+    rows.push({
+      attempt_id: row.attempt_id,
+      user_id: row.user_id,
+      roll_number: row.roll_number,
+      student_name: row.student_name,
+      score: row.partial_score,
+      status: 'in_progress',
+      submitted_at: null,
+      updated_at: row.updated_at,
+      rank: rows.length + 1,
       schedule_id: schedule.id,
       schedule_title: schedule.title,
       test_title: schedule.title,

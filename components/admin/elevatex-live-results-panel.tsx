@@ -121,8 +121,8 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
             </h3>
             <p className="text-xs text-slate-600 mt-0.5">
               {data?.summary.in_progress_count ?? 0} writing now · {data?.summary.submitted_count ?? 0}{' '}
-              submitted · avg {formatScorePercentLabel(data?.summary.avg_score ?? 0)} · click roll or
-              report for full section PDF
+              submitted · avg {formatScorePercentLabel(data?.summary.avg_score ?? 0)} · auto-refresh{' '}
+              {POLL_MS / 1000}s · click roll or report for full section PDF
             </p>
           </div>
           <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>

@@ -480,9 +480,12 @@ export function AdminDashboard() {
 
   const recentAttemptsFeed = [...filteredAttempts]
     .sort((a, b) => {
-      const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
-      const at = a.created_at ? new Date(a.created_at).getTime() : 0;
-      return bt - at;
+      const activityMs = (row: DashboardAttemptRow) => {
+        const completed = row.completed_at ? new Date(row.completed_at).getTime() : 0;
+        const created = row.created_at ? new Date(row.created_at).getTime() : 0;
+        return Math.max(completed, created);
+      };
+      return activityMs(b) - activityMs(a);
     })
     .slice(0, 12)
     .map((attempt) => {
@@ -498,7 +501,7 @@ export function AdminDashboard() {
         testName,
         score: Number(attempt.score ?? 0),
         status: String(attempt.status ?? '-'),
-        createdAt: attempt.created_at,
+        createdAt: attempt.completed_at ?? attempt.created_at,
       };
     });
 
@@ -644,7 +647,7 @@ export function AdminDashboard() {
           </Button>
         </Card>
       ) : null}
-      <LiveExamDashboard deferPollMs={2500} />
+      <LiveExamDashboard deferPollMs={0} />
       <Card className="mb-6 border-amber-200 bg-amber-50/80 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-amber-950">Exam day prep</p>

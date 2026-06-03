@@ -274,7 +274,7 @@ export default function PlacementTakePage() {
     };
 
     void reportProgress();
-    const interval = window.setInterval(() => void reportProgress(), 5000);
+    const interval = window.setInterval(() => void reportProgress(), 3000);
     return () => window.clearInterval(interval);
   }, [hydrated, session, elevateXTestId]);
 
@@ -337,6 +337,7 @@ export default function PlacementTakePage() {
         const submitRes = await recordDashboardAttempt({
           testId: elevateXTestId,
           testName,
+          attemptId: liveAttemptIdRef.current || undefined,
           scorePercent: scorecard.percentage,
           rawNetScore: scorecard.earnedMarks,
           elapsedSec: scorecard.totalElapsedSec,

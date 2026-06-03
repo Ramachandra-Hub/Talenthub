@@ -6,6 +6,8 @@ import {
   buildAllLiveWritingActivityPrisma,
   buildLiveExamBoardPrisma,
   listLiveExamSchedulesPrisma,
+  mergeInProgressIntoLiveBoards,
+  mergeInProgressIntoWritingNow,
 } from '@/lib/admin/live-dashboard-prisma';
 import { prisma } from '@/lib/prisma';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
@@ -110,7 +112,7 @@ export async function GET(request: Request) {
     listRecentlyEndedExamSchedulesPrisma(),
   ]);
 
-  const [boards, endedBoards, writing_now, elevatexSubmitted, elevatexInProgress] =
+  const [boardsRaw, endedBoardsRaw, writingRaw, elevatexSubmitted, elevatexInProgress] =
     await Promise.all([
       liveSchedules.length ? buildAllLiveExamBoardsPrisma(liveSchedules) : Promise.resolve([]),
       endedSchedules.length ? buildAllLiveExamBoardsPrisma(endedSchedules) : Promise.resolve([]),
@@ -118,6 +120,14 @@ export async function GET(request: Request) {
       loadElevateXAdminResultsPrisma(),
       loadElevateXInProgressPrisma(),
     ]);
+
+  const boards = mergeInProgressIntoLiveBoards(boardsRaw, elevatexInProgress);
+  const endedBoards = mergeInProgressIntoLiveBoards(endedBoardsRaw, elevatexInProgress);
+  const writing_now = mergeInProgressIntoWritingNow(
+    writingRaw,
+    elevatexInProgress,
+    liveSchedules,
+  );
 
   const hasElevateXActivity =
     elevatexSubmitted.length > 0 ||

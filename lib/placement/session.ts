@@ -109,11 +109,18 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
         (!state ||
           state.kind !== 'technical' ||
           !state.mcq?.questions?.length);
+      const codingProblems = state?.kind === 'technical' ? state.coding?.problems : undefined;
+      const codingCasesMissing =
+        Array.isArray(codingProblems) &&
+        codingProblems.some(
+          (p) => !Array.isArray(p.testCases) || p.testCases.length === 0,
+        );
       const needsCoding =
         (format === 'coding' || format === 'both') &&
         (!state ||
           state.kind !== 'technical' ||
-          !state.coding?.problems?.length);
+          !state.coding?.problems?.length ||
+          codingCasesMissing);
       if (!needsMcq && !needsCoding && state?.kind === 'technical') continue;
 
       sectionStates.technical = buildTechnicalState(format, banks, state);

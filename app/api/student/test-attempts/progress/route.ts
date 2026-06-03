@@ -7,7 +7,7 @@ import {
   syncStudentRollNumberPrisma,
   upsertExamProgressPrisma,
 } from '@/lib/db/test-attempts-prisma';
-import { assertStudentCanTakeTestPrisma } from '@/lib/db/exam-access-prisma';
+import { assertStudentCanReportProgressPrisma } from '@/lib/db/exam-access-prisma';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       ? body.accessRollNumber.trim()
       : (profile.roll_number ??
         (profile.email ? rollNumberFromUser(profile.email) : undefined));
-  const access = await assertStudentCanTakeTestPrisma(userId, testId, {
+  const access = await assertStudentCanReportProgressPrisma(userId, testId, {
     branch: accessBranch,
     academic_year: accessYear,
     roll_number: accessRollNumber,

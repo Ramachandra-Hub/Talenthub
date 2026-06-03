@@ -41,7 +41,7 @@ export async function executeViaWandbox(
   const started = Date.now();
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const timer = setTimeout(() => controller.abort(), 14000);
 
   try {
     const res = await fetch(WANDBOX_URL, {

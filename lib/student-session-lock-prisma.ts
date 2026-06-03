@@ -58,12 +58,27 @@ export async function claimStudentSessionPrisma(
   }
 }
 
-export async function touchStudentSessionPrisma(userId: string, _sessionId?: string): Promise<void> {
+export async function touchStudentSessionPrisma(userId: string, sessionId?: string): Promise<void> {
   if (!userId) return;
-  await prisma.studentActiveSession.updateMany({
-    where: { userId },
-    data: { lastHeartbeat: new Date() },
-  });
+  const now = new Date();
+  const sid = sessionId?.trim() || userId;
+  try {
+    await prisma.studentActiveSession.upsert({
+      where: { userId },
+      create: {
+        userId,
+        sessionId: sid,
+        lockedAt: now,
+        lastHeartbeat: now,
+      },
+      update: {
+        lastHeartbeat: now,
+        sessionId: sid,
+      },
+    });
+  } catch (err) {
+    console.warn('[student-session-lock-prisma] heartbeat upsert failed:', err);
+  }
 }
 
 export async function releaseStudentSessionPrisma(

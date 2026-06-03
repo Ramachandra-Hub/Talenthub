@@ -16,7 +16,10 @@ import {
   linkProctorViolationsPrisma,
   syncStudentRollNumberPrisma,
 } from '@/lib/db/test-attempts-prisma';
-import { assertStudentCanTakeTestPrisma } from '@/lib/db/exam-access-prisma';
+import {
+  assertStudentCanReportProgressPrisma,
+  assertStudentCanTakeTestPrisma,
+} from '@/lib/db/exam-access-prisma';
 import type { TestAttempt } from '@/lib/types';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
@@ -98,11 +101,17 @@ export async function POST(request: Request) {
         ? body.accessRollNumber.trim()
         : (profile.roll_number ??
           (profile.email ? rollNumberFromUser(profile.email) : undefined));
-    const access = await assertStudentCanTakeTestPrisma(userId, testId, {
-      branch: accessBranch,
-      academic_year: accessYear,
-      roll_number: accessRollNumber,
-    });
+    const access = isElevateXTestId(testId)
+      ? await assertStudentCanReportProgressPrisma(userId, testId, {
+          branch: accessBranch,
+          academic_year: accessYear,
+          roll_number: accessRollNumber,
+        })
+      : await assertStudentCanTakeTestPrisma(userId, testId, {
+          branch: accessBranch,
+          academic_year: accessYear,
+          roll_number: accessRollNumber,
+        });
     if (!access.allowed) {
       return NextResponse.json(
         { error: access.message, code: access.code, locked: true },

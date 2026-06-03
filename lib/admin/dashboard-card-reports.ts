@@ -209,7 +209,7 @@ export function buildAdminDashboardCardReport(
         ),
       };
 
-    case 'inactive_students':
+    case 'inactive_students': {
       return {
         title: 'Inactive students',
         subtitle: 'Registered but no test attempts yet',
@@ -233,6 +233,7 @@ export function buildAdminDashboardCardReport(
           }),
         ),
       };
+    }
 
     case 'low_performers':
       return {

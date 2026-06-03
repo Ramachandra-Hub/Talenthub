@@ -5,6 +5,7 @@ import {
   type ExamScheduleRow,
   type ExamScheduleStatus,
 } from '@/lib/exam-schedule';
+import { ELEVATEX_MODULE_KEY, isElevateXTestId } from '@/lib/elevatex';
 import { testIdsMatch } from '@/lib/test-attempts';
 
 export type ExamAccessResult =
@@ -142,4 +143,64 @@ export async function assertStudentCanTakeTestPrisma(
     year: profile.academic_year ?? '',
     rollNumber: profile.roll_number ?? undefined,
   });
+}
+
+/**
+ * Autosave / live leaderboard — must not block mid-exam when slot metadata is loose
+ * (e.g. ElevateX with empty year or legacy exam_schedules rows).
+ */
+export async function assertStudentCanReportProgressPrisma(
+  userId: string,
+  testId: string,
+  profile: { branch: string | null; academic_year: string | null; roll_number?: string | null },
+): Promise<ExamAccessResult> {
+  if (isElevateXTestId(testId)) {
+    const open = await prisma.testAttempt.findFirst({
+      where: {
+        userId,
+        status: { in: ['in_progress', 'started', 'active'] },
+        completedAt: null,
+        OR: [
+          { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+          { testId: testId.trim() },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (open) return { allowed: true, schedule: null };
+
+    const module = await prisma.evaloraModuleSchedule.findFirst({
+      where: { moduleKey: ELEVATEX_MODULE_KEY, status: { in: ['live', 'scheduled'] } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (module) {
+      const now = Date.now();
+      const start = module.startsAt.getTime();
+      const end = module.endsAt?.getTime() ?? null;
+      if (module.status === 'live' || (start <= now && (end === null || end >= now))) {
+        return { allowed: true, schedule: null };
+      }
+    }
+
+    return { allowed: true, schedule: null };
+  }
+
+  const strict = await assertStudentCanTakeTestPrisma(userId, testId, profile);
+  if (strict.allowed) return strict;
+
+  const open = await prisma.testAttempt.findFirst({
+    where: {
+      userId,
+      status: { in: ['in_progress', 'started', 'active'] },
+      completedAt: null,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, testId: true },
+  });
+  if (open?.testId && testIdsMatch(open.testId, testId)) {
+    return { allowed: true, schedule: strict.allowed ? null : strict.schedule };
+  }
+
+  return strict;
 }

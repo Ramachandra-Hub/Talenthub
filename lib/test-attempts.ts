@@ -79,8 +79,12 @@ export type CompletedAttemptSummary = {
 export function testIdsMatch(stored: unknown, target: string): boolean {
   const s = String(stored ?? '').trim();
   const t = target.trim();
-  if (!s || !t) return false;
+  if (!t) return false;
+  /** ElevateX rows store `test_id` NULL in Postgres; client sends `placement_full`. */
+  if (!s && isElevateXTestId(t)) return true;
+  if (!s) return false;
   if (s === t) return true;
+  if (isElevateXTestId(s) && isElevateXTestId(t)) return true;
   if (/^\d+$/.test(s) && /^\d+$/.test(t) && Number(s) === Number(t)) return true;
   return false;
 }

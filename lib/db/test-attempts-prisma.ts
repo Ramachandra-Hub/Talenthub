@@ -14,6 +14,17 @@ import {
 } from '@/lib/test-attempts';
 import { roundScorePercent } from '@/lib/format-score';
 import { resolveTestIdForInsertPrisma } from '@/lib/db/resolve-test-id-for-insert';
+import { ELEVATEX_EXAM_NAME, isElevateXTestId } from '@/lib/elevatex';
+import type { Prisma as PrismaTypes } from '@prisma/client';
+
+function elevateXTitleWhere(): PrismaTypes.TestAttemptWhereInput {
+  return {
+    OR: [
+      { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+      { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+    ],
+  };
+}
 
 export class AttemptConflictError extends Error {
   readonly attemptId: string;
@@ -235,13 +246,21 @@ export async function finalizeTestAttemptPrisma(input: {
     return await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
+      const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
+        ? {
+            userId: input.userId,
+            status: { in: ['completed', 'submitted'] },
+            ...elevateXTitleWhere(),
+          }
+        : {
+            userId: input.userId,
+            testId: resolvedTestId,
+            status: { in: ['completed', 'submitted'] },
+          };
+
       const prior = await tx.testAttempt.findFirst({
-        where: {
-          userId: input.userId,
-          testId: resolvedTestId,
-          status: { in: ['completed', 'submitted'] },
-        },
-        orderBy: { createdAt: 'desc' },
+        where: priorWhere,
+        orderBy: { completedAt: 'desc' },
         select: { id: true },
       });
       if (prior) {
@@ -259,12 +278,19 @@ export async function finalizeTestAttemptPrisma(input: {
             })
           : null;
       if (!candidate) {
+        const openWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
+          ? {
+              userId: input.userId,
+              status: 'in_progress',
+              ...elevateXTitleWhere(),
+            }
+          : {
+              userId: input.userId,
+              testId: resolvedTestId,
+              status: 'in_progress',
+            };
         candidate = await tx.testAttempt.findFirst({
-          where: {
-            userId: input.userId,
-            testId: resolvedTestId,
-            status: 'in_progress',
-          },
+          where: openWhere,
           orderBy: { createdAt: 'desc' },
         });
       }

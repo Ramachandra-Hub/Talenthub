@@ -12,14 +12,12 @@ export async function POST() {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const email = user.email ?? '';
-  if (!email.includes('@student.')) {
+  if (user.role !== 'student') {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
   try {
-    const sessionId = `${user.id}`;
-    await touchStudentSessionPrisma(user.id, sessionId);
+    await touchStudentSessionPrisma(user.id, user.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[session-heartbeat]', err);
