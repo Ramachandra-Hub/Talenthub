@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import {
+  findElevateXScorecardByRoll,
+  findElevateXScorecardForUserId,
+} from '@/lib/placement/elevatex-scorecard-recovery';
+import {
   isElevateXAttemptMeta,
   parseElevateXScorecardFromAnswers,
 } from '@/lib/placement/scorecard-payload';
@@ -17,11 +21,17 @@ function parseStatAttempts(raw: unknown): DashboardStatEntry[] {
 }
 
 export type ElevateXScorecardLookupResult =
-  | { scorecard: PlacementScorecard; attemptId: string; userId: string }
+  | {
+      scorecard: PlacementScorecard;
+      attemptId: string;
+      userId: string;
+      source?: string;
+    }
   | { error: string; status: number };
 
 export async function fetchElevateXScorecardForAttemptPrisma(
   attemptId: string,
+  options?: { rollNumber?: string },
 ): Promise<ElevateXScorecardLookupResult> {
   if (!isPlaceholderAttemptId(attemptId)) {
     const row = await prisma.testAttempt.findUnique({
@@ -40,27 +50,22 @@ export async function fetchElevateXScorecardForAttemptPrisma(
       }
       const scorecard = parseElevateXScorecardFromAnswers(row.answers);
       if (scorecard) {
-        return { scorecard, attemptId: row.id, userId: row.userId };
+        return {
+          scorecard,
+          attemptId: row.id,
+          userId: row.userId,
+          source: 'attempt_row',
+        };
       }
-      const { findCompletedElevateXAttemptForUser } = await import(
-        '@/lib/elevatex/completed-attempt'
-      );
-      const fallback = await findCompletedElevateXAttemptForUser(row.userId);
-      if (fallback) {
-        const completedRow = await prisma.testAttempt.findUnique({
-          where: { id: fallback.id },
-          select: { id: true, userId: true, answers: true },
-        });
-        const fromCompleted = completedRow
-          ? parseElevateXScorecardFromAnswers(completedRow.answers)
-          : null;
-        if (fromCompleted) {
-          return {
-            scorecard: fromCompleted,
-            attemptId: completedRow!.id,
-            userId: completedRow!.userId,
-          };
-        }
+
+      const fromUser = await findElevateXScorecardForUserId(row.userId);
+      if (fromUser) {
+        return {
+          scorecard: fromUser.scorecard,
+          attemptId: row.id,
+          userId: row.userId,
+          source: fromUser.source,
+        };
       }
     }
   }
@@ -79,14 +84,41 @@ export async function fetchElevateXScorecardForAttemptPrisma(
       }
       const scorecard = parseElevateXScorecardFromAnswers(entry.answers);
       if (scorecard) {
-        return { scorecard, attemptId: String(entry.id), userId: stat.userId };
+        return {
+          scorecard,
+          attemptId: String(entry.id),
+          userId: stat.userId,
+          source: 'dashboard_stats',
+        };
       }
+      const fromUser = await findElevateXScorecardForUserId(stat.userId);
+      if (fromUser) {
+        return {
+          scorecard: fromUser.scorecard,
+          attemptId: String(entry.id),
+          userId: stat.userId,
+          source: fromUser.source,
+        };
+      }
+    }
+  }
+
+  const roll = options?.rollNumber?.trim();
+  if (roll) {
+    const byRoll = await findElevateXScorecardByRoll(roll);
+    if (byRoll) {
+      return {
+        scorecard: byRoll.scorecard,
+        attemptId: byRoll.attemptId,
+        userId: byRoll.userId,
+        source: byRoll.source,
+      };
     }
   }
 
   return {
     error:
-      'ElevateX scorecard is not stored for this attempt. Ask the student to submit again while online, or check Vercel logs for save errors.',
+      'ElevateX scorecard is not stored for this attempt. Use Admin → recover by roll, run scripts/recover-elevatex-scorecard.ts, or POST /api/admin/elevatex/backfill-scorecard with the attempt id after the student submits online.',
     status: 404,
   };
 }
