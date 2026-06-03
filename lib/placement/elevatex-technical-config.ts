@@ -39,10 +39,26 @@ export function parseElevateXTechnicalConfig(
   }
 }
 
+/** Legacy exams used `both`; map to branch default (coding for CSE/MCA, MCQs for others). */
+export function normalizeElevateXTechnicalFormats(
+  formats: ElevateXTechnicalFormatsMap,
+): ElevateXTechnicalFormatsMap {
+  const out = { ...formats };
+  for (const d of PLACEMENT_DEPARTMENTS) {
+    if (out[d.id] === 'both') {
+      out[d.id] = d.defaultTechnicalFormat;
+    }
+  }
+  return out;
+}
+
 export function mergeElevateXTechnicalFormats(
   stored: ElevateXTechnicalFormatsMap | null | undefined,
 ): ElevateXTechnicalFormatsMap {
-  return { ...defaultElevateXTechnicalFormats(), ...(stored ?? {}) };
+  return normalizeElevateXTechnicalFormats({
+    ...defaultElevateXTechnicalFormats(),
+    ...(stored ?? {}),
+  });
 }
 
 export function resolveTechnicalFormatForDepartment(

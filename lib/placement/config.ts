@@ -25,7 +25,7 @@ export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
     name: 'Technical Assessment',
     short: 'Technical',
     description:
-      'Branch-specific technical skills — MCQs, coding, or both (set before you start).',
+      'Branch-specific technical skills — MCQs only or coding only (set by admin for your branch).',
     icon: '🛠️',
     kind: 'technical',
     marks: 20,
@@ -113,31 +113,31 @@ export const PLACEMENT_DEPARTMENTS: PlacementDepartment[] = [
     id: 'cse-cyber',
     name: 'Computer Science Engineering (Cyber Security)',
     technicalCategory: 'cyber',
-    defaultTechnicalFormat: 'both',
+    defaultTechnicalFormat: 'coding',
   },
   {
     id: 'cse-iot',
     name: 'Computer Science Engineering (Internet of Things)',
     technicalCategory: 'cse',
-    defaultTechnicalFormat: 'both',
+    defaultTechnicalFormat: 'coding',
   },
   {
     id: 'aids',
     name: 'Artificial Intelligence and Data Science',
     technicalCategory: 'aiml',
-    defaultTechnicalFormat: 'both',
+    defaultTechnicalFormat: 'coding',
   },
   {
     id: 'aiml',
     name: 'Artificial Intelligence & Machine Learning',
     technicalCategory: 'aiml',
-    defaultTechnicalFormat: 'both',
+    defaultTechnicalFormat: 'coding',
   },
   {
     id: 'mca',
     name: 'Master of Computer Applications (MCA)',
     technicalCategory: 'cse',
-    defaultTechnicalFormat: 'both',
+    defaultTechnicalFormat: 'coding',
   },
   { id: 'bba', name: 'Business Administration', technicalCategory: 'generic', defaultTechnicalFormat: 'mcq' },
 ];
@@ -182,11 +182,22 @@ export function describeTechnicalSection(
 export function technicalSectionSummary(format: PlacementTechnicalFormat): string {
   switch (format) {
     case 'mcq':
-      return `${TECHNICAL_MCQ_COUNT} MCQs`;
+      return `${TECHNICAL_MCQ_COUNT} MCQs only (no coding)`;
     case 'coding':
-      return `${TECHNICAL_CODING_COUNT} coding problems`;
+      return `${TECHNICAL_CODING_COUNT} coding only (no technical MCQs)`;
     case 'both':
       return `${TECHNICAL_MCQ_COUNT} MCQs + ${TECHNICAL_CODING_COUNT} coding`;
+  }
+}
+
+export function technicalFormatButtonLabel(format: PlacementTechnicalFormat): string {
+  switch (format) {
+    case 'mcq':
+      return 'MCQs only';
+    case 'coding':
+      return 'Coding only';
+    case 'both':
+      return 'MCQ + Coding';
   }
 }
 

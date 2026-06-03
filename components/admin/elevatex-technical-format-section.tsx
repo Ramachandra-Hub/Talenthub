@@ -11,10 +11,17 @@ import {
 type Props = {
   /** When parent already loaded ElevateX admin state, pass it to skip a duplicate fetch. */
   state?: Pick<ElevateXAdminState, 'requestId' | 'technicalFormats'> | null;
+  groupDepartmentNames?: string[];
+  groupLabel?: string | null;
   onFormatsSaved?: () => void;
 };
 
-export function ElevateXTechnicalFormatSection({ state, onFormatsSaved }: Props) {
+export function ElevateXTechnicalFormatSection({
+  state,
+  groupDepartmentNames,
+  groupLabel,
+  onFormatsSaved,
+}: Props) {
   const [requestId, setRequestId] = useState<string | null>(state?.requestId ?? null);
   const [formats, setFormats] = useState<ElevateXTechnicalFormatsMap>(
     state?.technicalFormats ?? defaultElevateXTechnicalFormats(),
@@ -44,7 +51,7 @@ export function ElevateXTechnicalFormatSection({ state, onFormatsSaved }: Props)
   if (loading) {
     return (
       <p className="text-sm text-slate-500 rounded-xl border border-indigo-200/70 bg-indigo-50/20 p-4">
-        Loading technical section settings (MCQ / coding / both per branch)…
+        Loading technical section settings (MCQs only or coding only per branch)…
       </p>
     );
   }
@@ -53,6 +60,8 @@ export function ElevateXTechnicalFormatSection({ state, onFormatsSaved }: Props)
     <ElevateXTechnicalFormatPanel
       requestId={requestId}
       initialFormats={formats}
+      groupDepartmentNames={groupDepartmentNames}
+      groupLabel={groupLabel}
       onSaved={onFormatsSaved}
     />
   );

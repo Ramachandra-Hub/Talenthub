@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,10 @@ import { StatusAlert } from '@/components/ui/status-alert';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { ExamBuilderControls } from '@/components/exam-builder/exam-builder-controls';
 import { QuestionBankUploadPanel } from '@/components/exam-builder/question-bank-upload-panel';
-import { DepartmentGroupPicker } from '@/components/exam-builder/department-group-picker';
+import {
+  DepartmentGroupPicker,
+  type DepartmentGroupOption,
+} from '@/components/exam-builder/department-group-picker';
 import {
   ExamSlotSchedulePanel,
   emptySlots,
@@ -59,6 +62,20 @@ export default function AdminExamBuilderPage() {
   const [usesSlotScheduling, setUsesSlotScheduling] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<ExamScheduleSlotInput[]>(emptySlots);
   const [manualPaste, setManualPaste] = useState('');
+  const [departmentGroups, setDepartmentGroups] = useState<DepartmentGroupOption[]>([]);
+
+  useEffect(() => {
+    void fetch('/api/department-groups', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { groups?: DepartmentGroupOption[] } | null) => {
+        setDepartmentGroups(json?.groups ?? []);
+      });
+  }, []);
+
+  const selectedDepartmentGroup = useMemo(
+    () => departmentGroups.find((g) => g.id === departmentGroupId) ?? null,
+    [departmentGroups, departmentGroupId],
+  );
 
   const testDef = getExamBuilderTestType(testType);
   const isManual = testType === 'department-manual';
@@ -252,10 +269,6 @@ export default function AdminExamBuilderPage() {
           catalogRefreshToken={catalogRefresh}
         />
 
-        {isElevateX ? (
-          <ElevateXTechnicalFormatSection />
-        ) : null}
-
         {!isElevateX && !isManual ? (
           <QuestionBankUploadPanel
             tagIds={syllabusTopicIds}
@@ -383,6 +396,13 @@ export default function AdminExamBuilderPage() {
           onChange={setDepartmentGroupId}
           primaryDepartment={department}
         />
+
+        {isElevateX ? (
+          <ElevateXTechnicalFormatSection
+            groupDepartmentNames={selectedDepartmentGroup?.departments ?? []}
+            groupLabel={selectedDepartmentGroup?.name ?? null}
+          />
+        ) : null}
 
         <ExamSlotSchedulePanel
           enabled={isElevateX || usesSlotScheduling}
