@@ -359,12 +359,14 @@ export async function loadElevateXResultsForDateKeyPrisma(
   return all.filter((r) => isInstantOnDateKey(r.submitted_at, dateKey));
 }
 
-async function loadElevateXSubmittedUserIds(): Promise<Set<string>> {
+async function loadElevateXSubmittedUserIds(sessionSince?: Date): Promise<Set<string>> {
   const ids = new Set<string>();
+  const since = sessionSince ?? null;
   const rows = await prisma.testAttempt.findMany({
     where: {
       status: { in: ['completed', 'submitted'] },
-      completedAt: { not: null },
+      completedAt: { not: null, ...(since ? { gte: since } : {}) },
+      ...(since ? { createdAt: { gte: since } } : {}),
       ...elevatexTitleWhere(),
     },
     select: { userId: true },
@@ -373,18 +375,20 @@ async function loadElevateXSubmittedUserIds(): Promise<Set<string>> {
   });
   for (const r of rows) ids.add(r.userId);
 
-  const statRows = await prisma.studentDashboardStat.findMany({
-    where: { statKey: 'attempts_feed' },
-    select: { userId: true, payload: true },
-    take: 5000,
-  });
-  for (const stat of statRows) {
-    for (const entry of parseStatAttempts(stat.payload)) {
-      if (!isElevateXAttemptMeta(entry.test_id, entry.test_name)) continue;
-      if (!entry.completed_at && !isCompletedAttemptStatus(entry.status, entry.completed_at)) {
-        continue;
+  if (!since) {
+    const statRows = await prisma.studentDashboardStat.findMany({
+      where: { statKey: 'attempts_feed' },
+      select: { userId: true, payload: true },
+      take: 5000,
+    });
+    for (const stat of statRows) {
+      for (const entry of parseStatAttempts(stat.payload)) {
+        if (!isElevateXAttemptMeta(entry.test_id, entry.test_name)) continue;
+        if (!entry.completed_at && !isCompletedAttemptStatus(entry.status, entry.completed_at)) {
+          continue;
+        }
+        ids.add(stat.userId);
       }
-      ids.add(stat.userId);
     }
   }
 
@@ -392,16 +396,19 @@ async function loadElevateXSubmittedUserIds(): Promise<Set<string>> {
 }
 
 /** Students currently in the exam (autosave / heartbeat, not yet submitted). */
-export async function loadElevateXInProgressPrisma(): Promise<ElevateXInProgressRow[]> {
+export async function loadElevateXInProgressPrisma(options?: {
+  sessionSince?: Date;
+}): Promise<ElevateXInProgressRow[]> {
   await ensureElevateXExamClosedForAdmin();
   if (!(await isElevateXExamWindowOpenPrisma())) {
     return [];
   }
 
   const adminIds = await loadAdminUserIds();
-  const submittedUserIds = await loadElevateXSubmittedUserIds();
+  const sessionSince = options?.sessionSince;
+  const submittedUserIds = await loadElevateXSubmittedUserIds(sessionSince);
 
-  const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
+  const since = sessionSince ?? new Date(Date.now() - 6 * 60 * 60 * 1000);
   const rows = await prisma.testAttempt.findMany({
     where: {
       createdAt: { gte: since },

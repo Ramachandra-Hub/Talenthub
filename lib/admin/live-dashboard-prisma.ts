@@ -18,6 +18,7 @@ import {
 import type { RollupAttempt } from '@/lib/admin/attempts-rollup';
 import type { ElevateXInProgressRow } from '@/lib/admin/elevatex-results-prisma';
 import type { LiveBoardEntry, LiveExamBoard, LiveWritingEntry } from '@/lib/admin/live-dashboard-data';
+import { attemptInLiveExamSession, liveSessionSince } from '@/lib/admin/live-exam-session';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
 
 function mapSchedule(row: {
@@ -52,7 +53,7 @@ function mapSchedule(row: {
   };
 }
 
-function isElevateXSchedule(schedule: ExamScheduleRow): boolean {
+export function isElevateXSchedule(schedule: ExamScheduleRow): boolean {
   return (
     isElevateXModule(schedule.test_id) ||
     isElevateXTestId(schedule.test_id) ||
@@ -77,103 +78,44 @@ function isLiveForDashboard(schedule: ExamScheduleRow, now = Date.now()): boolea
   return false;
 }
 
-/** When no schedule passes the live filter but students are active, still drive the live board. */
+/** When no schedule passes the live filter, attach the current DB live ElevateX module only (no stale-activity fallback). */
 export async function ensureElevateXLiveScheduleFallback(
   live: ExamScheduleRow[],
 ): Promise<ExamScheduleRow[]> {
   if (live.length > 0) return live;
 
+  const now = Date.now();
   const module = await prisma.evaloraModuleSchedule.findFirst({
     where: {
       moduleKey: ELEVATEX_MODULE_KEY,
       status: { in: ['live', 'scheduled'] },
     },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { startsAt: 'desc' },
   });
 
-  if (module) {
-    const mapped: ExamScheduleRow = {
-      id: module.id,
-      title: module.title?.trim() || ELEVATEX_EXAM_NAME,
-      description: null,
-      notice: module.notice ?? null,
-      faculty_exam_request_id: null,
-      test_id: module.moduleKey,
-      status: module.status === 'live' ? 'live' : 'scheduled',
-      starts_at: module.startsAt.toISOString(),
-      ends_at: module.endsAt?.toISOString() ?? null,
-      target_departments: Array.isArray(module.targetDepartments)
-        ? (module.targetDepartments as string[])
-        : [],
-      target_years: Array.isArray(module.targetYears) ? (module.targetYears as string[]) : [],
-      slot_number: null,
-      slot_capacity: null,
-      created_by: module.createdBy ?? null,
-      created_at: module.createdAt.toISOString(),
-      updated_at: module.updatedAt.toISOString(),
-    };
-    if (isLiveForDashboard(mapped)) return [mapped];
-  }
+  if (!module) return live;
 
-  const since = new Date(Date.now() - 2 * 60 * 60 * 1000);
-  const inProgressActivity = await prisma.testAttempt.count({
-    where: {
-      createdAt: { gte: since },
-      completedAt: null,
-      status: { in: ['in_progress', 'started', 'active'] },
-      OR: [
-        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-      ],
-    },
-  });
-
-  const completedRows = await prisma.testAttempt.findMany({
-    where: {
-      status: { in: ['completed', 'submitted'] },
-      completedAt: { not: null },
-      OR: [
-        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-      ],
-    },
-    select: { userId: true },
-    distinct: ['userId'],
-    take: 3000,
-  });
-  const submittedIds = new Set(completedRows.map((r) => r.userId));
-
-  const heartbeatCutoff = new Date(Date.now() - 10 * 60 * 1000);
-  const heartbeatSessions = await prisma.studentActiveSession.findMany({
-    where: { lastHeartbeat: { gte: heartbeatCutoff } },
-    select: { userId: true },
-    take: 200,
-  });
-  const recentHeartbeats = heartbeatSessions.filter((s) => !submittedIds.has(s.userId)).length;
-
-  if (inProgressActivity === 0 && recentHeartbeats === 0) return live;
-
-  const nowIso = new Date().toISOString();
-  return [
-    {
-      id: 'elevatex-activity-fallback',
-      title: ELEVATEX_EXAM_NAME,
-      description: null,
-      notice: null,
-      faculty_exam_request_id: null,
-      test_id: ELEVATEX_MODULE_KEY,
-      status: 'live',
-      starts_at: nowIso,
-      ends_at: null,
-      target_departments: [],
-      target_years: [],
-      slot_number: null,
-      slot_capacity: null,
-      created_by: null,
-      created_at: nowIso,
-      updated_at: nowIso,
-    },
-  ];
+  const mapped: ExamScheduleRow = {
+    id: module.id,
+    title: module.title?.trim() || ELEVATEX_EXAM_NAME,
+    description: null,
+    notice: module.notice ?? null,
+    faculty_exam_request_id: null,
+    test_id: module.moduleKey,
+    status: module.status === 'live' ? 'live' : 'scheduled',
+    starts_at: module.startsAt.toISOString(),
+    ends_at: module.endsAt?.toISOString() ?? null,
+    target_departments: Array.isArray(module.targetDepartments)
+      ? (module.targetDepartments as string[])
+      : [],
+    target_years: Array.isArray(module.targetYears) ? (module.targetYears as string[]) : [],
+    slot_number: null,
+    slot_capacity: null,
+    created_by: module.createdBy ?? null,
+    created_at: module.createdAt.toISOString(),
+    updated_at: module.updatedAt.toISOString(),
+  };
+  return isLiveForDashboard(mapped, now) ? [mapped] : live;
 }
 
 export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> {
@@ -240,10 +182,6 @@ function pickBetterAttempt(prev: RollupAttempt, next: RollupAttempt): RollupAtte
 }
 
 function attemptMatchesSchedule(attempt: RollupAttempt, schedule: ExamScheduleRow): boolean {
-  if (schedule.id === 'elevatex-activity-fallback') {
-    return isElevateXAttemptTitle(attempt.test_name) || isElevateXTestId(attempt.test_id);
-  }
-
   const testId = String(schedule.test_id ?? '').trim();
   if (testId && attempt.test_id && testIdsMatch(attempt.test_id, testId)) return true;
   if (isElevateXModule(testId) || isElevateXTestId(testId)) {
@@ -286,11 +224,18 @@ export async function buildLiveExamBoardPrisma(
     ? { attempts: preloaded.attempts }
     : await loadAllAttemptsRollupPrisma();
 
-  let matched = allAttempts.filter((a) => attemptMatchesSchedule(a, schedule));
+  let matched = allAttempts.filter(
+    (a) =>
+      attemptMatchesSchedule(a, schedule) &&
+      attemptInLiveExamSession(
+        { created_at: a.created_at, completed_at: a.completed_at },
+        schedule,
+      ),
+  );
 
   // Pull fresh in-progress ElevateX rows (autosave) even if rollup cache is stale.
   if (isElevateXSchedule(schedule)) {
-    const since = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const since = liveSessionSince(schedule);
     const liveRows = await prisma.testAttempt.findMany({
       where: {
         createdAt: { gte: since },
@@ -303,6 +248,10 @@ export async function buildLiveExamBoardPrisma(
       take: 300,
     });
     for (const row of liveRows) {
+      const created_at = row.createdAt.toISOString();
+      const completed_at = row.completedAt?.toISOString() ?? null;
+      if (!attemptInLiveExamSession({ created_at, completed_at }, schedule)) continue;
+
       const status = String(row.status ?? '').toLowerCase();
       const score = resolveStoredPercent(
         row.percentageScore != null ? Number(row.percentageScore) : null,
@@ -316,8 +265,8 @@ export async function buildLiveExamBoardPrisma(
         test_name: row.testTitle ?? ELEVATEX_EXAM_NAME,
         score,
         status: status || (row.completedAt ? 'completed' : 'in_progress'),
-        created_at: row.createdAt.toISOString(),
-        completed_at: row.completedAt?.toISOString() ?? null,
+        created_at,
+        completed_at,
         time_taken: row.timeTaken,
         source: 'test_attempts',
       });
@@ -378,6 +327,7 @@ export async function buildAllLiveExamBoardsPrisma(
 
 export async function buildAllLiveWritingActivityPrisma(
   schedules: ExamScheduleRow[],
+  options?: { sessionSubmittedUserIds?: Set<string> },
 ): Promise<LiveWritingEntry[]> {
   const boards = await buildAllLiveExamBoardsPrisma(schedules);
   const rows: LiveWritingEntry[] = [];
@@ -403,20 +353,26 @@ export async function buildAllLiveWritingActivityPrisma(
     take: 200,
   });
 
-  const elevatexSubmitted = await prisma.testAttempt.findMany({
-    where: {
-      status: { in: ['completed', 'submitted'] },
-      completedAt: { not: null },
-      OR: [
-        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-      ],
-    },
-    select: { userId: true },
-    distinct: ['userId'],
-    take: 3000,
-  });
-  const submittedUserIds = new Set(elevatexSubmitted.map((r) => r.userId));
+  const elevatexSchedule = schedules.find((s) => isElevateXSchedule(s));
+  const sessionSince = elevatexSchedule ? liveSessionSince(elevatexSchedule) : null;
+  const elevatexSubmitted = elevatexSchedule
+    ? await prisma.testAttempt.findMany({
+        where: {
+          status: { in: ['completed', 'submitted'] },
+          completedAt: { not: null, gte: sessionSince },
+          createdAt: { gte: sessionSince },
+          OR: [
+            { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+            { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+          ],
+        },
+        select: { userId: true },
+        distinct: ['userId'],
+        take: 3000,
+      })
+    : [];
+  const submittedUserIds =
+    options?.sessionSubmittedUserIds ?? new Set(elevatexSubmitted.map((r) => r.userId));
 
   const students = await loadAdminStudentsPrisma();
   const studentById = new Map(students.map((s) => [s.id, s]));

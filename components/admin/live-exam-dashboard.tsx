@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 import { ADMIN_EXAM_TYPE_META } from '@/lib/admin/exam-type';
 import { downloadTestReportPdf } from '@/lib/admin/export-test-report-pdf';
 import { scheduleLabelForTestOverview } from '@/lib/admin/test-overview-report';
-import { ElevateXLiveResultsPanel } from '@/components/admin/elevatex-live-results-panel';
 import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 
@@ -280,11 +279,7 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
 
       setFetchError(null);
       const list = json.schedules ?? [];
-      const isLive =
-        Boolean(json.live) &&
-        (list.length > 0 ||
-          (json.elevatex_in_progress_count ?? 0) > 0 ||
-          (json.writing_now?.length ?? 0) > 0);
+      const isLive = Boolean(json.live) && list.length > 0;
       const liveBoards = json.boards?.length ? json.boards : [];
       const endedList = json.ended_schedules ?? [];
       const endedBoardList = json.ended_boards ?? [];
@@ -376,7 +371,7 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
   }
 
   if (!showingLive) {
-    return <ElevateXLiveResultsPanel className="mb-8" />;
+    return null;
   }
 
   const entries = board?.entries ?? [];
@@ -403,7 +398,6 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
       : 'Live leaders · partial scores · Gold · Silver · Bronze';
 
   return (
-    <>
     <section className="mb-8 overflow-hidden rounded-2xl border border-violet-400/25 shadow-[0_24px_64px_-16px_rgba(26,10,62,0.65)]">
       <div className="relative bg-gradient-to-br from-[#1a0a3e] via-[#2d1b69] to-[#0d2847] text-white">
         <div
@@ -662,7 +656,5 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
         </div>
       </div>
     </section>
-    <ElevateXLiveResultsPanel className="mt-4" />
-  </>
   );
 }
