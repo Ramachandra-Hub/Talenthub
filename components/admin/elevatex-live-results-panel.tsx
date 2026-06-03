@@ -59,7 +59,14 @@ type CloseExamResponse = {
 
 const POLL_MS = 3000;
 
-export function ElevateXLiveResultsPanel({ className }: { className?: string }) {
+export function ElevateXLiveResultsPanel({
+  className,
+  sessionStartsAt,
+}: {
+  className?: string;
+  /** ISO start of current live slot — limits table to this exam session. */
+  sessionStartsAt?: string | null;
+}) {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +83,12 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
     setBusy(true);
     busyRef.current = true;
     try {
-      const res = await fetchWithAuth('/api/admin/elevatex/results', { cache: 'no-store' });
+      const q = sessionStartsAt?.trim()
+        ? `?sessionStartsAt=${encodeURIComponent(sessionStartsAt.trim())}`
+        : '';
+      const res = await fetchWithAuth(`/api/admin/elevatex/results${q}`, {
+        cache: 'no-store',
+      });
       if (gen !== refreshGen.current) return;
 
       if (!res.ok) {
@@ -104,7 +116,7 @@ export function ElevateXLiveResultsPanel({ className }: { className?: string }) 
         busyRef.current = false;
       }
     }
-  }, []);
+  }, [sessionStartsAt]);
 
   const closeExamAndRefresh = useCallback(async () => {
     setBusy(true);

@@ -7,8 +7,11 @@ import {
   isElevateXSchedule,
   listLiveExamSchedulesPrisma,
   loadElevateXLiveSubmittedUserIdsPrisma,
+  loadElevateXSessionSubmittedEntriesPrisma,
+  loadAdminStudentsPrisma,
   mergeInProgressIntoLiveBoards,
   mergeInProgressIntoWritingNow,
+  mergeSessionSubmittedIntoLiveBoards,
 } from '@/lib/admin/live-dashboard-prisma';
 import { liveSessionSince } from '@/lib/admin/live-exam-session';
 import { loadElevateXInProgressPrisma } from '@/lib/admin/elevatex-results-prisma';
@@ -31,7 +34,7 @@ export async function GET(request: Request) {
       ? await loadElevateXLiveSubmittedUserIdsPrisma(sessionSince)
       : new Set<string>();
 
-  const [boardsRaw, writingRaw, elevatexInProgress] = await Promise.all([
+  const [boardsRaw, writingRaw, elevatexInProgress, adminStudents] = await Promise.all([
     liveSchedules.length ? buildAllLiveExamBoardsPrisma(liveSchedules) : Promise.resolve([]),
     liveSchedules.length
       ? buildAllLiveWritingActivityPrisma(liveSchedules, {
@@ -39,11 +42,18 @@ export async function GET(request: Request) {
         })
       : Promise.resolve([]),
     liveSchedules.length
-      ? loadElevateXInProgressPrisma(
-          sessionSince ? { sessionSince } : undefined,
-        )
+      ? loadElevateXInProgressPrisma({
+          sessionSince,
+          forceDuringLiveAdmin: true,
+        })
       : Promise.resolve([]),
+    sessionSince != null ? loadAdminStudentsPrisma() : Promise.resolve([]),
   ]);
+
+  const sessionSubmittedEntries =
+    sessionSince != null
+      ? await loadElevateXSessionSubmittedEntriesPrisma(sessionSince, adminStudents)
+      : [];
 
   const submittedUserIds = new Set(submittedFromDb);
   for (const b of boardsRaw) {
@@ -51,10 +61,16 @@ export async function GET(request: Request) {
       if (e.submitted_at) submittedUserIds.add(e.user_id);
     }
   }
-  const boards = mergeInProgressIntoLiveBoards(
+  const boardsWithSubmitted = mergeSessionSubmittedIntoLiveBoards(
     boardsRaw,
+    sessionSubmittedEntries,
+    elevatexSchedule,
+  );
+  const boards = mergeInProgressIntoLiveBoards(
+    boardsWithSubmitted,
     elevatexInProgress,
     submittedUserIds,
+    elevatexSchedule,
   );
   const writing_now = mergeInProgressIntoWritingNow(
     writingRaw,
@@ -62,7 +78,15 @@ export async function GET(request: Request) {
     liveSchedules,
     submittedUserIds,
   );
-  const writingFiltered = writing_now.filter((r) => !submittedUserIds.has(r.user_id));
+  const partialByUser = new Map(
+    elevatexInProgress.map((r) => [r.user_id, r.partial_score] as const),
+  );
+  const writingFiltered = writing_now
+    .filter((r) => !submittedUserIds.has(r.user_id))
+    .map((r) => ({
+      ...r,
+      score: Math.max(r.score, partialByUser.get(r.user_id) ?? 0),
+    }));
 
   const schedule =
     (scheduleId ? liveSchedules.find((s) => s.id === scheduleId) : null) ??

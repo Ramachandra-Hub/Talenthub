@@ -9,26 +9,45 @@ import { requireAuth } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
+
+  const { searchParams } = new URL(request.url);
+  const sessionStartsAt = searchParams.get('sessionStartsAt')?.trim() ?? '';
+  const sessionSinceMs = sessionStartsAt
+    ? new Date(sessionStartsAt).getTime()
+    : null;
 
   const todayKey = getTodayDateKeyInIST();
   const [rowsRaw, inProgress, todayRows] = await Promise.all([
     loadElevateXAdminResultsPrisma(),
-    loadElevateXInProgressPrisma(),
+    loadElevateXInProgressPrisma({
+      sessionSince: sessionSinceMs != null ? new Date(sessionStartsAt) : undefined,
+      forceDuringLiveAdmin: Boolean(sessionStartsAt),
+    }),
     loadElevateXResultsForDateKeyPrisma(todayKey),
   ]);
-  const rows = [...rowsRaw].sort(
-    (a, b) =>
-      new Date(b.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
-  );
-  const submitted = rows.filter((r) => r.submitted_at);
+
+  let rows = rowsRaw;
+  if (sessionSinceMs != null && !Number.isNaN(sessionSinceMs)) {
+    rows = rowsRaw.filter((r) => {
+      const at = r.submitted_at ? new Date(r.submitted_at).getTime() : 0;
+      return at >= sessionSinceMs - 2 * 60 * 1000;
+    });
+  }
+  const rowsSorted = [...rows]
+    .filter((r) => r.submitted_at)
+    .sort(
+      (a, b) =>
+        new Date(b.submitted_at ?? 0).getTime() - new Date(a.submitted_at ?? 0).getTime(),
+    );
+  const submitted = rowsSorted;
   const submittedUserIds = new Set(submitted.map((r) => r.user_id));
   const inProgressFiltered = inProgress.filter((r) => !submittedUserIds.has(r.user_id));
 
   return NextResponse.json({
-    rows,
+    rows: rowsSorted,
     in_progress: inProgressFiltered,
     today_key: todayKey,
     today_rows: todayRows,
@@ -36,7 +55,7 @@ export async function GET() {
       submitted_count: submitted.length,
       submitted_today_count: todayRows.length,
       in_progress_count: inProgressFiltered.length,
-      with_scorecard: rows.filter((r) => r.has_full_scorecard).length,
+      with_scorecard: rowsSorted.filter((r) => r.has_full_scorecard).length,
       avg_score:
         submitted.length > 0
           ? Math.round(

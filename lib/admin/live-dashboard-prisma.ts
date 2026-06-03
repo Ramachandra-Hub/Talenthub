@@ -19,6 +19,7 @@ import type { RollupAttempt } from '@/lib/admin/attempts-rollup';
 import type { ElevateXInProgressRow } from '@/lib/admin/elevatex-results-prisma';
 import type { LiveBoardEntry, LiveExamBoard, LiveWritingEntry } from '@/lib/admin/live-dashboard-data';
 import { attemptInLiveExamSession, liveSessionSince } from '@/lib/admin/live-exam-session';
+import { elevateXPartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
 import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
 
@@ -245,14 +246,23 @@ export async function buildLiveExamBoardPrisma(
     ? { attempts: preloaded.attempts }
     : await loadAllAttemptsRollupPrisma();
 
-  let matched = allAttempts.filter(
-    (a) =>
-      attemptMatchesSchedule(a, schedule) &&
+  let matched = allAttempts.filter((a) => {
+    if (!attemptMatchesSchedule(a, schedule)) return false;
+    if (
       attemptInLiveExamSession(
         { created_at: a.created_at, completed_at: a.completed_at },
         schedule,
-      ),
-  );
+      )
+    ) {
+      return true;
+    }
+    return (
+      isElevateXSchedule(schedule) &&
+      !a.completed_at &&
+      a.score > 0 &&
+      isInProgressStatus(a.status)
+    );
+  });
 
   // Pull fresh ElevateX rows (autosave + submit) even if rollup cache is stale.
   if (isElevateXSchedule(schedule)) {
@@ -280,17 +290,18 @@ export async function buildLiveExamBoardPrisma(
     for (const row of liveRows) {
       const created_at = row.createdAt.toISOString();
       const completed_at = row.completedAt?.toISOString() ?? null;
-      if (!attemptInLiveExamSession({ created_at, completed_at }, schedule)) continue;
+      const partial = elevateXPartialScoreFromAttemptRow({
+        answers: row.answers,
+        percentageScore: row.percentageScore != null ? Number(row.percentageScore) : null,
+        score: row.score != null ? Number(row.score) : null,
+        totalScore: row.totalScore != null ? Number(row.totalScore) : null,
+      });
+      const inSession = attemptInLiveExamSession({ created_at, completed_at }, schedule);
+      if (!inSession && !(partial > 0 && !completed_at)) continue;
 
       const status = String(row.status ?? '').toLowerCase();
       const scorecard = parseElevateXScorecardFromAnswers(row.answers);
-      const score = scorecard
-        ? scorecard.percentage
-        : resolveStoredPercent(
-            row.percentageScore != null ? Number(row.percentageScore) : null,
-            row.score != null ? Number(row.score) : null,
-            row.totalScore != null ? Number(row.totalScore) : null,
-          );
+      const score = scorecard ? scorecard.percentage : partial;
       matched.push({
         id: row.id,
         user_id: row.userId,
@@ -438,15 +449,170 @@ export async function buildAllLiveWritingActivityPrisma(
   return rows;
 }
 
+/** Completed ElevateX attempts for the current session (leaderboard + full report). */
+export async function loadElevateXSessionSubmittedEntriesPrisma(
+  sessionSince: Date,
+  students: Awaited<ReturnType<typeof loadAdminStudentsPrisma>>,
+): Promise<LiveBoardEntry[]> {
+  const studentById = new Map(students.map((s) => [s.id, s]));
+  const rows = await prisma.testAttempt.findMany({
+    where: {
+      status: { in: ['completed', 'submitted'] },
+      completedAt: { not: null, gte: sessionSince },
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+      ],
+    },
+    orderBy: { completedAt: 'desc' },
+    take: 500,
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      completedAt: true,
+      createdAt: true,
+      percentageScore: true,
+      score: true,
+      totalScore: true,
+      answers: true,
+    },
+  });
+
+  const byUser = new Map<string, LiveBoardEntry>();
+  for (const row of rows) {
+    if (byUser.has(row.userId)) continue;
+    const student = studentById.get(row.userId) ?? {
+      roll_number: rollNumberFromUser(''),
+      full_name: null,
+      email: 'Student',
+    };
+    const completed_at = row.completedAt!.toISOString();
+    const partial = elevateXPartialScoreFromAttemptRow({
+      answers: row.answers,
+      percentageScore: row.percentageScore != null ? Number(row.percentageScore) : null,
+      score: row.score != null ? Number(row.score) : null,
+      totalScore: row.totalScore != null ? Number(row.totalScore) : null,
+    });
+    const scorecard = parseElevateXScorecardFromAnswers(row.answers);
+    const score = scorecard ? scorecard.percentage : partial;
+    byUser.set(row.userId, {
+      attempt_id: row.id,
+      user_id: row.userId,
+      roll_number: student.roll_number,
+      student_name: student.full_name?.trim() || student.email || 'Student',
+      score,
+      status: 'completed',
+      submitted_at: completed_at,
+      updated_at: completed_at,
+      rank: byUser.size + 1,
+    });
+  }
+  return Array.from(byUser.values());
+}
+
+/** Ensure submitted students appear on the live board with final scores. */
+export function mergeSessionSubmittedIntoLiveBoards(
+  boards: LiveExamBoard[],
+  submittedEntries: LiveBoardEntry[],
+  elevatexSchedule?: ExamScheduleRow | null,
+): LiveExamBoard[] {
+  if (!submittedEntries.length) return boards;
+
+  const targetBoards = [...boards];
+  if (
+    elevatexSchedule &&
+    !targetBoards.some((b) => isElevateXSchedule(b.schedule))
+  ) {
+    targetBoards.push({
+      schedule: elevatexSchedule,
+      test_title: elevatexSchedule.title,
+      entries: [],
+      submitted_count: 0,
+      in_progress_count: 0,
+      highest_score: 0,
+      top_scorer: null,
+    });
+  }
+
+  return targetBoards.map((board) => {
+    if (!isElevateXSchedule(board.schedule)) return board;
+
+    const entries = [...board.entries];
+    const byUser = new Map(entries.map((e) => [e.user_id, e]));
+
+    for (const submitted of submittedEntries) {
+      const existing = byUser.get(submitted.user_id);
+      if (existing) {
+        if (!existing.submitted_at || submitted.score > existing.score) {
+          existing.attempt_id = submitted.attempt_id;
+          existing.score = Math.max(existing.score, submitted.score);
+          existing.submitted_at = submitted.submitted_at;
+          existing.status = 'completed';
+          existing.updated_at = submitted.updated_at;
+        }
+        continue;
+      }
+      entries.push({ ...submitted, rank: entries.length + 1 });
+      byUser.set(submitted.user_id, entries[entries.length - 1]!);
+    }
+
+    entries.sort((a, b) => {
+      if (Boolean(a.submitted_at) !== Boolean(b.submitted_at)) {
+        return a.submitted_at ? -1 : 1;
+      }
+      return b.score - a.score || a.roll_number.localeCompare(b.roll_number);
+    });
+    entries.forEach((e, i) => {
+      e.rank = i + 1;
+    });
+
+    const done = entries.filter((e) => e.submitted_at);
+    const top = done[0] ?? entries.find((e) => !e.submitted_at) ?? null;
+
+    return {
+      ...board,
+      entries,
+      submitted_count: done.length,
+      in_progress_count: entries.length - done.length,
+      highest_score: entries.length ? Math.max(...entries.map((e) => e.score)) : 0,
+      top_scorer: top
+        ? {
+            student_name: top.student_name,
+            roll_number: top.roll_number,
+            score: top.score,
+          }
+        : null,
+    };
+  });
+}
+
 /** Merge ElevateX autosave rows into live boards so leaderboard updates during the exam. */
 export function mergeInProgressIntoLiveBoards(
   boards: LiveExamBoard[],
   inProgress: ElevateXInProgressRow[],
   submittedUserIds?: Set<string>,
+  elevatexSchedule?: ExamScheduleRow | null,
 ): LiveExamBoard[] {
   if (!inProgress.length) return boards;
 
-  return boards.map((board) => {
+  const targetBoards = [...boards];
+  if (
+    elevatexSchedule &&
+    !targetBoards.some((b) => isElevateXSchedule(b.schedule))
+  ) {
+    targetBoards.push({
+      schedule: elevatexSchedule,
+      test_title: elevatexSchedule.title,
+      entries: [],
+      submitted_count: 0,
+      in_progress_count: 0,
+      highest_score: 0,
+      top_scorer: null,
+    });
+  }
+
+  return targetBoards.map((board) => {
     if (!isElevateXSchedule(board.schedule)) return board;
 
     const entries = [...board.entries];

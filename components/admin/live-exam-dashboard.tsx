@@ -6,6 +6,10 @@ import { cn } from '@/lib/utils';
 import { ADMIN_EXAM_TYPE_META } from '@/lib/admin/exam-type';
 import { downloadTestReportPdf } from '@/lib/admin/export-test-report-pdf';
 import { scheduleLabelForTestOverview } from '@/lib/admin/test-overview-report';
+import { Button } from '@/components/ui/button';
+import { ElevateXLiveResultsPanel } from '@/components/admin/elevatex-live-results-panel';
+import { ElevateXScorecardReportModal } from '@/components/admin/elevatex-scorecard-report-modal';
+import { useElevateXScorecardModal } from '@/hooks/use-elevatex-scorecard-modal';
 import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 
@@ -33,6 +37,7 @@ type EndedReportMeta = {
 
 type LiveBoardEntry = {
   attempt_id: string;
+  user_id: string;
   roll_number: string;
   student_name: string;
   score: number;
@@ -222,6 +227,7 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const prevLiveIdsRef = useRef<Set<string>>(new Set());
+  const scorecardModal = useElevateXScorecardModal();
 
   const showingLive = live && schedules.length > 0;
   const activeSchedules = showingLive ? schedules : endedSchedules;
@@ -397,7 +403,19 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
       ? 'Top performers this session · Gold · Silver · Bronze'
       : 'Live leaders · partial scores · Gold · Silver · Bronze';
 
+  const openFullReport = (entry: LiveBoardEntry) => {
+    if (!entry.submitted_at || entry.attempt_id.startsWith('session-')) return;
+    void scorecardModal.open({
+      attemptId: entry.attempt_id,
+      studentName: entry.student_name,
+      rollNumber: entry.roll_number || undefined,
+    });
+  };
+
+  const sessionStartsAt = board?.schedule.starts_at ?? schedules[0]?.starts_at ?? null;
+
   return (
+    <>
     <section className="mb-8 overflow-hidden rounded-2xl border border-violet-400/25 shadow-[0_24px_64px_-16px_rgba(26,10,62,0.65)]">
       <div className="relative bg-gradient-to-br from-[#1a0a3e] via-[#2d1b69] to-[#0d2847] text-white">
         <div
@@ -563,8 +581,8 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
                           <p className="font-semibold text-white truncate">{row.student_name}</p>
                           <p className="text-xs text-cyan-100/80 font-mono">{row.roll_number}</p>
                         </div>
-                        <p className="text-xs font-bold text-amber-200/95 truncate max-w-[200px]">
-                          {row.test_title}
+                        <p className="text-xs font-bold text-amber-200/95 tabular-nums">
+                          {formatScorePercentLabel(row.score)}
                         </p>
                       </li>
                     ))}
@@ -573,11 +591,12 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
               ) : null}
 
               <div className="rounded-2xl border border-white/15 bg-black/25 overflow-hidden backdrop-blur-sm">
-                <div className="hidden sm:grid sm:grid-cols-[3rem_1fr_7rem_5rem_8rem] gap-2 px-4 py-3 bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-transparent text-xs font-bold uppercase tracking-wider text-amber-100/95 border-b border-white/10">
+                <div className="hidden sm:grid sm:grid-cols-[3rem_1fr_7rem_5rem_6rem_8rem] gap-2 px-4 py-3 bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-transparent text-xs font-bold uppercase tracking-wider text-amber-100/95 border-b border-white/10">
                   <span>#</span>
                   <span>Student</span>
                   <span>Roll</span>
                   <span className="text-right">Score</span>
+                  <span className="text-right">Status</span>
                   <span className="text-right">Time</span>
                 </div>
                 {entries.length === 0 ? (
@@ -593,6 +612,9 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
                         : showingLive
                           ? 'In exam'
                           : '—';
+                      const canReport =
+                        Boolean(entry.submitted_at) &&
+                        !entry.attempt_id.startsWith('session-');
                       return (
                         <li
                           key={entry.attempt_id}
@@ -600,9 +622,11 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
                             'px-4 py-3 transition-colors',
                             isTop && 'bg-amber-400/8',
                             !entry.submitted_at && showingLive && 'bg-cyan-500/8',
+                            canReport && 'cursor-pointer hover:bg-white/5',
                           )}
+                          onClick={() => canReport && openFullReport(entry)}
                         >
-                          <div className="sm:grid sm:grid-cols-[3rem_1fr_7rem_5rem_8rem] sm:gap-2 sm:items-center">
+                          <div className="sm:grid sm:grid-cols-[3rem_1fr_7rem_5rem_6rem_8rem] sm:gap-2 sm:items-center">
                             <span
                               className={cn(
                                 'text-lg font-black tabular-nums',
@@ -635,6 +659,28 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
                             >
                               {formatScorePercentLabel(entry.score)}
                             </span>
+                            <span className="text-xs text-violet-200/80 block sm:text-right mt-0.5 sm:mt-0">
+                              {entry.submitted_at ? (
+                                canReport ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[10px] border-emerald-400/50 text-emerald-100 hover:bg-emerald-500/20"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openFullReport(entry);
+                                    }}
+                                  >
+                                    Full report
+                                  </Button>
+                                ) : (
+                                  'Submitted'
+                                )
+                              ) : (
+                                'In exam'
+                              )}
+                            </span>
                             <span className="text-xs text-violet-200/70 tabular-nums block sm:text-right mt-0.5 sm:mt-0">
                               {submitted}
                             </span>
@@ -656,5 +702,21 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
         </div>
       </div>
     </section>
+
+    <ElevateXLiveResultsPanel
+      className="mb-8"
+      sessionStartsAt={sessionStartsAt}
+    />
+
+    <ElevateXScorecardReportModal
+      open={scorecardModal.isOpen}
+      onClose={scorecardModal.close}
+      studentName={scorecardModal.target?.studentName ?? ''}
+      rollNumber={scorecardModal.target?.rollNumber}
+      scorecard={scorecardModal.scorecard}
+      loading={scorecardModal.loading}
+      loadError={scorecardModal.loadError}
+    />
+    </>
   );
 }

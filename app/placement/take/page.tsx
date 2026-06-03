@@ -246,6 +246,7 @@ export default function PlacementTakePage() {
               __placement: {
                 globalTimeLeftSec: deriveGlobalTimeLeftSec(current),
                 currentSectionIndex: current.currentSectionIndex,
+                partialScorePercent: scorePercent,
               },
               __proctor: {
                 sessionId: activeProctorSession,

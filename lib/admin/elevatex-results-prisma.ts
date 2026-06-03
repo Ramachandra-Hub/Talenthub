@@ -20,6 +20,7 @@ import {
 import type { PlacementSectionId, PlacementScorecard } from '@/lib/placement/types';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
 import { isInProgressStatus } from '@/lib/attempt-status';
+import { elevateXPartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
 import { resolveStoredPercent } from '@/lib/test-attempts';
 
 export type ElevateXSectionMarks = {
@@ -397,10 +398,14 @@ async function loadElevateXSubmittedUserIds(sessionSince?: Date): Promise<Set<st
 /** Students currently in the exam (autosave / heartbeat, not yet submitted). */
 export async function loadElevateXInProgressPrisma(options?: {
   sessionSince?: Date;
+  /** Admin live dashboard already confirmed live schedules — do not return empty on window helper mismatch. */
+  forceDuringLiveAdmin?: boolean;
 }): Promise<ElevateXInProgressRow[]> {
-  await ensureElevateXExamClosedForAdmin();
-  if (!(await isElevateXExamWindowOpenPrisma())) {
-    return [];
+  if (!options?.forceDuringLiveAdmin) {
+    await ensureElevateXExamClosedForAdmin();
+    if (!(await isElevateXExamWindowOpenPrisma())) {
+      return [];
+    }
   }
 
   const adminIds = await loadAdminUserIds();
@@ -410,13 +415,28 @@ export async function loadElevateXInProgressPrisma(options?: {
   const since = sessionSince ?? new Date(Date.now() - 6 * 60 * 60 * 1000);
   const rows = await prisma.testAttempt.findMany({
     where: {
-      createdAt: { gte: since },
       status: { in: ['in_progress', 'started', 'active'] },
+      completedAt: null,
       ...elevatexTitleWhere(),
+      OR: [
+        { createdAt: { gte: since } },
+        { startedAt: { gte: since } },
+        { percentageScore: { gt: 0 } },
+        { score: { gt: 0 } },
+      ],
     },
     orderBy: { createdAt: 'desc' },
-    take: 300,
-    include: {
+    take: 500,
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      createdAt: true,
+      completedAt: true,
+      percentageScore: true,
+      score: true,
+      totalScore: true,
+      answers: true,
       user: {
         select: { id: true, email: true, fullName: true, rollNumber: true },
       },
@@ -429,11 +449,12 @@ export async function loadElevateXInProgressPrisma(options?: {
     const user = isStudentUser(row.user, adminIds) ? row.user : null;
     if (!user) continue;
     if (!isInProgressStatus(row.status) || row.completedAt) continue;
-    const partial = resolveStoredPercent(
-      row.percentageScore != null ? Number(row.percentageScore) : null,
-      row.score != null ? Number(row.score) : null,
-      row.totalScore != null ? Number(row.totalScore) : null,
-    );
+    const partial = elevateXPartialScoreFromAttemptRow({
+      answers: row.answers,
+      percentageScore: row.percentageScore != null ? Number(row.percentageScore) : null,
+      score: row.score != null ? Number(row.score) : null,
+      totalScore: row.totalScore != null ? Number(row.totalScore) : null,
+    });
     byUser.set(row.userId, {
       attempt_id: row.id,
       user_id: row.userId,
