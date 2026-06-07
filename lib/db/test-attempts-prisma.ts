@@ -670,18 +670,23 @@ export async function linkProctorViolationsPrisma(
   testId: string | null,
   sessionId: string,
 ): Promise<void> {
-  await prisma.examViolation.updateMany({
-    where: {
-      userId,
-      metadata: {
-        path: ['sessionId'],
-        equals: sessionId,
+  try {
+    await prisma.examViolation.updateMany({
+      where: {
+        userId,
+        metadata: {
+          path: ['sessionId'],
+          equals: sessionId,
+        },
       },
-    },
-    data: {
-      attemptId,
-    },
-  });
+      data: {
+        attemptId,
+        testId: testId ?? undefined,
+      },
+    });
+  } catch (err) {
+    console.warn('[test-attempts] linkProctorViolations skipped:', err);
+  }
 }
 
 export async function insertProctorViolationsPrisma(

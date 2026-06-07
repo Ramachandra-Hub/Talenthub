@@ -27,10 +27,16 @@ function answersMapToRecord(
   return out;
 }
 
+type ScoreOptions = {
+  /** Skip Piston/Wandbox on submit — use client score for coding items (fast, reliable). */
+  skipCodingExecution?: boolean;
+};
+
 /** Recompute score on server so clients never need correct_answer in the browser. */
 export async function computeServerScorePercent(
   testId: string,
   answers: Record<string, unknown>,
+  options?: ScoreOptions,
 ): Promise<{ scorePercent: number; rawNetScore: number; totalQuestions: number } | null> {
   const questions = await loadQuestionsForScoringCached(testId);
   if (!questions.length) return null;
@@ -43,13 +49,17 @@ export async function computeServerScorePercent(
   for (const q of questions as Question[]) {
     const ua = answerMap[q.id]?.userAnswer;
     if (isCodingQuestion(q)) {
-      if (ua == null || String(ua).trim() === '') {
+      if (options?.skipCodingExecution || ua == null || String(ua).trim() === '') {
         skipped++;
         continue;
       }
-      const pass = await isCodingAnswerCorrectOnServer(q, ua);
-      if (pass) correct++;
-      else wrong++;
+      try {
+        const pass = await isCodingAnswerCorrectOnServer(q, ua);
+        if (pass) correct++;
+        else wrong++;
+      } catch {
+        skipped++;
+      }
       continue;
     }
     if (ua === null || ua === undefined || ua === '') {

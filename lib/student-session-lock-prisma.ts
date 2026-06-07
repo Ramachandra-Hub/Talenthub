@@ -86,9 +86,13 @@ export async function releaseStudentSessionPrisma(
   sessionId?: string | null,
 ): Promise<void> {
   if (!userId) return;
-  await prisma.studentActiveSession.deleteMany({
-    where: sessionId ? { userId, sessionId } : { userId },
-  });
+  try {
+    await prisma.studentActiveSession.deleteMany({
+      where: sessionId ? { userId, sessionId } : { userId },
+    });
+  } catch (err) {
+    console.warn('[student-session-lock-prisma] release skipped:', err);
+  }
 }
 
 /** @deprecated Use createStudentSessionId() per login — kept for legacy callers. */
