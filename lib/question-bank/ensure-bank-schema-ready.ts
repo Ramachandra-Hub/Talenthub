@@ -15,7 +15,7 @@ export type BankSchemaReadyResult = {
   warnings: string[];
 };
 
-async function needsColumnPatch(shape: QuestionsInsertShape): boolean {
+async function needsColumnPatch(shape: QuestionsInsertShape): Promise<boolean> {
   return (
     !shape.has('difficulty') ||
     !shape.has('option_a') ||

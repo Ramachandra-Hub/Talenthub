@@ -75,7 +75,7 @@ export default function UsersManagementPage() {
       try {
         const meRes = await fetch('/api/admin/me', { credentials: 'include' });
         if (!meRes.ok) {
-          router.push('/auth/login');
+          router.push('/auth/login/admin');
           return;
         }
         setIsAdmin(true);
@@ -87,7 +87,7 @@ export default function UsersManagementPage() {
           setUsers(
             rows.map((u) => ({
               ...u,
-              branch: u.branch ?? null,
+              branch: (u as User & { branch?: string | null }).branch ?? null,
               academic_year: (u as User & { academic_year?: string }).academic_year ?? null,
             })) as User[],
           );

@@ -10,8 +10,8 @@ import {
   type CodingLanguageId,
 } from '@/lib/coding/languages';
 import {
+  formatCodingRunOutput,
   gradeCodingTestCase,
-  runCodingBatchOnServer,
   runCodingOnServer,
 } from '@/lib/coding/run-client';
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
@@ -41,7 +41,10 @@ function initialEditorState(
 export function PlacementCodingSection({ problems, submissions, onSubmissionChange }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [running, setRunning] = useState(false);
-  const [output, setOutput] = useState<string>('Write your solution, then click Run code to grade all test cases.');
+  const [customInput, setCustomInput] = useState('');
+  const [output, setOutput] = useState<string>(
+    'Write your solution, then click Run code to compile and see output.',
+  );
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
   const editorsRef = useRef(editors);
   const initKeyRef = useRef('');
@@ -62,7 +65,13 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
 
   const active = problems[Math.min(activeIndex, Math.max(0, problems.length - 1))];
   const editor = active ? editors[active.id] : null;
-  const testCases = active?.testCases ?? [];
+
+  useEffect(() => {
+    if (active?.sampleInput != null) {
+      setCustomInput(active.sampleInput);
+      setOutput('Write your solution, then click Run code to compile and see output.');
+    }
+  }, [active?.id, active?.sampleInput]);
 
   const solvedCount = useMemo(
     () =>
@@ -104,7 +113,7 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
     });
   };
 
-  const runAndGrade = async () => {
+  const runCode = async (stdin: string) => {
     const state = editorsRef.current[active.id];
     if (!state) return;
 
@@ -114,92 +123,46 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
       return;
     }
 
-    if (!testCases.length) {
-      setOutput('No test cases are configured for this problem. Contact the exam admin.');
-      return;
-    }
-
     setRunning(true);
-    setOutput(`Running your code against ${testCases.length} test case(s)…`);
-
-    let passed = 0;
-    const lines: string[] = [];
+    setOutput('Compiling and running…');
 
     try {
-      let batchResults: Awaited<ReturnType<typeof runCodingBatchOnServer>>;
-      try {
-        batchResults = await runCodingBatchOnServer(
-          state.language,
-          source,
-          testCases.map((tc) => tc.input),
-        );
-      } catch (batchErr) {
-        const msg = batchErr instanceof Error ? batchErr.message : 'Batch run failed';
-        if (!/timed out|timeout/i.test(msg)) throw batchErr;
-        setOutput(`${msg}\n\nRetrying cases one at a time…`);
-        batchResults = [];
-        for (const tc of testCases) {
-          try {
-            batchResults.push(await runCodingOnServer(state.language, source, tc.input));
-          } catch (oneErr) {
-            batchResults.push({
-              stdout: '',
-              stderr: '',
-              exitCode: 1,
-              error: oneErr instanceof Error ? oneErr.message : 'Run failed',
-            });
-          }
-        }
-      }
+      const data = await runCodingOnServer(state.language, source, stdin);
+      const lines: string[] = [formatCodingRunOutput(data)];
 
-      for (let i = 0; i < testCases.length; i++) {
-        const tc = testCases[i];
-        const data = batchResults[i] ?? { stdout: '', stderr: '', exitCode: 1, error: 'No result' };
-        lines.push(`--- Case ${i + 1} ---`);
-        lines.push(`Input: ${tc.input.replace(/\n/g, '\\n')}`);
-
-        if (data.error) {
-          lines.push('Status: ERROR');
-          lines.push(data.error);
-          lines.push('');
-          continue;
-        }
-
-        const { pass, actual } = gradeCodingTestCase(data, tc.expectedOutput);
-        if (pass) passed += 1;
-
-        lines.push(`Status: ${pass ? 'PASS' : 'FAIL'}`);
-        lines.push(`Expected: ${tc.expectedOutput.trim()}`);
-        lines.push(`Got: ${actual || '(empty)'}`);
-        if (data.exitCode != null && data.exitCode !== 0) {
-          lines.push(`Exit code: ${data.exitCode}`);
-        }
-        if (data.stdout?.trim()) {
-          lines.push(`stdout:\n${data.stdout.trimEnd()}`);
-        }
-        if (data.stderr?.trim()) {
-          lines.push(`stderr:\n${data.stderr.trimEnd()}`);
-        }
-        if (tc.explanation) {
-          lines.push(`Note: ${tc.explanation}`);
-        }
+      const sampleCase = active.testCases[0];
+      if (sampleCase && stdin.trim() === sampleCase.input.trim()) {
+        const { pass, actual } = gradeCodingTestCase(data, sampleCase.expectedOutput);
         lines.push('');
+        lines.push('--- Sample check ---');
+        lines.push(`Expected: ${sampleCase.expectedOutput.trim()}`);
+        lines.push(`Got: ${actual || '(empty)'}`);
+        lines.push(`Result: ${pass ? 'PASS' : 'FAIL'}`);
+
+        onSubmissionChange({
+          problemId: active.id,
+          language: state.language,
+          sourceCode: source,
+          passedCases: pass ? 1 : 0,
+          totalCases: 1,
+          lastRunAt: new Date().toISOString(),
+        });
+      } else {
+        onSubmissionChange({
+          problemId: active.id,
+          language: state.language,
+          sourceCode: source,
+          passedCases: submissions[active.id]?.passedCases ?? 0,
+          totalCases: submissions[active.id]?.totalCases ?? 0,
+          lastRunAt: new Date().toISOString(),
+        });
       }
 
-      onSubmissionChange({
-        problemId: active.id,
-        language: state.language,
-        sourceCode: source,
-        passedCases: passed,
-        totalCases: testCases.length,
-        lastRunAt: new Date().toISOString(),
-      });
-
-      setOutput(`${lines.join('\n')}\nResult: ${passed}/${testCases.length} passed`);
+      setOutput(lines.join('\n'));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not run your code.';
       setOutput(
-        `${msg}\n\nIf this keeps failing, check you are logged in and try again in a few seconds.`,
+        `${msg}\n\nMake sure you are logged in. If this keeps failing, try again in a few seconds.`,
       );
     } finally {
       setRunning(false);
@@ -209,8 +172,8 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
   const sub = submissions[active.id];
   const lastScore =
     sub && sub.totalCases > 0
-      ? `${sub.passedCases}/${sub.totalCases} cases passed`
-      : 'Not graded yet';
+      ? `${sub.passedCases}/${sub.totalCases} sample passed`
+      : 'Run sample to check your answer';
 
   return (
     <div className="grid lg:grid-cols-4 gap-4">
@@ -260,7 +223,8 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
             </p>
           ) : null}
           <p className="text-xs text-slate-500 mt-2">
-            Run code grades your solution against all {testCases.length} test cases. Last result:{' '}
+            Run code to compile and see output. Use <strong>Run sample</strong> to check against the
+            sample case. Last result:{' '}
             <span className="font-semibold text-slate-700">{lastScore}</span>
           </p>
           <div className="grid sm:grid-cols-2 gap-3 mt-3 text-xs">
@@ -288,8 +252,16 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
                 </option>
               ))}
             </select>
-            <Button size="sm" disabled={running} onClick={() => void runAndGrade()}>
+            <Button size="sm" disabled={running} onClick={() => void runCode(customInput)}>
               {running ? 'Running…' : 'Run code'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={running}
+              onClick={() => void runCode(active.sampleInput)}
+            >
+              Run sample
             </Button>
           </div>
           <CodeEditor
@@ -302,6 +274,16 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
         </Card>
 
         <Card className="p-4 border-slate-200">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+            Custom input
+          </p>
+          <textarea
+            value={customInput}
+            onChange={(e) => setCustomInput(e.target.value)}
+            rows={3}
+            className="w-full font-mono text-sm border border-slate-200 rounded p-2 mb-3"
+            spellCheck={false}
+          />
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
             Compiler output
           </p>

@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
+import { guardPublicApi } from '@/lib/public-api-guard';
 
-/** Lightweight route to confirm a Vercel deployment exists (no database). */
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    service: 'talenthub',
-    ts: new Date().toISOString(),
-  });
+/** Lightweight liveness — no database, no timestamps (rate-limited). */
+export async function GET(request: Request) {
+  const denied = guardPublicApi(request, 'ping');
+  if (denied) return denied;
+  return NextResponse.json({ ok: true });
 }

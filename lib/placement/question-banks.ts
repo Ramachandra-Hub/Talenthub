@@ -17,7 +17,7 @@ import {
   generateTechnicalQuestions,
 } from '@/lib/placement/placement-generators';
 import { placementPsychometricBank } from '@/lib/placement/psychometric-bank';
-import { pickUniqueByKey, pickUniqueMcqs, questionStemKey } from '@/lib/placement/question-pick';
+import { pickUniqueMcqs, questionStemKey } from '@/lib/placement/question-pick';
 import { technicalBankForDepartment } from '@/lib/placement/technical-banks';
 import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 import { buildTechnicalCodingProblems } from '@/lib/placement/technical-coding-problems';
@@ -30,9 +30,17 @@ function sectionSeed(base: string, sectionId: string, departmentId: string): str
   return `${base}|${departmentId}|${sectionId}`;
 }
 
-function buildTechnicalMcq(seed: string, departmentId: string, count: number): Question[] {
+function buildTechnicalMcq(
+  seed: string,
+  departmentId: string,
+  count: number,
+  globalSeen: Set<string>,
+): Question[] {
   const dept = findDepartment(departmentId) ?? findDepartment('cse')!;
-  const curated = technicalBankForDepartment(dept);
+  const curated = technicalBankForDepartment(dept).filter((q) => {
+    const key = questionStemKey(q);
+    return key && !globalSeen.has(key);
+  });
   const seedKey = sectionSeed(seed, 'technical-mcq', departmentId);
   const genRng = forkRng(seedKey, 'tech-mcq-gen');
 
@@ -55,7 +63,7 @@ function buildTechnicalMcq(seed: string, departmentId: string, count: number): Q
   ];
 
   const rng = forkRng(seedKey, 'tech-mcq-pick');
-  const picked = pickUniqueMcqs(initial, count, rng, generateMore);
+  const picked = pickUniqueMcqs(initial, count, rng, generateMore, globalSeen);
 
   return picked.map((q, i) => {
     const remixed = remixMcqOptions(q, forkRng(seedKey, `tech-remix-${i}`));
@@ -63,9 +71,17 @@ function buildTechnicalMcq(seed: string, departmentId: string, count: number): Q
   });
 }
 
-function buildPsychometric(seed: string, departmentId: string, count: number): Question[] {
+function buildPsychometric(
+  seed: string,
+  departmentId: string,
+  count: number,
+  globalSeen: Set<string>,
+): Question[] {
   const seedKey = sectionSeed(seed, 'psychometric', departmentId);
-  const curated = placementPsychometricBank();
+  const curated = placementPsychometricBank().filter((q) => {
+    const key = questionStemKey(q);
+    return key && !globalSeen.has(key);
+  });
   const genRng = forkRng(seedKey, 'psy-gen');
   const generateMore = (needed: number) =>
     generatePsychometricQuestions(genRng, needed, `placement-psy-${seed.slice(0, 8)}`);
@@ -78,17 +94,21 @@ function buildPsychometric(seed: string, departmentId: string, count: number): Q
     ),
   ];
   const rng = forkRng(seedKey, 'psy-pick');
-  const picked = pickUniqueMcqs(pool, count, rng, generateMore);
+  const picked = pickUniqueMcqs(pool, count, rng, generateMore, globalSeen);
   return picked.map((q, i) => {
     const remixed = remixMcqOptions(q, forkRng(seedKey, `psy-remix-${i}`));
     return { ...remixed, id: `placement-psy-${i + 1}` };
   });
 }
 
-function buildAptitude(seed: string, departmentId: string, count: number): Question[] {
+function buildAptitude(
+  seed: string,
+  departmentId: string,
+  count: number,
+  globalSeen: Set<string>,
+): Question[] {
   const seedKey = sectionSeed(seed, 'aptitude', departmentId);
   const rng = forkRng(seedKey, 'apt-gen');
-  const seen = new Set<string>();
   const out: Question[] = [];
   let guard = 0;
   while (out.length < count && guard < 12) {
@@ -100,8 +120,8 @@ function buildAptitude(seed: string, departmentId: string, count: number): Quest
     );
     for (const q of batch) {
       const key = questionStemKey(q);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (!key || globalSeen.has(key)) continue;
+      globalSeen.add(key);
       out.push({
         ...q,
         id: `placement-apt-${out.length + 1}`,
@@ -113,9 +133,17 @@ function buildAptitude(seed: string, departmentId: string, count: number): Quest
   return out.slice(0, count);
 }
 
-function buildLogic(seed: string, departmentId: string, count: number): Question[] {
+function buildLogic(
+  seed: string,
+  departmentId: string,
+  count: number,
+  globalSeen: Set<string>,
+): Question[] {
   const seedKey = sectionSeed(seed, 'logic', departmentId);
-  const curated = placementLogicBank();
+  const curated = placementLogicBank().filter((q) => {
+    const key = questionStemKey(q);
+    return key && !globalSeen.has(key);
+  });
   const genRng = forkRng(seedKey, 'logic-gen');
   const generateMore = (needed: number) =>
     generatePlacementLogicQuestions(genRng, needed, `placement-logic-${seed.slice(0, 8)}`);
@@ -128,16 +156,24 @@ function buildLogic(seed: string, departmentId: string, count: number): Question
     ),
   ];
   const rng = forkRng(seedKey, 'logic-pick');
-  const picked = pickUniqueMcqs(pool, count, rng, generateMore);
+  const picked = pickUniqueMcqs(pool, count, rng, generateMore, globalSeen);
   return picked.map((q, i) => {
     const remixed = remixMcqOptions(q, forkRng(seedKey, `logic-remix-${i}`));
     return { ...remixed, id: `placement-logic-${i + 1}` };
   });
 }
 
-function buildIntelligence(seed: string, departmentId: string, count: number): Question[] {
+function buildIntelligence(
+  seed: string,
+  departmentId: string,
+  count: number,
+  globalSeen: Set<string>,
+): Question[] {
   const seedKey = sectionSeed(seed, 'intelligence', departmentId);
-  const curated = placementIntelligenceBank();
+  const curated = placementIntelligenceBank().filter((q) => {
+    const key = questionStemKey(q);
+    return key && !globalSeen.has(key);
+  });
   const genRng = forkRng(seedKey, 'iq-gen');
   const generateMore = (needed: number) =>
     generateIntelligenceQuestions(genRng, needed, `placement-iq-${seed.slice(0, 8)}`);
@@ -150,14 +186,14 @@ function buildIntelligence(seed: string, departmentId: string, count: number): Q
     ),
   ];
   const rng = forkRng(seedKey, 'iq-pick');
-  const picked = pickUniqueMcqs(pool, count, rng, generateMore);
+  const picked = pickUniqueMcqs(pool, count, rng, generateMore, globalSeen);
   return picked.map((q, i) => {
     const remixed = remixMcqOptions(q, forkRng(seedKey, `iq-remix-${i}`));
     return { ...remixed, id: `placement-iq-${i + 1}` };
   });
 }
 
-/** Build question pools for one placement session (unique per student + branch + section). */
+/** Build question pools for one placement session (unique per student across all sections). */
 export function buildPlacementQuestions(
   seed: string,
   departmentId: string,
@@ -170,27 +206,47 @@ export function buildPlacementQuestions(
   logic: Question[];
   intelligence: Question[];
 } {
+  const globalSeen = new Set<string>();
   const mcqCount =
     technicalFormat === 'mcq' || technicalFormat === 'both' ? TECHNICAL_MCQ_COUNT : 0;
   const codingCount =
     technicalFormat === 'coding' || technicalFormat === 'both' ? TECHNICAL_CODING_COUNT : 0;
 
+  const psychometric = buildPsychometric(
+    seed,
+    departmentId,
+    getPlacementSection('psychometric').questionCount ?? 15,
+    globalSeen,
+  );
+  const aptitude = buildAptitude(
+    seed,
+    departmentId,
+    getPlacementSection('aptitude').questionCount ?? 20,
+    globalSeen,
+  );
+  const logic = buildLogic(
+    seed,
+    departmentId,
+    getPlacementSection('logic').questionCount ?? 15,
+    globalSeen,
+  );
+  const intelligence = buildIntelligence(
+    seed,
+    departmentId,
+    getPlacementSection('intelligence').questionCount ?? 15,
+    globalSeen,
+  );
+  const technicalMcq =
+    mcqCount > 0 ? buildTechnicalMcq(seed, departmentId, mcqCount, globalSeen) : [];
+  const technicalCoding =
+    codingCount > 0 ? buildTechnicalCodingProblems(seed, departmentId) : [];
+
   return {
-    technicalMcq:
-      mcqCount > 0 ? buildTechnicalMcq(seed, departmentId, mcqCount) : [],
-    technicalCoding:
-      codingCount > 0 ? buildTechnicalCodingProblems(seed, departmentId) : [],
-    psychometric: buildPsychometric(
-      seed,
-      departmentId,
-      getPlacementSection('psychometric').questionCount ?? 15,
-    ),
-    aptitude: buildAptitude(seed, departmentId, getPlacementSection('aptitude').questionCount ?? 20),
-    logic: buildLogic(seed, departmentId, getPlacementSection('logic').questionCount ?? 15),
-    intelligence: buildIntelligence(
-      seed,
-      departmentId,
-      getPlacementSection('intelligence').questionCount ?? 15,
-    ),
+    technicalMcq,
+    technicalCoding,
+    psychometric,
+    aptitude,
+    logic,
+    intelligence,
   };
 }

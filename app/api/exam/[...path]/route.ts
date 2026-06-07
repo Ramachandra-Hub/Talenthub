@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { isExamProxyPathAllowed } from '@/lib/exam-gateway-allowlist';
+import { isStrictProduction } from '@/lib/production';
 
-const gatewayBase = () => (process.env.EXAM_GATEWAY_URL || 'http://127.0.0.1:4000').replace(/\/$/, '');
+const gatewayBase = () => (process.env.EXAM_GATEWAY_URL || '').replace(/\/$/, '');
 
 function mergeUserIdIntoJsonBody(bodyText: string, userId: string): string {
   try {
@@ -15,10 +16,15 @@ function mergeUserIdIntoJsonBody(bodyText: string, userId: string): string {
 }
 
 export async function POST(request: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const internalToken = process.env.EXAM_INTERNAL_API_TOKEN;
-  if (!internalToken) {
+  const gatewayUrl = gatewayBase();
+  const internalToken = process.env.EXAM_INTERNAL_API_TOKEN?.trim();
+
+  if (!gatewayUrl || !internalToken) {
+    if (isStrictProduction()) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     return NextResponse.json(
-      { error: 'EXAM_INTERNAL_API_TOKEN is not set. Add it to .env.local (server only).' },
+      { error: 'Exam gateway is not configured. Set EXAM_GATEWAY_URL and EXAM_INTERNAL_API_TOKEN.' },
       { status: 503 },
     );
   }
@@ -35,7 +41,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ path: 
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const targetUrl = `${gatewayBase()}/exam/${suffix}`;
+  const targetUrl = `${gatewayUrl}/exam/${suffix}`;
   const contentType = request.headers.get('content-type') || 'application/json';
   let bodyText = await request.text();
   if (contentType.includes('application/json')) {
@@ -49,6 +55,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ path: 
       'x-internal-token': internalToken,
     },
     body: bodyText,
+    signal: AbortSignal.timeout(25_000),
   });
 
   const outCt = upstream.headers.get('content-type') || 'application/json';

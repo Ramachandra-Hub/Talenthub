@@ -1,6 +1,12 @@
 /** Max integrity incidents before the exam auto-submits. */
 export const PROCTOR_MAX_VIOLATIONS = 7;
 
+/**
+ * Violation types that count toward PROCTOR_MAX_VIOLATIONS / auto-submit.
+ * Tab/focus loss only — camera preview is advisory (no auto-submit from face detection).
+ */
+export const PROCTOR_AUTO_SUBMIT_VIOLATION_TYPES = ['tab_switch'] as const;
+
 /** Seconds without a visible face before showing the red on-screen reminder (not a flag). */
 export const PROCTOR_FACE_ABSENT_SEC = 5;
 

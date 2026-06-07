@@ -25,7 +25,7 @@ export function useAdminGate() {
           if (json.hint && !json.authenticated) {
             console.error('[admin gate]', json.error ?? json.hint);
           }
-          router.replace(json.authenticated ? '/dashboard' : '/auth/login/admin');
+          router.replace(json.authenticated ? '/exams' : '/auth/login/admin');
           return;
         }
         setAllowed(true);

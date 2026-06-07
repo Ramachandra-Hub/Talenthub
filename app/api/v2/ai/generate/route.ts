@@ -17,7 +17,7 @@ const ALLOWED_TASKS: AiTaskType[] = [
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireAuth(['student', 'admin', 'faculty'], request);
+    const auth = await requireAuth(['student', 'admin'], request);
     if ('response' in auth) return auth.response;
 
     const body = (await request.json()) as AiGenerateRequest;
@@ -29,19 +29,6 @@ export async function POST(request: Request) {
     }
 
     const result = await generateWithAi(body);
-
-    try {
-      await auth.ctx.db.from('ai_reports').insert({
-        user_id: auth.ctx.user.id,
-        report_type: body.task,
-        provider: result.provider,
-        model: result.model,
-        input_summary: body.prompt.slice(0, 500),
-        output_json: { text: result.text },
-      });
-    } catch {
-      /* table may not exist until migration */
-    }
 
     return NextResponse.json({ success: true, result });
   } catch (error) {

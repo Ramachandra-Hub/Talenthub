@@ -18,6 +18,7 @@ import {
   type CodingLanguageId,
 } from '@/lib/coding/languages';
 import { effectiveSourceCode } from '@/lib/coding/effective-source';
+import { formatCodingRunOutput, runCodingOnServer } from '@/lib/coding/run-client';
 import { getProgrammingProblemById } from '@/lib/exam-builder/programming-syllabus';
 import type { Question } from '@/lib/types';
 
@@ -106,23 +107,7 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
     setMeta(null);
     const source = effectiveSourceCode(code, language);
     try {
-      const res = await fetch('/api/v2/coding/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language, sourceCode: source, stdin: input }),
-      });
-      const data = (await res.json()) as {
-        stdout?: string;
-        stderr?: string;
-        error?: string;
-        runtimeMs?: number;
-        engine?: string;
-        exitCode?: number;
-      };
-      if (!res.ok) {
-        setOutput(data.error ?? 'Run failed');
-        return;
-      }
+      const data = await runCodingOnServer(language, source, input);
       setMeta(
         [
           data.engine && `Engine: ${data.engine}`,
@@ -132,13 +117,9 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
           .filter(Boolean)
           .join(' · '),
       );
-      setOutput(
-        [data.stdout && `stdout:\n${data.stdout}`, data.stderr && `stderr:\n${data.stderr}`]
-          .filter(Boolean)
-          .join('\n\n') || '(no output)',
-      );
-    } catch {
-      setOutput('Run failed. Check network or execution service.');
+      setOutput(formatCodingRunOutput(data));
+    } catch (err) {
+      setOutput(err instanceof Error ? err.message : 'Run failed. Sign in and try again.');
     } finally {
       setRunning(false);
     }

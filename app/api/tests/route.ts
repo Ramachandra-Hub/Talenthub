@@ -1,33 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
+import { requireAuth } from '@/lib/server-auth';
 
+/** Legacy tests list — admin only. */
 export async function GET(request: NextRequest) {
-  try {
-    const db = getDbService();
-    const { searchParams } = new URL(request.url);
-    const categoryId = searchParams.get('categoryId');
+  const auth = await requireAuth(['admin'], request);
+  if ('response' in auth) return auth.response;
 
-    let query = db.from('tests').select('*');
-
-    if (categoryId) {
-      const { data: category } = await db
-        .from('test_categories')
-        .select('id')
-        .eq('slug', categoryId)
-        .single();
-
-      if (category) {
-        query = query.eq('category_id', category.id);
-      }
-    }
-
-    const { data: tests, error } = await query;
-
-    if (error) throw error;
-
-    return NextResponse.json(tests);
-  } catch (error) {
-    console.error('Error fetching tests:', error);
-    return NextResponse.json({ error: 'Failed to fetch tests' }, { status: 500 });
-  }
+  return NextResponse.json(
+    { error: 'Use /api/admin/tests-overview for admin test management.' },
+    { status: 410 },
+  );
 }

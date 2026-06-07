@@ -1,6 +1,24 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { prisma } from '@/lib/prisma';
 import type { Question } from '@/lib/types';
 import type { TestSectionConfig } from '@/lib/exam-v2/section-timer';
+
+export async function loadTestSectionsPrisma(testId: string): Promise<TestSectionConfig[]> {
+  const rows = await prisma.testSection.findMany({
+    where: { testId },
+    orderBy: { sortOrder: 'asc' },
+  });
+  if (!rows.length) return [];
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    durationMinutes: row.durationMinutes,
+    cutoffScore: row.cutoffScore,
+    negativeMarking: Number(row.negativeMarking ?? 0),
+    shuffleQuestions: row.shuffleQuestions,
+  }));
+}
 
 export async function loadTestSections(
   db: DbServiceClient,

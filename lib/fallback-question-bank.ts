@@ -1,4 +1,12 @@
 import type { Question, Test, TestCategory } from '@/lib/types';
+import { isStrictProduction } from '@/lib/production';
+
+/** Client-side fallback papers are disabled in production — use DB-backed tests only. */
+export function isFallbackTestsEnabled(): boolean {
+  if (process.env.NEXT_PUBLIC_ALLOW_FALLBACK_TESTS === 'true') return true;
+  if (process.env.NEXT_PUBLIC_ALLOW_FALLBACK_TESTS === 'false') return false;
+  return !isStrictProduction();
+}
 import {
   hashStringToSeed,
   PSYCHOMETRIC_POOL_SIZE,
@@ -71,20 +79,24 @@ export function isSchemaMissingError(error: unknown): boolean {
 }
 
 export function getFallbackCategoryBySlug(slug: string): TestCategory | null {
+  if (!isFallbackTestsEnabled()) return null;
   return categories.find((c) => c.slug === slug) ?? null;
 }
 
 export function getFallbackTestsByCategorySlug(slug: string): Test[] {
+  if (!isFallbackTestsEnabled()) return [];
   const category = getFallbackCategoryBySlug(slug);
   if (!category) return [];
   return tests.filter((t) => t.category_id === category.id);
 }
 
 export function getFallbackTestById(testId: string): Test | null {
+  if (!isFallbackTestsEnabled()) return null;
   return tests.find((t) => t.id === testId) ?? null;
 }
 
 export function getFallbackQuestionsByTestId(testId: string): Question[] {
+  if (!isFallbackTestsEnabled()) return [];
   if (testId !== 'fallback-psychometric-1') return [];
   return getPsychometricQuestionsForTestId(testId);
 }

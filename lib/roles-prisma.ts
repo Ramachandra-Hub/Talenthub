@@ -1,5 +1,4 @@
 import type { AppRole, ResolvedUser } from '@/lib/roles';
-import { isAllowlistedAdminEmail } from '@/lib/admin-defaults';
 import { prisma } from '@/lib/prisma';
 
 export async function resolveAppUserById(userId: string): Promise<ResolvedUser | null> {
@@ -10,7 +9,7 @@ export async function resolveAppUserById(userId: string): Promise<ResolvedUser |
 
   if (!user) return null;
 
-  if (user.adminUser || isAllowlistedAdminEmail(user.email)) {
+  if (user.adminUser) {
     return {
       id: user.id,
       email: user.email,

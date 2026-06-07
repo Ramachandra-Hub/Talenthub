@@ -13,6 +13,7 @@ import {
   resolveSignupEmail,
   studentSignupFields,
 } from '@/lib/student-profile-sync-prisma';
+import { safeNextPath } from '@/lib/safe-redirect';
 
 type SignupBody = {
   email?: string;
@@ -22,13 +23,6 @@ type SignupBody = {
   role?: string;
   metadata?: Record<string, string>;
 };
-
-function safeNextPath(next: unknown): string {
-  if (typeof next !== 'string') return '/dashboard';
-  const trimmed = next.trim();
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return '/dashboard';
-  return trimmed;
-}
 
 export async function POST(request: NextRequest) {
   if (isSignupDisabled()) {
@@ -74,12 +68,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
   }
 
-  const next = safeNextPath(body.next);
-  void next;
+  const next = safeNextPath(body.next, '/exams');
 
   try {
     const passwordHash = await hashPassword(password);
@@ -104,28 +97,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (existing) {
-      await prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          passwordHash,
-          fullName: profileFields.full_name ?? fullName,
-          branch: profileFields.branch ?? undefined,
-          academicYear: profileFields.academic_year ?? undefined,
-          rollNumber: rollNumber ?? undefined,
-          email,
+      return NextResponse.json(
+        {
+          error:
+            'An account with this email or roll number already exists. Sign in or contact your department admin to reset your password.',
         },
-      });
-
-      if (role === 'student') {
-        await ensureStudentProfileRowPrisma(existing.id, profileFields);
-      }
-
-      return NextResponse.json({
-        ok: true,
-        user_id: existing.id,
-        email_confirmed: true,
-        recovered_existing: true,
-      });
+        { status: 409 },
+      );
     }
 
     const user = await prisma.user.create({
@@ -145,7 +123,7 @@ export async function POST(request: NextRequest) {
       await ensureStudentProfileRowPrisma(user.id, profileFields);
     }
 
-    return NextResponse.json({ ok: true, user_id: user.id, email_confirmed: true });
+    return NextResponse.json({ ok: true, user_id: user.id, email_confirmed: true, next });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Sign up failed.';
     const normalized = message.toLowerCase();

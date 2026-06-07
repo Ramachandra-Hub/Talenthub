@@ -21,8 +21,9 @@ export async function GET() {
     .eq('id', auth.ctx.resolved.id)
     .maybeSingle();
 
-  const department = profile?.branch ?? auth.ctx.resolved.department ?? null;
-  const year = profile?.academic_year ?? auth.ctx.resolved.academicYear ?? null;
+  const prof = profile as { branch?: string; academic_year?: string } | null;
+  const department = prof?.branch ?? auth.ctx.resolved.department ?? null;
+  const year = prof?.academic_year ?? auth.ctx.resolved.academicYear ?? null;
 
   if (!department || !year) {
     return NextResponse.json({

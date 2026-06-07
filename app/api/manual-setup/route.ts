@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
+import { forwardSetupHeaders } from '@/lib/setup/forward-setup-headers';
 
 export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     console.log('Manual setup started');
 
     // Initialize database
+    const setupHeaders = forwardSetupHeaders(request);
     const initUrl = new URL('/api/setup/init-direct', request.url);
-    const initResponse = await fetch(initUrl.toString(), { method: 'POST' });
+    const initResponse = await fetch(initUrl.toString(), {
+      method: 'POST',
+      headers: setupHeaders,
+    });
     const initData = await initResponse.json();
     console.log('Init response:', initData);
 
@@ -20,7 +29,10 @@ export async function POST(request: NextRequest) {
 
     // Seed database
     const seedUrl = new URL('/api/setup/seed-direct', request.url);
-    const seedResponse = await fetch(seedUrl.toString(), { method: 'POST' });
+    const seedResponse = await fetch(seedUrl.toString(), {
+      method: 'POST',
+      headers: setupHeaders,
+    });
     const seedData = await seedResponse.json();
     console.log('Seed response:', seedData);
 

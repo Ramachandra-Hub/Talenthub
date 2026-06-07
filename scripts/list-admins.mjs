@@ -44,7 +44,7 @@ const allowlist = new Set(
 
 console.log('=== Configured default admin (from .env / code) ===');
 console.log('  Email:', process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in');
-console.log('  Password: set in PREPINDIA_ADMIN_PASSWORD or default RCE_T&P');
+console.log('  Password: set in PREPINDIA_ADMIN_PASSWORD (required in .env.local)');
 console.log('  (Passwords are hashed in Supabase Auth — not readable from the database.)');
 console.log('');
 

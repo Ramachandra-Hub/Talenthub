@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { elevateXTestAttemptWhere } from '@/lib/elevatex/exam-window';
@@ -56,6 +57,8 @@ export async function findElevateXScorecardForUserId(
     where: { userId_statKey: { userId, statKey: 'attempts_feed' } },
     select: { payload: true },
   });
+  if (!stat) return null;
+
   for (const entry of parseStatAttempts(stat.payload)) {
     if (!isElevateXAttemptMeta(entry.test_id, entry.test_name)) continue;
     const scorecard = parseElevateXScorecardFromAnswers(entry.answers);
@@ -165,7 +168,7 @@ export async function backfillElevateXScorecardToAttemptPrisma(
   await prisma.testAttempt.update({
     where: { id: target.id },
     data: {
-      answers: encoded,
+      answers: encoded as Prisma.InputJsonValue,
       status: 'completed',
       completedAt: new Date(),
       percentageScore: pct,

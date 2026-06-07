@@ -40,7 +40,11 @@ const CATEGORIES = [
 ];
 
 const email = (process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in').trim().toLowerCase();
-const password = process.env.PREPINDIA_ADMIN_PASSWORD || 'RCE_T&P';
+const password = process.env.PREPINDIA_ADMIN_PASSWORD?.trim();
+if (!password) {
+  console.error('❌ Set PREPINDIA_ADMIN_PASSWORD in .env.local (required).');
+  process.exit(1);
+}
 const hash = await bcrypt.hash(password, 12);
 
 const user = await prisma.user.upsert({

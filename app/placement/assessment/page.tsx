@@ -36,6 +36,7 @@ import {
   loadSessionByHallTicket,
   getPlacementCompletedAttemptId,
   saveCandidateDraft,
+  loadPlacementProctorSessionId,
   savePlacementProctorSessionId,
   saveSession,
   syncSessionTimer,
@@ -53,12 +54,16 @@ export default function PlacementAssessmentStartPage() {
     completedAt?: string | null;
   } | null>(null);
   const [showProctorGate, setShowProctorGate] = useState(false);
+  const [pendingResume, setPendingResume] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [technicalFormat, setTechnicalFormat] = useState<PlacementTechnicalFormat>('mcq');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [examWindowOpen, setExamWindowOpen] = useState<boolean | null>(null);
 
   const totalMinutes = Math.round(PLACEMENT_TOTAL_SEC / 60);
 
   const loadStudent = useCallback(async () => {
+    setLoadError(null);
     try {
       const clientUser = await getClientUser();
       if (!clientUser?.id) {
@@ -90,6 +95,13 @@ export default function PlacementAssessmentStartPage() {
 
       const localCompletedId = getPlacementCompletedAttemptId(studentProfile.hallTicket);
       const status = await fetchElevateXAttemptStatus(studentProfile.hallTicket);
+      setExamWindowOpen(status.examWindowOpen ?? false);
+      if (status.statusError) {
+        setLoadError(
+          'Could not verify your ElevateX status. Check your internet connection and try again.',
+        );
+        return;
+      }
       const fmt =
         status.technicalFormat ??
         defaultTechnicalFormatForDepartment(studentProfile.departmentId);
@@ -113,6 +125,11 @@ export default function PlacementAssessmentStartPage() {
       }
     } catch (err) {
       console.error('[placement/assessment] loadStudent', err);
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : 'Could not load your ElevateX session. Please try again.',
+      );
     } finally {
       setLoading(false);
     }
@@ -122,8 +139,49 @@ export default function PlacementAssessmentStartPage() {
     void loadStudent();
   }, [loadStudent]);
 
+  const continueToExam = (resumeExisting: boolean) => {
+    if (!profile) return;
+    if (resumeExisting) {
+      const existing = loadActivePlacementSession(profile.hallTicket);
+      if (existing && !existing.submitted) {
+        saveCandidateDraft(existing.candidate);
+        saveSession(syncSessionTimer(existing));
+        router.push('/placement/take');
+        return;
+      }
+    }
+
+    const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat });
+    const session = buildPlacementSession(candidate);
+    saveCandidateDraft(candidate);
+    saveSession(session);
+    router.push('/placement/take');
+  };
+
+  const requireProctorThen = (resume: boolean) => {
+    setPendingResume(resume);
+    setShowProctorGate(true);
+  };
+
+  const beginExamAfterProctor = () => {
+    if (!profile) return;
+    setStarting(true);
+    const proctorId = createProctorSessionId(getElevateXTestId(), authUserId ?? undefined);
+    savePlacementProctorSessionId(proctorId);
+    setShowProctorGate(false);
+    continueToExam(pendingResume);
+    setPendingResume(false);
+  };
+
   const handleStart = () => {
     if (!profile || starting || priorAttempt) return;
+
+    if (examWindowOpen === false) {
+      setLoadError(
+        'ElevateX is not live right now. Check your dashboard for the official start time.',
+      );
+      return;
+    }
 
     const existing = loadActivePlacementSession(profile.hallTicket);
     if (existing && !existing.submitted) {
@@ -131,9 +189,11 @@ export default function PlacementAssessmentStartPage() {
         'A saved ElevateX session was found on this device.\n\nPress OK to resume where you left off.\nPress Cancel to choose another option.',
       );
       if (resume) {
-        saveCandidateDraft(existing.candidate);
-        saveSession(existing);
-        router.push('/placement/take');
+        if (!loadPlacementProctorSessionId()) {
+          requireProctorThen(true);
+          return;
+        }
+        continueToExam(true);
         return;
       }
       const startFresh = window.confirm(
@@ -143,28 +203,7 @@ export default function PlacementAssessmentStartPage() {
       clearPlacementDrafts(profile.hallTicket);
     }
 
-    setShowProctorGate(true);
-  };
-
-  const beginExamAfterProctor = () => {
-    if (!profile) return;
-    setStarting(true);
-    const proctorId = createProctorSessionId(getElevateXTestId(), authUserId ?? undefined);
-    savePlacementProctorSessionId(proctorId);
-
-    const existing = loadActivePlacementSession(profile.hallTicket);
-    if (existing && !existing.submitted) {
-      saveCandidateDraft(existing.candidate);
-      saveSession(syncSessionTimer(existing));
-      router.push('/placement/take');
-      return;
-    }
-
-    const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat });
-    const session = buildPlacementSession(candidate);
-    saveCandidateDraft(candidate);
-    saveSession(session);
-    router.push('/placement/take');
+    requireProctorThen(false);
   };
 
   if (loading) {
@@ -176,7 +215,21 @@ export default function PlacementAssessmentStartPage() {
   }
 
   if (!profile) {
-    return null;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 px-4">
+        <p className="text-slate-700 text-center max-w-md">
+          {loadError ?? 'Could not load your profile. Please sign in again.'}
+        </p>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => void loadStudent()}>
+            Retry
+          </Button>
+          <Button asChild>
+            <Link href="/exams">Back to examinations</Link>
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -290,10 +343,20 @@ export default function PlacementAssessmentStartPage() {
               </div>
             </div>
           ) : (
+            <>
+              {examWindowOpen === false ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-6 text-sm text-amber-950">
+                  <p className="font-semibold">ElevateX is not live right now</p>
+                  <p className="mt-1">
+                    The official examination window has not started or has ended. Check your dashboard
+                    for the scheduled start time from the examination cell.
+                  </p>
+                </div>
+              ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
-                disabled={starting}
+                disabled={starting || examWindowOpen === false}
                 onClick={handleStart}
                 className="bg-[#1e3a5f] hover:bg-[#16304f]"
               >
@@ -304,11 +367,12 @@ export default function PlacementAssessmentStartPage() {
                   variant="outline"
                   onClick={() => {
                     const existing = loadActivePlacementSession(profile.hallTicket);
-                    if (existing && !existing.submitted) {
-                      saveCandidateDraft(existing.candidate);
-                      saveSession(existing);
-                      router.push('/placement/take');
+                    if (!existing || existing.submitted) return;
+                    if (!loadPlacementProctorSessionId()) {
+                      requireProctorThen(true);
+                      return;
                     }
+                    continueToExam(true);
                   }}
                 >
                   Resume saved session
@@ -318,6 +382,7 @@ export default function PlacementAssessmentStartPage() {
                 <Link href="/exams">Back to examinations</Link>
               </Button>
             </div>
+            </>
           )}
         </Card>
 

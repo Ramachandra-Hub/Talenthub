@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
+import { fetchWithAuth } from '@/lib/fetch-with-auth';
 import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
 import type { EvaloraModuleDef } from '@/lib/evalora/modules';
 import type { EvaloraModuleScheduleRow } from '@/lib/evalora/module-schedule';
@@ -32,7 +33,7 @@ export default function AdminEvaloraModulesPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
 
-  const [moduleKey, setModuleKey] = useState(ELEVATEX_MODULE_KEY);
+  const [moduleKey, setModuleKey] = useState<string>(ELEVATEX_MODULE_KEY);
   const [title, setTitle] = useState('');
   const [notice, setNotice] = useState('');
   const [startsAt, setStartsAt] = useState('');
@@ -40,7 +41,7 @@ export default function AdminEvaloraModulesPage() {
   const [creating, setCreating] = useState(false);
 
   const load = async () => {
-    const res = await fetch('/api/admin/evalora-modules');
+    const res = await fetchWithAuth('/api/admin/evalora-modules');
     if (res.ok) {
       const json = (await res.json()) as {
         modules?: EvaloraModuleDef[];
@@ -64,7 +65,7 @@ export default function AdminEvaloraModulesPage() {
   const act = async (id: string, action: 'go_live' | 'end') => {
     setActing(id);
     try {
-      const res = await fetch(`/api/admin/evalora-modules/${id}`, {
+      const res = await fetchWithAuth(`/api/admin/evalora-modules/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
@@ -83,7 +84,7 @@ export default function AdminEvaloraModulesPage() {
   const createSchedule = async (goLiveNow: boolean) => {
     setCreating(true);
     try {
-      const res = await fetch('/api/admin/evalora-modules', {
+      const res = await fetchWithAuth('/api/admin/evalora-modules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

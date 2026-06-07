@@ -31,6 +31,7 @@ import {
   PROGRAMMING_DASHBOARD_TEST_NAME,
 } from '@/lib/programming-dashboard';
 import { recordDashboardAttempt } from '@/lib/record-dashboard-attempt';
+import { formatCodingRunOutput, runCodingOnServer } from '@/lib/coding/run-client';
 import { cn } from '@/lib/utils';
 
 type ConsoleTab = 'input' | 'output';
@@ -50,23 +51,7 @@ function buildInitialCodeStore(): Record<string, string> {
 }
 
 async function runOnServer(language: CodingLanguageId, sourceCode: string, stdin: string) {
-  const res = await fetch('/api/v2/coding/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ language, sourceCode, stdin }),
-  });
-  const data = (await res.json()) as {
-    stdout?: string;
-    stderr?: string;
-    error?: string;
-    exitCode?: number;
-    runtimeMs?: number;
-    engine?: string;
-  };
-  if (!res.ok) {
-    throw new Error(data.error ?? 'Run failed');
-  }
-  return data;
+  return runCodingOnServer(language, sourceCode, stdin);
 }
 
 export function ProgrammingExamWorkspace() {
@@ -140,71 +125,90 @@ export function ProgrammingExamWorkspace() {
           .filter(Boolean)
           .join(' · '),
       );
-      const text = [data.stdout, data.stderr].filter(Boolean).join('\n') || '(no output)';
-      setOutput(text);
+      setOutput(formatCodingRunOutput(data));
     } catch (e) {
-      setOutput(e instanceof Error ? e.message : 'Run failed');
+      setOutput(e instanceof Error ? e.message : 'Run failed. Sign in and try again.');
     } finally {
       setRunning(false);
     }
   };
 
   const gradeProblem = async (p: ProgrammingProblem, source: string, lang: CodingLanguageId) => {
-    let passed = 0;
     const details: string[] = [];
-    for (const tc of p.testCases) {
-      try {
-        const data = await runOnServer(lang, source, tc.input);
-        const out = (data.stdout ?? '').trim();
-        if (data.exitCode === 0 && outputsMatch(out, tc.expectedOutput)) {
-          passed += 1;
-          details.push(`✓ hidden/sample case`);
-        } else {
-          details.push(`✗ expected "${tc.expectedOutput.trim()}", got "${out}"`);
-        }
-      } catch {
-        details.push('✗ run error');
-      }
+    try {
+      const data = await runOnServer(lang, source, p.sampleInput);
+      const out = (data.stdout ?? '').trim();
+      const pass = (data.exitCode === undefined || data.exitCode === 0) && outputsMatch(out, p.sampleOutput);
+      details.push(
+        pass
+          ? `✓ sample case passed`
+          : `✗ expected "${p.sampleOutput.trim()}", got "${out || '(empty)'}"`,
+      );
+      return { passed: pass ? 1 : 0, total: 1, details };
+    } catch {
+      details.push('✗ run error — check you are logged in');
+      return { passed: 0, total: 1, details };
     }
-    return { passed, total: p.testCases.length, details };
   };
 
+  const buildProgrammingAnswers = useCallback((): Record<string, { userAnswer: string }> => {
+    const answers: Record<string, { userAnswer: string }> = {};
+    for (const p of PROGRAMMING_SAMPLE_PROBLEMS) {
+      const sourcesByLang: Record<string, string> = {};
+      for (const l of CODING_LANGUAGES) {
+        const key = codeStorageKey(p.id, l.id);
+        if (codeStore[key]?.trim()) sourcesByLang[l.id] = codeStore[key];
+      }
+      answers[p.id] = { userAnswer: JSON.stringify(sourcesByLang) };
+    }
+    return answers;
+  }, [codeStore]);
+
   const gradeAllProblems = useCallback(async () => {
+    const results = await Promise.all(
+      PROGRAMMING_SAMPLE_PROBLEMS.map(async (p) => {
+        const sourcesByLang: Record<CodingLanguageId, string | undefined> = {} as Record<
+          CodingLanguageId,
+          string | undefined
+        >;
+        for (const l of CODING_LANGUAGES) {
+          sourcesByLang[l.id] = codeStore[codeStorageKey(p.id, l.id)];
+        }
+        const gradingLang = pickBestLanguageForProblem(sourcesByLang, language);
+        const src = effectiveSourceCode(sourcesByLang[gradingLang], gradingLang);
+        const result = await gradeProblem(p, src, gradingLang);
+        return { problem: p, gradingLang, result };
+      }),
+    );
+
     let passed = 0;
     let total = 0;
     const lines: string[] = [];
-    for (const p of PROGRAMMING_SAMPLE_PROBLEMS) {
-      // Grade each problem in whichever language has actual user-written
-      // code (not just the stub). Falls back to the current language.
-      const sourcesByLang: Record<CodingLanguageId, string | undefined> = {} as Record<
-        CodingLanguageId,
-        string | undefined
-      >;
-      for (const l of CODING_LANGUAGES) {
-        sourcesByLang[l.id] = codeStore[codeStorageKey(p.id, l.id)];
-      }
-      const gradingLang = pickBestLanguageForProblem(sourcesByLang, language);
-      const src = effectiveSourceCode(sourcesByLang[gradingLang], gradingLang);
-      const result = await gradeProblem(p, src, gradingLang);
-      passed += result.passed;
-      total += result.total;
+    for (const row of results) {
+      passed += row.result.passed;
+      total += row.result.total;
       lines.push(
-        `${p.title}: ${result.passed}/${result.total} cases passed (${gradingLang})`,
+        `${row.problem.title}: ${row.result.passed}/${row.result.total} cases passed (${row.gradingLang})`,
       );
     }
     const scorePercent = total > 0 ? (passed / total) * 100 : 0;
-    return { passed, total, scorePercent, lines };
-  }, [codeStore, language]);
+    return { passed, total, scorePercent, lines, answers: buildProgrammingAnswers() };
+  }, [buildProgrammingAnswers, codeStore, language]);
 
   const persistProgrammingResult = useCallback(
-    async (scorePercent: number, elapsedSec: number) => {
-      await recordDashboardAttempt({
+    async (
+      scorePercent: number,
+      elapsedSec: number,
+      answers?: Record<string, { userAnswer: string }>,
+    ) => {
+      return recordDashboardAttempt({
         testId: PROGRAMMING_DASHBOARD_TEST_ID,
         testName: PROGRAMMING_DASHBOARD_TEST_NAME,
         scorePercent,
         rawNetScore: scorePercent,
         elapsedSec,
         examKind: 'programming',
+        answers,
         test: {
           id: PROGRAMMING_DASHBOARD_TEST_ID,
           name: PROGRAMMING_DASHBOARD_TEST_NAME,
@@ -218,7 +222,14 @@ export function ProgrammingExamWorkspace() {
   );
 
   const finishExam = useCallback(
-    (reason: 'timeout' | 'submit', summary?: { lines: string[]; scorePercent: number }) => {
+    (
+      reason: 'timeout' | 'submit',
+      summary?: {
+        lines: string[];
+        scorePercent: number;
+        answers?: Record<string, { userAnswer: string }>;
+      },
+    ) => {
       if (endedRef.current) return;
       endedRef.current = true;
       setLocked(true);
@@ -233,9 +244,25 @@ export function ProgrammingExamWorkspace() {
       } else {
         setOutput(msg);
       }
-      setMeta('Final submission recorded.');
       const elapsed = PROGRAMMING_EXAM_DURATION_SECONDS - timeLeft;
-      void persistProgrammingResult(summary?.scorePercent ?? 0, Math.max(0, elapsed));
+      void persistProgrammingResult(
+        summary?.scorePercent ?? 0,
+        Math.max(0, elapsed),
+        summary?.answers,
+      ).then(
+        (result) => {
+          if (result?.savedToServer) {
+            setMeta('Final submission recorded.');
+          } else {
+            setMeta(
+              'Your code was graded locally but could not be saved to the server. Sign in and retry if this was a live exam.',
+            );
+          }
+        },
+        () => {
+          setMeta('Submission failed. Check your connection and sign in, then try again.');
+        },
+      );
     },
     [persistProgrammingResult, timeLeft],
   );
@@ -245,7 +272,15 @@ export function ProgrammingExamWorkspace() {
     const tick = () => {
       const left = secondsRemaining(endAt);
       setTimeLeft(left);
-      if (left <= 0) void gradeAllProblems().then((graded) => finishExam('timeout', graded));
+      if (left <= 0) {
+        void gradeAllProblems().then((graded) =>
+          finishExam('timeout', {
+            lines: graded.lines,
+            scorePercent: graded.scorePercent,
+            answers: graded.answers,
+          }),
+        );
+      }
     };
     tick();
     const id = window.setInterval(tick, 1000);
@@ -258,7 +293,11 @@ export function ProgrammingExamWorkspace() {
     setConsoleTab('output');
     try {
       const graded = await gradeAllProblems();
-      finishExam('submit', { lines: graded.lines, scorePercent: graded.scorePercent });
+      finishExam('submit', {
+        lines: graded.lines,
+        scorePercent: graded.scorePercent,
+        answers: graded.answers,
+      });
     } finally {
       setSubmitting(false);
     }

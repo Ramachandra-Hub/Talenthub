@@ -49,7 +49,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   if (!allowed) {
-    return null;
+    return (
+      <LoadingScreen
+        message="Redirecting…"
+        className="min-h-screen app-portal-shell"
+      />
+    );
   }
 
   const isOverviewActive = pathname === '/admin' || pathname === '/admin/dashboard';

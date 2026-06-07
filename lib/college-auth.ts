@@ -48,7 +48,7 @@ export function validateAdminUsername(username: string): string | null {
   return null;
 }
 
-export function validatePassword(password: string, min = 6): string | null {
+export function validatePassword(password: string, min = 8): string | null {
   if (!password) return 'Password is required';
   if (password.length < min) return `Password must be at least ${min} characters`;
   return null;

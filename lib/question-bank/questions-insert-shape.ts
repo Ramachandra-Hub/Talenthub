@@ -1,5 +1,5 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
-import type { FacultyExamQuestion } from '@/lib/faculty-exams';
+import { isFacultyMcqQuestion, type FacultyExamQuestion } from '@/lib/faculty-exams';
 import { CURATED_BANK_MARKER } from '@/lib/question-bank/curated-mcqs';
 
 const PROBE_COLUMNS = [
@@ -52,6 +52,9 @@ export function mcqToQuestionRow(
     categoryId?: string | null;
   },
 ): Record<string, unknown> {
+  if (!isFacultyMcqQuestion(q)) {
+    throw new Error('mcqToQuestionRow expects an MCQ question');
+  }
   const row: Record<string, unknown> = {
     question_text: q.question_text,
     correct_answer: q.correct_answer,

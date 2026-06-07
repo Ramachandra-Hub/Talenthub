@@ -108,7 +108,7 @@ export async function findCompletedAttemptForTest(
     const attempt = normalizeAttemptRow(row);
     return {
       id: attempt.id,
-      score: attempt.score,
+      score: attempt.score ?? 0,
       completed_at: attempt.completed_at,
     };
   }
@@ -119,7 +119,7 @@ export async function findCompletedAttemptForTest(
     if (entry.status !== 'completed' && !entry.completed_at) continue;
     return {
       id: entry.id,
-      score: entry.score,
+      score: entry.score ?? 0,
       completed_at: entry.completed_at,
     };
   }
@@ -160,7 +160,7 @@ export async function findCompletedElevateXAttempt(
       const attempt = normalizeAttemptRow(row);
       return {
         id: attempt.id,
-        score: attempt.score,
+        score: attempt.score ?? 0,
         completed_at: attempt.completed_at,
       };
     }
@@ -174,7 +174,7 @@ export async function findCompletedElevateXAttempt(
       if (entry.status !== 'completed' && !entry.completed_at) continue;
       const summary = {
         id: entry.id,
-        score: entry.score,
+        score: entry.score ?? 0,
         completed_at: entry.completed_at,
       };
       if (!isPlaceholderAttemptId(String(entry.id))) return summary;
@@ -630,12 +630,7 @@ export async function fetchStudentDashboardAttempts(
   }
 
   try {
-    const authHeaders = await fetchWithSession;
-    const res = await fetch('/api/student/test-attempts', {
-      credentials: 'include',
-      cache: 'no-store',
-      headers: authHeaders,
-    });
+    const res = await fetchWithSession('/api/student/test-attempts');
     if (res.ok) {
       const json = (await res.json()) as { attempts?: DashboardAttemptView[] };
       if (json.attempts?.length) {

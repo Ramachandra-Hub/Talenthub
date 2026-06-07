@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import type { Session } from 'next-auth';
 import { edgeAuth } from '@/lib/auth/auth-edge';
 import {
   defaultRedirectForRole,
   isAdminRoute,
   isStudentExperienceRoute,
 } from '@/lib/roles';
+import { isSetupRoutesEnabled } from '@/lib/setup/is-setup-enabled';
 
 const PROTECTED_PREFIXES = [
   '/exams',
@@ -12,11 +14,17 @@ const PROTECTED_PREFIXES = [
   '/dashboard',
   '/placement',
   '/tests/rmset',
+  '/tests/take',
+  '/tests/programming',
+  '/tests/result',
+  '/tests/department',
   '/admin',
   '/profile',
   '/checkout',
   '/ai',
   '/tests/competitive-exam',
+  '/practice',
+  '/coding',
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -60,9 +68,9 @@ function applyRoleRedirects(
 
 async function proxyAws(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
-  let session: Awaited<ReturnType<typeof edgeAuth>> | null = null;
+  let authSession: Session | null = null;
   try {
-    session = await edgeAuth();
+    authSession = await edgeAuth();
   } catch (err) {
     console.error('[proxy] session decode failed:', err);
     if (isProtectedPath(pathname)) {
@@ -72,9 +80,9 @@ async function proxyAws(request: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.next({ request: { headers: request.headers } });
   }
-  const role = (session?.user?.role as 'admin' | 'student' | undefined) ?? null;
+  const role = (authSession?.user?.role as 'admin' | 'student' | undefined) ?? null;
 
-  if (!session?.user && isProtectedPath(pathname)) {
+  if (!authSession?.user && isProtectedPath(pathname)) {
     const loginUrl = new URL('/auth/role', request.url);
     loginUrl.searchParams.set('redirect', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
@@ -89,17 +97,26 @@ async function proxyAws(request: NextRequest): Promise<NextResponse> {
 }
 
 export async function proxy(request: NextRequest) {
-  if (process.env.NEXT_PUBLIC_SIGNUP_DISABLED === 'true') {
+  const pathname = request.nextUrl.pathname;
+
+  if (
+    (pathname.startsWith('/api/setup') ||
+      pathname.startsWith('/api/manual-setup') ||
+      pathname === '/api/admin/init-db') &&
+    !isSetupRoutesEnabled()
+  ) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  if (process.env.NEXT_PUBLIC_SIGNUP_DISABLED === 'true' || process.env.VERCEL_ENV === 'production') {
     const signupPaths = ['/auth/signup', '/auth/signup/student'];
-    if (signupPaths.includes(request.nextUrl.pathname)) {
+    if (signupPaths.includes(pathname) && process.env.NEXT_PUBLIC_SIGNUP_DISABLED !== 'false') {
       const url = request.nextUrl.clone();
       url.pathname = '/auth/role';
       url.searchParams.set('notice', 'signup_closed');
       return NextResponse.redirect(url);
     }
   }
-
-  const pathname = request.nextUrl.pathname;
 
   if (
     pathname.startsWith('/faculty') ||
@@ -108,6 +125,7 @@ export async function proxy(request: NextRequest) {
   ) {
     const url = request.nextUrl.clone();
     url.pathname = pathname.startsWith('/auth/') ? '/auth/role' : '/admin/exam-builder';
+    url.searchParams.set('notice', 'faculty_portal_moved');
     return NextResponse.redirect(url);
   }
 

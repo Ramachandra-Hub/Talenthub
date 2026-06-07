@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { executeCode } from '@/lib/coding/execute';
 import { parseCodingRunRequest } from '@/lib/coding/parse-run-request';
 import { requireAuth } from '@/lib/server-auth';
+import { rateLimitInMemory } from '@/lib/rate-limit';
 import type { CodingLanguageId } from '@/lib/coding/languages';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 const MAX_CASES = 12;
 const CONCURRENCY = 3;
@@ -67,6 +68,14 @@ async function runPool(
 export async function POST(request: Request) {
   const authResult = await requireAuth(['student', 'admin'], request);
   if ('response' in authResult) return authResult.response;
+
+  const burst = rateLimitInMemory(`coding-batch:${authResult.ctx.user.id}`, 20, 60_000);
+  if (!burst.ok) {
+    return NextResponse.json(
+      { error: 'Too many batch runs. Wait a moment and try again.', retryAfterSec: burst.retryAfterSec },
+      { status: 429 },
+    );
+  }
 
   try {
     let body: unknown;

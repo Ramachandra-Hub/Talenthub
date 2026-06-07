@@ -233,7 +233,10 @@ export function parseExamTextFromDocument(raw: string): ParseExamResult {
     }
   } else {
     warnings.push(`Parsed ${questions.length} question(s) from document text.`);
-    const missingAnswers = questions.filter((q) => q.correct_answer === 'A').length;
+    const missingAnswers = questions.filter((q) => {
+      if ((q as { question_type?: string }).question_type === 'coding') return false;
+      return (q as { correct_answer?: string }).correct_answer === 'A';
+    }).length;
     if (answerKey.size > 0) {
       warnings.push(`Applied answer key for ${answerKey.size} numbered item(s).`);
     }

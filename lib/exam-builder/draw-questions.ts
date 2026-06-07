@@ -7,6 +7,7 @@ import {
   normalizeQuestionId,
 } from '@/lib/exam-builder/id-utils';
 import { ensureSyllabusBankForSlugs } from '@/lib/question-bank/seed-curated-bank-prisma';
+import { normalizeQuestionStem } from '@/lib/questions/dedupe-questions';
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -150,6 +151,27 @@ export async function questionIdsForTag(
   return [...ids];
 }
 
+async function fetchQuestionStemMap(
+  admin: DbServiceClient,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(ids.map(normalizeQuestionId))];
+  for (let i = 0; i < unique.length; i += 200) {
+    const chunk = unique.slice(i, i + 200);
+    const { data, error } = await admin
+      .from('questions')
+      .select('id, question_text')
+      .in('id', chunk);
+    if (error) break;
+    for (const row of data ?? []) {
+      const id = normalizeQuestionId(row.id);
+      map.set(id, normalizeQuestionStem(String(row.question_text ?? '')));
+    }
+  }
+  return map;
+}
+
 function rowToFacultyQuestion(row: Record<string, unknown>): FacultyExamQuestion | null {
   const text = String(row.question_text ?? '').trim();
   if (!text) return null;
@@ -275,11 +297,13 @@ export async function drawExamQuestionsFromTopics(
   }
 
   const usedInPaper = new Set<string>();
+  const usedStemsInPaper = new Set<string>();
   const orderedIds: string[] = [];
   const topicsUsed: { id: string; name: string; count: number }[] = [];
 
   for (const tag of resolvedTags) {
     const fullForTag = await questionIdsForTag(admin, tag.id as string, tag.slug as string);
+    const stemMap = await fetchQuestionStemMap(admin, fullForTag);
     let pool = shuffle(fullForTag).filter((id) => !excluded.has(id) && !usedInPaper.has(id));
 
     if (pool.length < input.questionsPerTopic && fullForTag.length > 0) {
@@ -292,13 +316,22 @@ export async function drawExamQuestionsFromTopics(
       }
     }
 
-    if (pool.length < input.questionsPerTopic) {
+    const picked: string[] = [];
+    for (const id of pool) {
+      if (picked.length >= input.questionsPerTopic) break;
+      const stem = stemMap.get(id) ?? '';
+      if (!stem || usedStemsInPaper.has(stem)) continue;
+      picked.push(id);
+      usedInPaper.add(id);
+      usedStemsInPaper.add(stem);
+    }
+
+    if (picked.length < input.questionsPerTopic) {
       warnings.push(
-        `"${tag.name}": only ${pool.length} question(s) available (requested ${input.questionsPerTopic}).`,
+        `"${tag.name}": only ${picked.length} unique question(s) available (requested ${input.questionsPerTopic}).`,
       );
     }
 
-    const picked = pool.slice(0, input.questionsPerTopic);
     if (picked.length === 0) {
       if (fullForTag.length === 0) {
         throw new Error(
@@ -311,10 +344,7 @@ export async function drawExamQuestionsFromTopics(
     }
 
     topicsUsed.push({ id: tag.id as string, name: tag.name as string, count: picked.length });
-    for (const id of picked) {
-      usedInPaper.add(id);
-      orderedIds.push(id);
-    }
+    orderedIds.push(...picked);
   }
 
   const { data: questionRows, error: fetchErr } = await admin

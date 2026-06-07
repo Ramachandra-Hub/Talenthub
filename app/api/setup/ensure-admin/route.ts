@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { postgresUrlSetupHint, resolvePostgresUrl } from '@/lib/postgres-url';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 
 /** Creates public.admin_users + RLS (non-destructive). */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     const postgresUrl = resolvePostgresUrl();
     if (!postgresUrl) {

@@ -86,7 +86,7 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
         !state ||
         state.kind !== 'mcq' ||
         !Array.isArray(state.questions) ||
-        state.questions.length < Math.min(expected, 1);
+        state.questions.length === 0;
 
       if (!needsRepair) continue;
 
@@ -113,7 +113,10 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
       const codingCasesMissing =
         Array.isArray(codingProblems) &&
         codingProblems.some(
-          (p) => !Array.isArray(p.testCases) || p.testCases.length === 0,
+          (p) =>
+            !Array.isArray(p.testCases) ||
+            p.testCases.length === 0 ||
+            p.testCases.length > 1,
         );
       const needsCoding =
         (format === 'coding' || format === 'both') &&

@@ -206,6 +206,43 @@ export default function QuestionsManagementPage() {
     await downloadTopicPdfForSlug(slug);
   };
 
+  const downloadTopicDoc = async (slug: string, topicName?: string) => {
+    if (!slug) return;
+    setPdfDownloading('topic');
+    try {
+      await downloadSingleTopicExport(
+        slug,
+        topicName ??
+          allTopicsFlat.find((t) => t.slug === slug)?.name ??
+          topicPayload?.topic?.name ??
+          slug,
+        'doc',
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Word download failed');
+    } finally {
+      setPdfDownloading(null);
+    }
+  };
+
+  const downloadTopicFile = async (
+    slug: string,
+    topicName: string,
+    format: BulkExportFormat,
+    event?: React.MouseEvent,
+  ) => {
+    event?.stopPropagation();
+    if (!slug) return;
+    setPdfDownloading('topic');
+    try {
+      await downloadSingleTopicExport(slug, topicName, format);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `${format.toUpperCase()} download failed`);
+    } finally {
+      setPdfDownloading(null);
+    }
+  };
+
   const seedSyllabusQuestionBank = async () => {
     if (
       !window.confirm(

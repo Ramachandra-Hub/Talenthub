@@ -163,7 +163,8 @@ export async function provisionStudentsFromSlotRoster(
         user_metadata: metadata,
       });
       if (updateError) {
-        result.errors.push(`${roll}: ${updateError.message}`);
+        const { readServiceError } = await import('@/lib/db/service-error');
+        result.errors.push(`${roll}: ${readServiceError(updateError) ?? 'update failed'}`);
         result.skipped += 1;
         return;
       }

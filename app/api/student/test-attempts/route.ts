@@ -27,6 +27,8 @@ import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { prisma } from '@/lib/prisma';
 import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
+import { computeProgrammingExamScorePercent } from '@/lib/exam-v2/grade-programming-exam';
+import { computeServerScorePercent } from '@/lib/exam-v2/server-score';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const scorePercent = Number(body.scorePercent);
+  let scorePercent = Number(body.scorePercent);
   if (!Number.isFinite(scorePercent)) {
     return NextResponse.json({ error: 'scorePercent is required' }, { status: 400 });
   }
@@ -68,13 +70,28 @@ export async function POST(request: Request) {
     testName = `Department · ${testName}`;
   }
 
-  const totalQuestions = Number(body.totalQuestions) || 0;
+  let totalQuestions = Number(body.totalQuestions) || 0;
   const answersIn =
     body.answers != null && typeof body.answers === 'object'
       ? (body.answers as Record<string, unknown>)
       : {};
 
   const testId = String(body.testId ?? '').trim();
+  if (examKind === 'programming' && Object.keys(answersIn).length > 0) {
+    const rescored = await computeProgrammingExamScorePercent(answersIn);
+    scorePercent = rescored.scorePercent;
+    body.rawNetScore = rescored.rawNetScore;
+    if (!totalQuestions) totalQuestions = rescored.totalQuestions;
+  } else if (testId && Object.keys(answersIn).length > 0 && !isElevateXTestId(testId)) {
+    const rescored = await computeServerScorePercent(testId, answersIn);
+    if (rescored) {
+      scorePercent = rescored.scorePercent;
+      body.rawNetScore = rescored.rawNetScore;
+      if (!totalQuestions) {
+        totalQuestions = rescored.totalQuestions;
+      }
+    }
+  }
   const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
   const proctorSessionId =
     typeof body.proctorSessionId === 'string' ? body.proctorSessionId : undefined;
@@ -243,6 +260,7 @@ export async function POST(request: Request) {
           error: isElevateXTestId(testId)
             ? 'You have already submitted ElevateX. Each roll number may attempt this exam only once.'
             : 'You have already submitted this test and cannot take it again.',
+          code: 'already_submitted',
           attemptId: error.attemptId,
         },
         { status: 409 },
@@ -250,32 +268,22 @@ export async function POST(request: Request) {
     }
     if (error instanceof AttemptDeadlineError) {
       return NextResponse.json(
-        { error: 'Exam deadline reached. Submission is blocked by server timing rules.' },
+        {
+          error: 'Exam deadline reached. Submission is blocked by server timing rules.',
+          code: 'deadline_exceeded',
+        },
         { status: 409 },
       );
     }
-    try {
-      const fallbackStatEntry = buildStatEntryPrisma({
-        id: `pending-${Date.now()}`,
-        userId,
-        testId,
-        testName,
-        scorePercent,
-        elapsedSec: Number(body.elapsedSec) || 0,
-        completedAtIso: nowIso,
-        totalQuestions: totalQuestions || undefined,
-        answers: Object.keys(answersIn).length > 0 ? answersIn : undefined,
-      });
-      await appendStudentDashboardStatPrisma(userId, fallbackStatEntry);
-      const attempts = await fetchStudentDashboardStatsPrisma(userId);
-      return NextResponse.json({
-        id: fallbackStatEntry.id,
-        attempts,
-        warning: 'Saved to dashboard stats; test_attempts row may be missing.',
-      });
-    } catch {
-      const message = error instanceof Error ? error.message : 'Failed to save attempt';
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
+    const message = error instanceof Error ? error.message : 'Failed to save attempt';
+    console.error('[test-attempts/submit]', message, error);
+    return NextResponse.json(
+      {
+        error:
+          'Your submission could not be saved on the server. Check your connection and submit again.',
+        code: 'submit_persist_failed',
+      },
+      { status: 503 },
+    );
   }
 }

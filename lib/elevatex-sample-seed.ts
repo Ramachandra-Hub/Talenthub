@@ -72,7 +72,10 @@ async function upsertAuthStudent(
       email_confirm: true,
       user_metadata: metadata,
     });
-    if (updateError) return { error: updateError.message };
+    if (updateError) {
+      const { readServiceError } = await import('@/lib/db/service-error');
+      return { error: readServiceError(updateError) ?? 'updateUser failed' };
+    }
     return { id: existing.id, created: false };
   }
 
@@ -119,7 +122,10 @@ async function loadAuthUsersByEmail(
     page: 1,
     perPage: 1000,
   });
-  if (listError) return { error: listError.message };
+  if (listError) {
+    const { readServiceError } = await import('@/lib/db/service-error');
+    return { error: readServiceError(listError) ?? 'listUsers failed' };
+  }
 
   const usersByEmail = new Map<string, { id: string }>();
   for (const user of listed.users) {
@@ -179,7 +185,8 @@ async function deleteSampleStudentByRoll(
 
   const { error: delErr } = await db.auth.admin.deleteUser(user.id);
   if (delErr) {
-    return { deleted: false, userId: user.id, error: delErr.message };
+    const { readServiceError } = await import('@/lib/db/service-error');
+    return { deleted: false, userId: user.id, error: readServiceError(delErr) ?? 'delete failed' };
   }
 
   usersByEmail.delete(email);
@@ -486,7 +493,7 @@ export async function seedElevateXSample(
   if (schedErr) {
     scheduleWarning = schedErr.message;
   } else {
-    scheduleId = schedule?.id ?? null;
+    scheduleId = schedule?.id != null ? String(schedule.id) : null;
   }
 
   return {

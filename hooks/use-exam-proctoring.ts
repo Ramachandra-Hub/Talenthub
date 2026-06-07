@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  PROCTOR_AUTO_SUBMIT_VIOLATION_TYPES,
   PROCTOR_FOCUS_DEBOUNCE_MS,
   PROCTOR_INGEST_FLUSH_MS,
   PROCTOR_MAX_VIOLATIONS,
 } from '@/lib/exam-v2/proctoring-config';
 import {
+  countCountableExamViolations,
   logExamViolation,
   getExamViolations,
   type ExamViolationEvent,
@@ -25,8 +27,9 @@ type Options = {
   onMaxViolations?: (summary: { violationCount: number; violations: ExamViolationEvent[] }) => void;
 };
 
-/** Only tab / focus loss counts toward auto-submit. Camera is preview-only. */
-const COUNTABLE_VIOLATIONS = new Set<ExamViolationType>(['tab_switch']);
+const COUNTABLE_VIOLATIONS = new Set<ExamViolationType>(
+  PROCTOR_AUTO_SUBMIT_VIOLATION_TYPES as unknown as ExamViolationType[],
+);
 
 export function useExamProctoring({
   testId,
@@ -49,24 +52,45 @@ export function useExamProctoring({
   const maxViolationsRef = useRef(onMaxViolations);
   maxViolationsRef.current = onMaxViolations;
 
+  useEffect(() => {
+    if (!enabled || !sessionId) return;
+
+    const stored = getExamViolations(sessionId);
+    const { violationCount: restoredCount, tabSwitchCount: restoredTabs } =
+      countCountableExamViolations(stored);
+
+    setViolations(stored);
+    setViolationCount(restoredCount);
+    setTabSwitchCount(restoredTabs);
+
+    if (restoredCount >= PROCTOR_MAX_VIOLATIONS) {
+      autoSubmitRef.current = true;
+      setAutoSubmitTriggered(true);
+    }
+  }, [enabled, sessionId]);
+
   const flushIngest = useCallback(async () => {
     const batch = ingestQueueRef.current.splice(0, ingestQueueRef.current.length);
     if (!batch.length) return;
 
-    try {
-      await fetchWithAuth('/api/v2/proctor/ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          testId,
-          sessionId,
-          attemptId: attemptIdRef?.current || undefined,
-          batch,
-        }),
-        keepalive: true,
-      });
-    } catch {
-      /* best effort */
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const res = await fetchWithAuth('/api/v2/proctor/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            testId,
+            sessionId,
+            attemptId: attemptIdRef?.current || undefined,
+            batch,
+          }),
+          keepalive: true,
+        });
+        if (res.ok) return;
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
     }
   }, [testId, sessionId, attemptIdRef]);
 

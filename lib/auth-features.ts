@@ -7,6 +7,10 @@
  *
  * Redeploy or restart `pnpm dev` after changing.
  */
+import { isStrictProduction } from '@/lib/production';
+
 export function isSignupDisabled(): boolean {
-  return process.env.NEXT_PUBLIC_SIGNUP_DISABLED === 'true';
+  if (process.env.NEXT_PUBLIC_SIGNUP_DISABLED === 'true') return true;
+  if (process.env.NEXT_PUBLIC_SIGNUP_DISABLED === 'false') return false;
+  return isStrictProduction();
 }

@@ -1,5 +1,4 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
-import { isAllowlistedAdminEmail } from '@/lib/admin-defaults';
 import { DEPARTMENTS, ACADEMIC_YEARS, type Department, type AcademicYear } from '@/lib/college-brand';
 
 export type AppRole = 'student' | 'admin' | 'guest';
@@ -79,26 +78,6 @@ export async function resolveAppUserFromAuthUser(
     };
   }
 
-  if (String(meta.role ?? '') === 'admin') {
-    return {
-      id: user.id,
-      email,
-      role: 'admin',
-    };
-  }
-
-  const allowlisted = isAllowlistedAdminEmail(user.email);
-
-  if (allowlisted && adminError) {
-    const errMsg = String(adminError.message ?? '').toLowerCase();
-    if (errMsg.includes('admin_users') || errMsg.includes('schema cache')) {
-      return {
-        id: user.id,
-        email,
-        role: 'admin',
-      };
-    }
-  }
   const metaRole = String(meta.role ?? '');
 
   if (metaRole === 'faculty') {
@@ -110,18 +89,22 @@ export async function resolveAppUserFromAuthUser(
     };
   }
 
-  const { data: profile } = await db
+  const { data: profileRow } = await db
     .from('users')
     .select('branch, academic_year, full_name')
     .eq('id', user.id)
     .maybeSingle();
 
+  const profile = profileRow as { branch?: string | null; academic_year?: string | null } | null;
+  const metaDepartment = typeof meta.department === 'string' ? meta.department : null;
+  const metaYear = typeof meta.year === 'string' ? meta.year : null;
+
   return {
     id: user.id,
     email,
     role: 'student',
-    department: profile?.branch ?? (meta.department as string) ?? null,
-    academicYear: profile?.academic_year ?? (meta.year as string) ?? null,
+    department: profile?.branch ?? metaDepartment,
+    academicYear: profile?.academic_year ?? metaYear,
   };
 }
 

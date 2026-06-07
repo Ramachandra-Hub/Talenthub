@@ -1,5 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
+import { useAwsStack } from '@/lib/aws/stack';
 
 const isDatabaseConfigured =
   !!process.env.DATABASE_URL?.trim() &&
@@ -7,7 +9,20 @@ const isDatabaseConfigured =
   !process.env.DATABASE_URL.includes('YOUR_') &&
   !process.env.AUTH_SECRET.includes('YOUR_');
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
+  if (useAwsStack()) {
+    return NextResponse.json(
+      {
+        error:
+          'Legacy Supabase initialize is disabled on AWS RDS. Use POST /api/setup/rds and prisma migrate deploy.',
+      },
+      { status: 410 },
+    );
+  }
+
   try {
     if (!isDatabaseConfigured) {
       return NextResponse.json(

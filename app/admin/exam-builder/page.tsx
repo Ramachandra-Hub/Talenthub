@@ -62,6 +62,7 @@ export default function AdminExamBuilderPage() {
   const [usesSlotScheduling, setUsesSlotScheduling] = useState(false);
   const [scheduleSlots, setScheduleSlots] = useState<ExamScheduleSlotInput[]>(emptySlots);
   const [manualPaste, setManualPaste] = useState('');
+  const [parsingManual, setParsingManual] = useState(false);
   const [departmentGroups, setDepartmentGroups] = useState<DepartmentGroupOption[]>([]);
 
   useEffect(() => {

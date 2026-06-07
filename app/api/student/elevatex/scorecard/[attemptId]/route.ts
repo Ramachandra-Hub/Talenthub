@@ -12,7 +12,7 @@ export async function GET(
   const auth = await requireAuth(undefined, _request);
   if ('response' in auth) return auth.response;
 
-  const role = String(auth.ctx.user.user_metadata?.role ?? 'student').toLowerCase();
+  const role = String(auth.ctx.resolved.role ?? 'student').toLowerCase();
   if (role !== 'admin') {
     return NextResponse.json(
       { error: 'Scorecards are available only to admin users.' },

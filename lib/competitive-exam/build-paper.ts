@@ -1,4 +1,5 @@
 import type { Question } from '@/lib/types';
+import { normalizeQuestionStem } from '@/lib/questions/dedupe-questions';
 import { remixMcqOptions } from '@/lib/competitive-exam/question-factory';
 import { forkRng, shuffleInPlace } from '@/lib/competitive-exam/seed-rng';
 import {
@@ -34,7 +35,7 @@ const STATIC_BY_TOPIC: Record<string, Question[]> = {
 };
 
 function normalizeStem(q: Question): string {
-  return `${q.category_id}|${q.question_text.trim().slice(0, 280)}`;
+  return `${q.category_id}|${normalizeQuestionStem(q.question_text ?? '')}`;
 }
 
 function buildTopicPool(topic: string, seed: string): Question[] {

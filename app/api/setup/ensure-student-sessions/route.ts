@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ensureStudentSessionLockTable } from '@/lib/ensure-student-session-lock';
 import { postgresUrlSetupHint, rdsSqlEditorUrl } from '@/lib/postgres-url';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 
 /** Creates student_active_sessions table for one-login-per-roll enforcement. */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   const result = await ensureStudentSessionLockTable();
 
   if (!result.ok) {

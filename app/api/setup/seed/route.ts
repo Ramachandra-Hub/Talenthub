@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 
 const isDatabaseConfigured =
   !!process.env.DATABASE_URL?.trim() &&
@@ -7,7 +8,10 @@ const isDatabaseConfigured =
   !process.env.DATABASE_URL.includes('YOUR_') &&
   !process.env.AUTH_SECRET.includes('YOUR_');
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     if (!isDatabaseConfigured) {
       return NextResponse.json(
@@ -38,11 +42,12 @@ export async function POST() {
       .from('test_categories')
       .select('id, slug');
     if (allCategoriesError) throw allCategoriesError;
-    const categoryMap =
-      allCategories?.reduce((map: Record<string, string>, cat: { id: string; slug: string }) => {
-        map[cat.slug] = cat.id;
-        return map;
-      }, {}) ?? {};
+    const categoryMap = (
+      (allCategories ?? []) as Array<{ id: string; slug: string }>
+    ).reduce<Record<string, string>>((map, cat) => {
+      map[cat.slug] = cat.id;
+      return map;
+    }, {});
 
     const tests = [
       { slug: 'quantitative', title: 'Quantitative Test 1', description: 'Basic quantitative reasoning', duration_minutes: 30, total_questions: 5, difficulty: 'easy' },
@@ -84,7 +89,7 @@ export async function POST() {
           .select('id')
           .single();
         if (createTestError) throw createTestError;
-        testId = created.id as string;
+        testId = String((created as { id?: string } | null)?.id ?? '');
         testsSeeded += 1;
       }
 

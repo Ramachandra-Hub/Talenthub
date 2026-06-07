@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Test, Question } from '@/lib/types';
-import { loadTestBundleForTake } from '@/lib/load-test-for-take';
 import { TestProvider } from './test-context';
 import TestInterface from './test-interface';
 import { loadTestSections } from '@/lib/exam-v2/load-sections';
@@ -29,12 +28,20 @@ import { isSignupDisabled } from '@/lib/auth-features';
 import { defaultRedirectForRole } from '@/lib/roles';
 import { useAppRole } from '@/lib/use-app-role';
 import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
-import { createProctorSessionId } from '@/lib/exam-v2/proctoring';
+import {
+  createProctorSessionId,
+  loadTestProctorSessionId,
+  mergeExamViolations,
+  saveTestProctorSessionId,
+} from '@/lib/exam-v2/proctoring';
+import { loadExamDraft } from '@/lib/exam-v2/autosave';
 import { RmsetExamIntro } from '@/components/rmset/rmset-exam-intro';
 import { isRmsetTestCategorySlug } from '@/lib/rmset/student-exam-intro';
 import { getAttemptIndexForUser } from '@/lib/local-test-attempts';
+import { sanitizeQuestionsForStudent } from '@/lib/questions/sanitize-for-student';
 import { testIdsMatch, type CompletedAttemptSummary } from '@/lib/test-attempts';
 import { getClientUser, isAwsClientMode } from '@/lib/client-auth';
+import { fetchWithAuth } from '@/lib/fetch-with-auth';
 
 /** `pending` = waiting on auth session; avoid starting the test until resolved. */
 type PracticeAccessState = 'pending' | 'guest' | 'full';
@@ -70,6 +77,41 @@ export default function TakeTestPage({
       setPracticeAccess('full');
     }
   }, []);
+
+  useEffect(() => {
+    if (practiceAccess !== 'full' || !testId) return;
+
+    void (async () => {
+      const storedProctor = loadTestProctorSessionId(testId);
+      const draft = loadExamDraft(testId);
+      if (!storedProctor || !draft) return;
+
+      const user = await getClientUser();
+      if (user) {
+        try {
+          const res = await fetchWithAuth(
+            `/api/student/test-attempts/open?testId=${encodeURIComponent(testId)}`,
+          );
+          if (res.ok) {
+            const json = (await res.json()) as {
+              openAttempt?: { answers?: Record<string, unknown> } | null;
+            };
+            const proctor = json.openAttempt?.answers?.__proctor as
+              | { violations?: Array<{ type: string; at: string }> }
+              | undefined;
+            if (proctor?.violations?.length) {
+              mergeExamViolations(storedProctor, proctor.violations);
+            }
+          }
+        } catch {
+          /* local sessionStorage violations still apply */
+        }
+      }
+
+      setProctorSessionId(storedProctor);
+      setTestStarted(true);
+    })();
+  }, [practiceAccess, testId]);
 
   useEffect(() => {
     const refreshAccess = async () => {
@@ -169,7 +211,7 @@ export default function TakeTestPage({
           const fallbackQuestions = getFallbackQuestionsByTestId(testId);
           if (fallbackTest && fallbackQuestions.length > 0) {
             setTest(fallbackTest);
-            setQuestions(fallbackQuestions);
+            setQuestions(sanitizeQuestionsForStudent(fallbackQuestions));
           } else if (!user) {
             setLoadError('Sign in with your roll number to take this exam.');
           } else {
@@ -183,7 +225,7 @@ export default function TakeTestPage({
           const fallbackQuestions = getFallbackQuestionsByTestId(testId);
           if (fallbackTest && fallbackQuestions.length > 0) {
             setTest(fallbackTest);
-            setQuestions(fallbackQuestions);
+            setQuestions(sanitizeQuestionsForStudent(fallbackQuestions));
             return;
           }
         }
@@ -282,7 +324,11 @@ export default function TakeTestPage({
 
   const beginProctoredExam = () => {
     void getClientUser().then((user) => {
-      setProctorSessionId(createProctorSessionId(testId, user?.id ?? undefined));
+      const existing = loadTestProctorSessionId(testId);
+      const sessionId =
+        existing ?? createProctorSessionId(testId, user?.id ?? undefined);
+      saveTestProctorSessionId(testId, sessionId);
+      setProctorSessionId(sessionId);
       setTestStarted(true);
     });
   };

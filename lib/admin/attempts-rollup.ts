@@ -168,7 +168,7 @@ export async function loadAdminStudents(admin: DbServiceClient): Promise<RollupS
           (meta.academic_year as string | undefined) ??
           (meta.year as string | undefined) ??
           null,
-        created_at: user.created_at ?? null,
+        created_at: null,
       });
     }
     if (data.users.length < 200) break;

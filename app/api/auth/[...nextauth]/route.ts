@@ -16,10 +16,12 @@ async function safeHandler(
   }
 }
 
+type AuthHandler = (req: Request, ctx: RouteContext) => Promise<Response>;
+
 export async function GET(req: Request, ctx: RouteContext) {
-  return safeHandler(handlers.GET, req, ctx);
+  return safeHandler(handlers.GET as unknown as AuthHandler, req, ctx);
 }
 
 export async function POST(req: Request, ctx: RouteContext) {
-  return safeHandler(handlers.POST, req, ctx);
+  return safeHandler(handlers.POST as unknown as AuthHandler, req, ctx);
 }

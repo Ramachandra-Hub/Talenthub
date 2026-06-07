@@ -55,15 +55,9 @@ export function QuestionBankUploadPanel({
     void loadStatus();
   }, [loadStatus]);
 
-  const authHeaders = async (): Promise<Record<string, string>> => {
-    const db = null;
-    const {
-      data: { session },
-    } = (await db?.auth.getSession()) ?? { data: { session: null } };
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
-    return headers;
-  };
+  const authHeaders = async (): Promise<Record<string, string>> => ({
+    'Content-Type': 'application/json',
+  });
 
   const copyBootstrapSql = async () => {
     setError(null);
@@ -169,18 +163,15 @@ export function QuestionBankUploadPanel({
     setUploading(true);
 
     try {
-      const headers: Record<string, string> = {};
-      const db = null;
-      const {
-        data: { session },
-      } = (await db?.auth.getSession()) ?? { data: { session: null } };
-      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
-
       const form = new FormData();
       form.append('file', file);
       form.append('tagIds', JSON.stringify(tagIds));
 
-      const res = await fetch('/api/exam-builder/bank-upload', { method: 'POST', headers, body: form });
+      const res = await fetch('/api/exam-builder/bank-upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
       const json = (await res.json()) as {
         inserted?: number;
         warnings?: string[];

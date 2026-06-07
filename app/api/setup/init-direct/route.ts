@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     const postgresUrl = process.env.POSTGRES_URL;
     if (!postgresUrl || postgresUrl.includes('YOUR_')) {

@@ -163,7 +163,7 @@ export async function loadTestReportsPayload(
         isInstantOnDateKey(a.created_at, reportDateKey),
     );
     if (examType === 'elevatex') {
-      filtered = latestAttemptPerUser(filtered);
+      filtered = latestAttemptPerUser(filtered) as typeof filtered;
     }
   }
 

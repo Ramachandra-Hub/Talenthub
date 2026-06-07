@@ -19,6 +19,7 @@ import {
 import { computePlacementScorecard } from '@/lib/placement/scoring';
 import { fetchElevateXAttemptStatus, getElevateXTestId } from '@/lib/placement/elevatex-attempt';
 import { encodeElevateXScorecardAnswers } from '@/lib/placement/scorecard-payload';
+import { ELEVATEX_SERVER_PROGRESS_INTERVAL_MS } from '@/lib/exam-v2/progress-intervals';
 import {
   clearPlacementDrafts,
   clearPlacementProctorSessionId,
@@ -28,7 +29,6 @@ import {
   loadPlacementProctorSessionId,
   deriveGlobalTimeLeftSec,
   markPlacementCompleted,
-  savePlacementProctorSessionId,
   saveScorecardForAttempt,
   saveSession,
 } from '@/lib/placement/session';
@@ -44,11 +44,30 @@ import type {
 import SpeakingSection from '@/components/placement/speaking-section';
 import { PlacementMcqRunner } from '@/components/placement/placement-mcq-runner';
 import { PlacementTechnicalSection } from '@/components/placement/placement-technical-section';
-import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
-import { createProctorSessionId, getExamViolations } from '@/lib/exam-v2/proctoring';
+import { getExamViolations, mergeExamViolations } from '@/lib/exam-v2/proctoring';
 import type { ProctorSummary } from '@/lib/exam-v2/proctoring-config';
+
+async function restorePlacementProctorViolations(sessionId: string, testId: string): Promise<void> {
+  try {
+    const res = await fetchWithSession(
+      `/api/student/test-attempts/open?testId=${encodeURIComponent(testId)}`,
+    );
+    if (!res.ok) return;
+    const json = (await res.json()) as {
+      openAttempt?: { answers?: Record<string, unknown> } | null;
+    };
+    const proctor = json.openAttempt?.answers?.__proctor as
+      | { violations?: Array<{ type: string; at: string }> }
+      | undefined;
+    if (proctor?.violations?.length) {
+      mergeExamViolations(sessionId, proctor.violations);
+    }
+  } catch {
+    /* sessionStorage violations still apply */
+  }
+}
 
 function formatHms(totalSec: number): string {
   const safe = Math.max(0, Math.floor(totalSec));
@@ -72,6 +91,7 @@ export default function PlacementTakePage() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitOnLoad, setSubmitOnLoad] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const submitGuardRef = useRef(false);
   const liveAttemptIdRef = useRef('');
@@ -96,8 +116,8 @@ export default function PlacementTakePage() {
     maxViolations,
   } = useExamProctoring({
     testId: elevateXTestId,
-    sessionId: proctorSessionId || elevateXTestId,
-    enabled: proctorActive,
+    sessionId: proctorSessionId,
+    enabled: proctorActive && Boolean(proctorSessionId),
     requireCamera: true,
     videoRef: proctorVideoRef,
     attemptIdRef: liveAttemptIdRef,
@@ -127,6 +147,12 @@ export default function PlacementTakePage() {
       const status = await fetchElevateXAttemptStatus(hallTicket || undefined);
       if (cancelled) return;
 
+      if (status.statusError) {
+        setLoadError('Could not verify your ElevateX session. Check your connection and try again.');
+        setHydrated(true);
+        return;
+      }
+
       const localCompletedId = hallTicket ? getPlacementCompletedAttemptId(hallTicket) : null;
       const completedAttemptId =
         status.completed && status.attemptId ? status.attemptId : localCompletedId;
@@ -155,6 +181,7 @@ export default function PlacementTakePage() {
         setSubmitOnLoad(true);
         const storedProctor = loadPlacementProctorSessionId();
         if (storedProctor) {
+          await restorePlacementProctorViolations(storedProctor, elevateXTestId);
           setProctorSessionId(storedProctor);
           setProctorReady(true);
         }
@@ -166,6 +193,7 @@ export default function PlacementTakePage() {
       setHydrated(true);
       const storedProctor = loadPlacementProctorSessionId();
       if (storedProctor) {
+        await restorePlacementProctorViolations(storedProctor, elevateXTestId);
         setProctorSessionId(storedProctor);
         setProctorReady(true);
       }
@@ -265,6 +293,7 @@ export default function PlacementTakePage() {
           }
           return;
         }
+        if (res.status === 429) return;
         if (res.ok) {
           const json = (await res.json()) as { id?: string };
           if (json.id) liveAttemptIdRef.current = String(json.id);
@@ -275,7 +304,10 @@ export default function PlacementTakePage() {
     };
 
     void reportProgress();
-    const interval = window.setInterval(() => void reportProgress(), 3000);
+    const interval = window.setInterval(
+      () => void reportProgress(),
+      ELEVATEX_SERVER_PROGRESS_INTERVAL_MS,
+    );
     return () => window.clearInterval(interval);
   }, [hydrated, session, elevateXTestId]);
 
@@ -371,7 +403,7 @@ export default function PlacementTakePage() {
           return;
         }
 
-        if (!submitRes?.attemptId) {
+        if (!submitRes?.attemptId || !submitRes.savedToServer) {
           throw new Error(
             'Could not save your ElevateX attempt. Check your internet connection and try Submit again.',
           );
@@ -616,12 +648,33 @@ export default function PlacementTakePage() {
     return total > 0 ? Math.round((answered / total) * 100) : 0;
   }, [session]);
 
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4">
+        <p className="text-slate-700 text-center max-w-md">{loadError}</p>
+        <div className="flex gap-3">
+          <Button asChild variant="outline">
+            <Link href="/placement/assessment">Back to ElevateX start</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/exams">Examinations</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (blocked || !hydrated || !session || !currentSection) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-600">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-4">
+        <p className="text-slate-600 text-center">
           {blocked ? 'Redirecting to your ElevateX result…' : 'Preparing your placement session…'}
         </p>
+        {!blocked && !hydrated ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href="/placement/assessment">Return to start page</Link>
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -629,22 +682,15 @@ export default function PlacementTakePage() {
   if (!proctorReady) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
-        <Card className="max-w-lg w-full p-6 shadow-md border-slate-200">
-          <h1 className="text-xl font-bold text-slate-900 mb-2">{PLACEMENT_EXAM_NAME} · Proctoring</h1>
+        <Card className="max-w-lg w-full p-6 shadow-md border-slate-200 text-center">
+          <h1 className="text-xl font-bold text-slate-900 mb-2">{PLACEMENT_EXAM_NAME}</h1>
           <p className="text-sm text-slate-600 mb-4">
-            Camera and tab monitoring are required for this exam (same standard as RMSET).
+            Proctoring is enabled from the start page. Return there to grant camera access once, then
+            resume your exam.
           </p>
-          <ProctorConsentGate
-            onReady={() => {
-              const id =
-                loadPlacementProctorSessionId() ??
-                createProctorSessionId(elevateXTestId, session.candidate.hallTicket);
-              savePlacementProctorSessionId(id);
-              setProctorSessionId(id);
-              setProctorReady(true);
-            }}
-            onCancel={() => router.replace('/placement/assessment')}
-          />
+          <Button type="button" onClick={() => router.replace('/placement/assessment')}>
+            Return to start page
+          </Button>
         </Card>
       </div>
     );

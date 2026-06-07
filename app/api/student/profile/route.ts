@@ -137,7 +137,10 @@ async function writeMetadataProfile(
   const { error } = await admin.auth.admin.updateUserById(user.id, {
     user_metadata: newMetadata,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    const { readServiceError } = await import('@/lib/db/service-error');
+    return { ok: false, error: readServiceError(error) ?? 'profile update failed' };
+  }
   return { ok: true, error: null };
 }
 

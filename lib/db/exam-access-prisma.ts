@@ -5,8 +5,28 @@ import {
   type ExamScheduleRow,
   type ExamScheduleStatus,
 } from '@/lib/exam-schedule';
-import { ELEVATEX_MODULE_KEY, isElevateXTestId } from '@/lib/elevatex';
+import { COMPETITIVE_ALL_INDIA_TEST_ID } from '@/lib/competitive-exam/exam-definition';
+import { isElevateXTestId } from '@/lib/elevatex';
+import { isElevateXExamWindowOpenPrisma } from '@/lib/elevatex/exam-window';
 import { testIdsMatch } from '@/lib/test-attempts';
+
+function isUnscheduledPracticeTestId(testId: string): boolean {
+  const id = testId.trim().toLowerCase();
+  return id.startsWith('fallback-') || id === COMPETITIVE_ALL_INDIA_TEST_ID;
+}
+
+const IN_PROGRESS_GRACE_MS = 4 * 60 * 60 * 1000;
+const ELEVATEX_MAX_SESSION_MS = 90 * 60 * 1000;
+
+async function inProgressWithinGrace(attemptId: string, maxMs: number): Promise<boolean> {
+  const row = await prisma.testAttempt.findFirst({
+    where: { id: attemptId },
+    select: { startedAt: true, createdAt: true },
+  });
+  const startedMs = row?.startedAt?.getTime() ?? row?.createdAt?.getTime() ?? 0;
+  if (!startedMs) return false;
+  return Date.now() - startedMs <= maxMs;
+}
 
 export type ExamAccessResult =
   | { allowed: true; schedule: ExamScheduleRow | null }
@@ -54,10 +74,10 @@ function mapSchedule(row: {
 }
 
 async function schedulesForTestPrisma(testId: string): Promise<ExamScheduleRow[]> {
-  const rows = await prisma.examSchedule.findMany();
-  return rows
-    .map(mapSchedule)
-    .filter((s) => testIdsMatch(s.test_id, testId));
+  const rows = await prisma.examSchedule.findMany({
+    where: { testId },
+  });
+  return rows.map(mapSchedule).filter((s) => testIdsMatch(s.test_id, testId));
 }
 
 export async function checkStudentExamAccessPrisma(input: {
@@ -69,16 +89,33 @@ export async function checkStudentExamAccessPrisma(input: {
 }): Promise<ExamAccessResult> {
   const testId = input.testId.trim();
 
-  // ElevateX: never block autosave/submit on legacy exam_schedules, roster, or dept/year mismatch.
-  // Go-live uses evalora_module_schedules; duplicate placement_full rows caused mass 403s on Vercel.
   if (isElevateXTestId(testId)) {
+    const now = input.now ?? Date.now();
+    const windowOpen = await isElevateXExamWindowOpenPrisma(now);
+    if (!windowOpen) {
+      return {
+        allowed: false,
+        code: 'NOT_LIVE',
+        message: 'ElevateX is not live right now. Check your dashboard for the start time.',
+        schedule: null,
+      };
+    }
     return { allowed: true, schedule: null };
   }
 
   const schedules = await schedulesForTestPrisma(testId);
 
   if (schedules.length === 0) {
-    return { allowed: true, schedule: null };
+    if (isUnscheduledPracticeTestId(testId)) {
+      return { allowed: true, schedule: null };
+    }
+    return {
+      allowed: false,
+      code: 'NOT_LIVE',
+      message:
+        'This examination has not been scheduled yet. Contact the examination cell or your faculty.',
+      schedule: null,
+    };
   }
 
   const now = input.now ?? Date.now();
@@ -179,22 +216,25 @@ export async function assertStudentCanReportProgressPrisma(
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
-    if (open) return { allowed: true, schedule: null };
-
-    const module = await prisma.evaloraModuleSchedule.findFirst({
-      where: { moduleKey: ELEVATEX_MODULE_KEY, status: { in: ['live', 'scheduled'] } },
-      orderBy: { updatedAt: 'desc' },
-    });
-    if (module) {
-      const now = Date.now();
-      const start = module.startsAt.getTime();
-      const end = module.endsAt?.getTime() ?? null;
-      if (module.status === 'live' || (start <= now && (end === null || end >= now))) {
+    if (open) {
+      const windowOpen = await isElevateXExamWindowOpenPrisma();
+      if (windowOpen) return { allowed: true, schedule: null };
+      if (await inProgressWithinGrace(open.id, ELEVATEX_MAX_SESSION_MS)) {
         return { allowed: true, schedule: null };
       }
     }
 
-    return { allowed: true, schedule: null };
+    const windowOpen = await isElevateXExamWindowOpenPrisma();
+    if (windowOpen) {
+      return { allowed: true, schedule: null };
+    }
+
+    return {
+      allowed: false,
+      code: 'NOT_LIVE',
+      message: 'ElevateX is not live right now. Check your dashboard for the start time.',
+      schedule: null,
+    };
   }
 
   const strict = await assertStudentCanTakeTestPrisma(userId, testId, profile);
@@ -210,7 +250,12 @@ export async function assertStudentCanReportProgressPrisma(
     select: { id: true, testId: true },
   });
   if (open?.testId && testIdsMatch(open.testId, testId)) {
-    return { allowed: true, schedule: strict.allowed ? null : strict.schedule };
+    if (
+      strict.allowed ||
+      (await inProgressWithinGrace(open.id, IN_PROGRESS_GRACE_MS))
+    ) {
+      return { allowed: true, schedule: strict.schedule ?? null };
+    }
   }
 
   return strict;

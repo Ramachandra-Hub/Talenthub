@@ -45,7 +45,17 @@ export async function checkStudentExamAccess(
   const schedules = await schedulesForTest(admin, testId);
 
   if (schedules.length === 0) {
-    return { allowed: true, schedule: null };
+    const id = testId.trim().toLowerCase();
+    if (id.startsWith('fallback-') || id === 'fallback-competitive-all-india-v1') {
+      return { allowed: true, schedule: null };
+    }
+    return {
+      allowed: false,
+      code: 'NOT_LIVE',
+      message:
+        'This examination has not been scheduled yet. Contact the examination cell or your faculty.',
+      schedule: null,
+    };
   }
 
   const facultyRequestId = schedules.find((s) => s.faculty_exam_request_id)?.faculty_exam_request_id;

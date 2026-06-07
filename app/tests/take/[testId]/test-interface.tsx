@@ -21,12 +21,18 @@ import { useExamAutosave } from '@/hooks/use-exam-autosave';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import type { ProctorSubmitReason, ProctorSummary } from '@/lib/exam-v2/proctoring-config';
-import { getExamViolations } from '@/lib/exam-v2/proctoring';
+import {
+  clearTestProctorSessionId,
+  getExamViolations,
+  mergeExamViolations,
+} from '@/lib/exam-v2/proctoring';
 import { useSectionExam } from '@/hooks/use-section-exam';
-import { clearExamDraft } from '@/lib/exam-v2/autosave';
+import { clearExamDraft, loadExamDraft } from '@/lib/exam-v2/autosave';
+import { mergeExamRestorePayload } from '@/lib/exam-v2/merge-exam-restore';
 import { assignQuestionsToSections } from '@/lib/exam-v2/load-sections';
 import { scoreBySections, scoreMcqWithNegativeMarking } from '@/lib/exam-v2/scoring';
 import { computeSectionProgress, type TestSectionConfig } from '@/lib/exam-v2/section-timer';
+import { EXAM_SERVER_PROGRESS_INTERVAL_MS } from '@/lib/exam-v2/progress-intervals';
 import {
   LOCAL_ATTEMPT_GUEST_USER_ID,
   removeLocalTestAttempt,
@@ -80,11 +86,16 @@ export default function TestInterface({
     setTimeRemaining,
     isSubmitted,
     setIsSubmitted,
+    restoreExamState,
   } = useTest();
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
+  const [liveAttemptId, setLiveAttemptId] = useState<string | null>(null);
+  const [liveScorePercent, setLiveScorePercent] = useState<number | null>(null);
+  const restoreRanRef = useRef(false);
 
   const speedSecRaw = test.question_time_limit_sec;
   const speedActive =
@@ -104,6 +115,7 @@ export default function TestInterface({
   };
 
   const proctorActive = fullAccess && proctorEnabled && Boolean(proctorSessionId);
+  const useClientScoring = test.id.startsWith('fallback-');
 
   const {
     violationCount,
@@ -117,7 +129,7 @@ export default function TestInterface({
     maxViolations,
   } = useExamProctoring({
     testId: test.id,
-    sessionId: proctorSessionId || test.id,
+    sessionId: proctorSessionId,
     enabled: proctorActive,
     requireCamera: true,
     videoRef: proctorVideoRef,
@@ -140,9 +152,13 @@ export default function TestInterface({
     },
   });
 
+  useEffect(() => {
+    liveAttemptIdRef.current = liveAttemptId;
+  }, [liveAttemptId]);
+
   useExamAutosave({
     testId: test.id,
-    attemptId: liveAttemptIdRef.current,
+    attemptId: liveAttemptId,
     enabled: fullAccess,
     answers,
     currentQuestionIndex,
@@ -150,68 +166,168 @@ export default function TestInterface({
     isSubmitted,
   });
 
+  useEffect(() => {
+    if (!fullAccess || isSubmitted || test.id.startsWith('fallback-') || restoreRanRef.current) {
+      return;
+    }
+    restoreRanRef.current = true;
+
+    void (async () => {
+      const draft = loadExamDraft(test.id);
+      let server = null;
+
+      const user = await getClientUser();
+      if (user) {
+        const res = await fetchWithAuth(
+          `/api/student/test-attempts/open?testId=${encodeURIComponent(test.id)}`,
+        );
+        if (res.ok) {
+          const json = (await res.json()) as {
+            openAttempt?: {
+              id: string;
+              answers: Record<string, unknown>;
+              scorePercent?: number | null;
+              savedAtIso: string;
+            } | null;
+          };
+          server = json.openAttempt ?? null;
+          if (server?.scorePercent != null && Number.isFinite(server.scorePercent)) {
+            setLiveScorePercent(server.scorePercent);
+          }
+        }
+      }
+
+      const merged = mergeExamRestorePayload(test.id, draft, server);
+      if (!merged) return;
+
+      restoreExamState({
+        answers: merged.answers,
+        currentQuestionIndex: merged.currentQuestionIndex,
+        timeRemaining: merged.timeRemaining,
+      });
+      if (merged.attemptId) {
+        liveAttemptIdRef.current = merged.attemptId;
+        setLiveAttemptId(merged.attemptId);
+      }
+    })();
+  }, [fullAccess, isSubmitted, restoreExamState, test.id]);
+
   const sectionMode = examSections.length > 0 && fullAccess;
   const questionsBySection = useMemo(
     () => assignQuestionsToSections(questions, examSections),
     [questions, examSections],
   );
 
+  const progressSnapshotRef = useRef({
+    answers,
+    timeRemaining,
+    startedAtMs,
+    sectionMode,
+    examSections,
+    questions,
+    questionsBySection,
+  });
+
   useEffect(() => {
-    if (!fullAccess || isSubmitted || test.id.startsWith('fallback-')) return;
-
-    const timer = setTimeout(() => {
-      void (async () => {
-        const user = await getClientUser();
-        if (!user) return;
-
-        let scorePercent = 0;
-        if (sectionMode && examSections.length) {
-          scorePercent = roundScorePercent(
-            scoreBySections(examSections, questionsBySection, answers).overallPercent,
-          );
-        } else {
-          const { netScore, maxScore } = scoreMcqWithNegativeMarking(questions, answers, 0);
-          scorePercent =
-            maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
-        }
-
-        const res = await fetchWithAuth('/api/student/test-attempts/progress', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            testId: test.id,
-            testName: dashboardDisplayNameForTest(test),
-            scorePercent,
-            answers,
-            elapsedSec: Math.max(0, test.duration * 60 - timeRemaining),
-            attemptId: liveAttemptIdRef.current,
-          }),
-        });
-        if (res.ok) {
-          const json = (await res.json()) as { id?: string };
-          if (json.id) liveAttemptIdRef.current = String(json.id);
-        }
-      })();
-    }, 700);
-
-    return () => clearTimeout(timer);
+    progressSnapshotRef.current = {
+      answers,
+      timeRemaining,
+      startedAtMs,
+      sectionMode,
+      examSections,
+      questions,
+      questionsBySection,
+    };
   }, [
     answers,
     timeRemaining,
-    isSubmitted,
-    fullAccess,
-    test,
+    startedAtMs,
     sectionMode,
     examSections,
     questions,
     questionsBySection,
   ]);
 
+  useEffect(() => {
+    if (!fullAccess || isSubmitted || test.id.startsWith('fallback-')) return;
+
+    const postProgress = async () => {
+      const user = await getClientUser();
+      if (!user) return;
+
+      const snap = progressSnapshotRef.current;
+      let scorePercent = 0;
+      if (useClientScoring) {
+        if (snap.sectionMode && snap.examSections.length) {
+          scorePercent = roundScorePercent(
+            scoreBySections(snap.examSections, snap.questionsBySection, snap.answers)
+              .overallPercent,
+          );
+        } else {
+          const { netScore, maxScore } = scoreMcqWithNegativeMarking(
+            snap.questions,
+            snap.answers,
+            0,
+          );
+          scorePercent =
+            maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
+        }
+      }
+
+      const startedAtIso =
+        snap.startedAtMs && snap.startedAtMs > 0
+          ? new Date(snap.startedAtMs).toISOString()
+          : new Date().toISOString();
+      const res = await fetchWithAuth('/api/student/test-attempts/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId: test.id,
+          testName: dashboardDisplayNameForTest(test),
+          scorePercent,
+          answers: snap.answers,
+          elapsedSec: Math.max(0, test.duration * 60 - snap.timeRemaining),
+          attemptId: liveAttemptIdRef.current,
+          startedAtIso,
+        }),
+      });
+      if (res.status === 429) return;
+      if (!res.ok) return;
+
+      const json = (await res.json()) as {
+        id?: string;
+        startedAtIso?: string;
+        scorePercent?: number;
+        throttled?: boolean;
+      };
+      if (json.id) {
+        const id = String(json.id);
+        liveAttemptIdRef.current = id;
+        setLiveAttemptId(id);
+      }
+      if (json.scorePercent != null && Number.isFinite(json.scorePercent)) {
+        setLiveScorePercent(json.scorePercent);
+      }
+      if (json.startedAtIso) {
+        const serverStartMs = new Date(json.startedAtIso).getTime();
+        if (Number.isFinite(serverStartMs) && serverStartMs > 0) {
+          window.sessionStorage.setItem(`exam:serverStart:${test.id}`, String(serverStartMs));
+          setStartedAtMs(serverStartMs);
+        }
+      }
+    };
+
+    void postProgress();
+    const interval = window.setInterval(() => void postProgress(), EXAM_SERVER_PROGRESS_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [fullAccess, isSubmitted, test]);
+
   const submitRefEarly = useRef<() => Promise<void>>(async () => {});
 
   const { sectionIndex, currentSection, sectionTimeLeft } = useSectionExam({
     sections: examSections,
     enabled: sectionMode && !isSubmitted,
+    testId: test.id,
     onSectionTimeout: () => setCurrentQuestionIndex(0),
     onAllSectionsComplete: () => void submitRefEarly.current(),
   });
@@ -224,18 +340,22 @@ export default function TestInterface({
   // Overall test countdown (minutes → seconds in context) — skip when section timers active
   useEffect(() => {
     if (sectionMode) return;
-    const key = `exam:start:${test.id}`;
+    const serverKey = `exam:serverStart:${test.id}`;
+    const localKey = `exam:start:${test.id}`;
     const nowMs = Date.now();
-    let startMs = Number(window.sessionStorage.getItem(key) ?? '');
+    let startMs = Number(window.sessionStorage.getItem(serverKey) ?? '');
+    if (!Number.isFinite(startMs) || startMs <= 0) {
+      startMs = Number(window.sessionStorage.getItem(localKey) ?? '');
+    }
     if (!Number.isFinite(startMs) || startMs <= 0) {
       startMs = nowMs;
-      window.sessionStorage.setItem(key, String(startMs));
+      window.sessionStorage.setItem(localKey, String(startMs));
     }
     setStartedAtMs(startMs);
     const durationSec = Math.max(0, Math.floor(test.duration * 60));
     const elapsedSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
     setTimeRemaining(Math.max(0, durationSec - elapsedSec));
-  }, [test.duration, setTimeRemaining, sectionMode]);
+  }, [test.duration, test.id, setTimeRemaining, sectionMode]);
 
   // Auto-submit when the overall test timer reaches zero (once per attempt).
   useEffect(() => {
@@ -330,6 +450,7 @@ export default function TestInterface({
     if (!currentQuestion || submitting || isSubmitted) return;
 
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const submitReason = options?.submitReason ?? 'manual';
       const proctorSummary =
@@ -346,19 +467,21 @@ export default function TestInterface({
               })),
             }
           : undefined);
-      let scorePercent = 0;
+      let scorePercent = liveScorePercent ?? 0;
       let rawNetScore = 0;
-      if (sectionMode && examSections.length) {
-        const result = scoreBySections(examSections, questionsBySection, answers);
-        scorePercent = roundScorePercent(result.overallPercent);
-        rawNetScore = result.totalNet;
-        if (result.sections.some((s) => !s.passedCutoff)) {
-          console.info('Section cutoff missed:', result.sections.filter((s) => !s.passedCutoff));
+      if (useClientScoring) {
+        if (sectionMode && examSections.length) {
+          const result = scoreBySections(examSections, questionsBySection, answers);
+          scorePercent = roundScorePercent(result.overallPercent);
+          rawNetScore = result.totalNet;
+          if (result.sections.some((s) => !s.passedCutoff)) {
+            console.info('Section cutoff missed:', result.sections.filter((s) => !s.passedCutoff));
+          }
+        } else {
+          const { netScore, maxScore } = scoreMcqWithNegativeMarking(questions, answers, 0);
+          rawNetScore = netScore;
+          scorePercent = maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
         }
-      } else {
-        const { netScore, maxScore } = scoreMcqWithNegativeMarking(questions, answers, 0);
-        rawNetScore = netScore;
-        scorePercent = maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
       }
 
       const user = await getClientUser();
@@ -395,14 +518,14 @@ export default function TestInterface({
           }
         : answers;
 
-      const localPayload = {
+      const buildLocalPayload = (id: string, savedScore: number) => ({
         attempt: {
-          id: localAttemptId,
+          id,
           user_id: user.id,
           test_id: test.id,
           started_at: startedAtIso,
           completed_at: nowIso,
-          score: scorePercent,
+          score: savedScore,
           answers: answersPayload,
           time_taken: elapsedSec,
           status: 'completed' as const,
@@ -411,11 +534,9 @@ export default function TestInterface({
         test,
         questions,
         answers: answersPayload,
-      };
+      });
 
-      saveLocalTestAttempt(user.id, localAttemptId, localPayload);
-
-      const writeFeed = (id: string) => {
+      const writeFeed = (id: string, feedScore: number) => {
         pushDashboardFeedEntry(
           user.id,
           buildFeedEntry({
@@ -423,7 +544,7 @@ export default function TestInterface({
             userId: user.id,
             testId: test.id,
             testName: dashboardTestName,
-            scorePercent,
+            scorePercent: feedScore,
             elapsedSec,
             completedAtIso: nowIso,
             totalQuestions: questions.length,
@@ -431,78 +552,101 @@ export default function TestInterface({
         );
       };
 
-      writeFeed(localAttemptId);
-
       let attemptId = localAttemptId;
 
-      try {
-        const apiRes = await fetchWithAuth('/api/student/test-attempts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            testId: test.id,
-            testName: dashboardTestName,
-            scorePercent,
-            rawNetScore,
-            elapsedSec,
-            startedAtIso,
-            completedAtIso: nowIso,
-            attemptId: liveAttemptIdRef.current,
-            examKind,
-            totalQuestions: questions.length,
-            answers: answersPayload,
-            proctorSessionId: proctorSummary?.sessionId,
-            proctorViolations: proctorSummary?.violationCount ?? 0,
-            proctorAutoSubmit: proctorSummary?.autoSubmitted ?? false,
-            submitReason,
-          }),
-        });
-        if (apiRes.status === 409) {
-          const json = (await apiRes.json().catch(() => ({}))) as {
-            error?: string;
-            attemptId?: string;
-          };
-          alert(json.error ?? 'You have already submitted this test.');
-          if (json.attemptId) {
-            router.replace(`/tests/result/${json.attemptId}`);
-          }
+      const apiRes = await fetchWithAuth('/api/student/test-attempts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId: test.id,
+          testName: dashboardTestName,
+          scorePercent,
+          rawNetScore,
+          elapsedSec,
+          startedAtIso,
+          completedAtIso: nowIso,
+          attemptId: liveAttemptIdRef.current,
+          examKind,
+          totalQuestions: questions.length,
+          answers: answersPayload,
+          proctorSessionId: proctorSummary?.sessionId,
+          proctorViolations: proctorSummary?.violationCount ?? 0,
+          proctorAutoSubmit: proctorSummary?.autoSubmitted ?? false,
+          submitReason,
+        }),
+      });
+
+      if (apiRes.status === 409) {
+        const json = (await apiRes.json().catch(() => ({}))) as {
+          error?: string;
+          attemptId?: string;
+          code?: string;
+        };
+        if (json.code === 'deadline_exceeded') {
+          setSubmitError(
+            json.error ??
+              'Time expired before the server could save your attempt. Contact your invigilator.',
+          );
           return;
         }
-        if (apiRes.ok) {
-          const json = (await apiRes.json()) as {
-            id?: string;
-            attempt?: DashboardAttemptView;
-            attempts?: DashboardAttemptView[];
-          };
-          if (json.id) attemptId = String(json.id);
-          if (json.attempt?.id) {
-            writeFeed(String(json.attempt.id));
-          } else if (json.id) {
-            writeFeed(String(json.id));
-          }
-          if (json.attempts?.length) {
-            cacheApiAttempts(user.id, json.attempts);
-          } else if (json.attempt) {
-            cacheApiAttempts(user.id, [json.attempt]);
-          }
+        if (json.attemptId) {
+          clearExamDraft(test.id);
+          window.sessionStorage.removeItem(`exam:start:${test.id}`);
+          window.sessionStorage.removeItem(`exam:serverStart:${test.id}`);
+          setIsSubmitted(true);
+          router.replace(`/tests/result/${json.attemptId}`);
+          return;
         }
-      } catch {
-        // API unavailable — keep local attempt id
+        setSubmitError(json.error ?? 'You have already submitted this test.');
+        return;
       }
 
-      if (attemptId !== localAttemptId) {
-        saveLocalTestAttempt(user.id, attemptId, {
-          ...localPayload,
-          attempt: { ...localPayload.attempt, id: attemptId },
-        });
-        writeFeed(attemptId);
-        // Avoid duplicate dashboard rows: drop the local placeholder now that
-        // the server attempt id is canonical.
-        removeLocalTestAttempt(user.id, localAttemptId);
-        removeDashboardFeedEntry(user.id, localAttemptId);
+      if (!apiRes.ok) {
+        const json = (await apiRes.json().catch(() => ({}))) as { error?: string };
+        setSubmitError(
+          json.error ??
+            `Could not save your attempt (server ${apiRes.status}). Check your connection and try Submit again.`,
+        );
+        return;
       }
 
-      if (!attemptId.startsWith('local-') && proctorSummary?.sessionId) {
+      const json = (await apiRes.json()) as {
+        id?: string;
+        attempt?: DashboardAttemptView;
+        attempts?: DashboardAttemptView[];
+        warning?: string;
+      };
+      const serverId = String(json.id ?? '').trim();
+      if (!serverId || serverId.startsWith('local-') || serverId.startsWith('pending-')) {
+        setSubmitError(
+          json.warning ??
+            'Your attempt was not fully saved on the server. Please retry submission.',
+        );
+        return;
+      }
+
+      attemptId = serverId;
+      const serverScore =
+        json.attempt?.score != null && Number.isFinite(Number(json.attempt.score))
+          ? roundScorePercent(Number(json.attempt.score))
+          : scorePercent;
+
+      if (json.attempt?.id) {
+        writeFeed(String(json.attempt.id), serverScore);
+      } else {
+        writeFeed(serverId, serverScore);
+      }
+      if (json.attempts?.length) {
+        cacheApiAttempts(user.id, json.attempts);
+      } else if (json.attempt) {
+        cacheApiAttempts(user.id, [json.attempt]);
+      }
+
+      saveLocalTestAttempt(user.id, attemptId, buildLocalPayload(attemptId, serverScore));
+      removeLocalTestAttempt(user.id, localAttemptId);
+      removeDashboardFeedEntry(user.id, localAttemptId);
+
+      if (proctorSummary?.sessionId) {
         void fetchWithAuth('/api/v2/proctor/ingest', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -521,7 +665,9 @@ export default function TestInterface({
       }
 
       clearExamDraft(test.id);
+      clearTestProctorSessionId(test.id);
       window.sessionStorage.removeItem(`exam:start:${test.id}`);
+      window.sessionStorage.removeItem(`exam:serverStart:${test.id}`);
       setIsSubmitted(true);
       router.push(`/tests/result/${attemptId}`);
     } catch (error) {
@@ -545,7 +691,7 @@ export default function TestInterface({
       }
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error submitting test:', message, error);
-      alert(`Failed to submit test. ${message}`);
+      setSubmitError(`Failed to submit test. ${message}`);
     } finally {
       setSubmitting(false);
     }
@@ -642,6 +788,22 @@ export default function TestInterface({
           </div>
         </div>
       </header>
+
+      {submitError ? (
+        <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-2xl rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 shadow-lg">
+          <p className="font-semibold">Submission not saved</p>
+          <p className="mt-1">{submitError}</p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={() => setSubmitError(null)}
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
 
       {proctorActive ? (
         <ExamProctorPanel
@@ -758,6 +920,14 @@ export default function TestInterface({
             ) : null}
 
             <div className="space-y-2 mb-4 text-sm">
+              {liveScorePercent != null ? (
+                <div className="flex justify-between">
+                  <span className="text-[#1e3a5f]">Live score</span>
+                  <span className="font-semibold text-gray-900">
+                    {formatScorePercentLabel(liveScorePercent)}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex justify-between">
                 <span className="text-green-700">✓ Answered</span>
                 <span className="font-semibold text-gray-900">{answeredCount}</span>

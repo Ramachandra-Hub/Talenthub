@@ -126,7 +126,7 @@ function toAttemptRow(row: {
   return {
     id: row.id,
     user_id: row.userId,
-    test_id: row.testId,
+    test_id: row.testId ?? undefined,
     test_title: row.testTitle,
     started_at: row.startedAt?.toISOString(),
     completed_at: row.completedAt?.toISOString() ?? null,
@@ -195,7 +195,7 @@ export async function findCompletedAttemptForTestPrisma(
     const attempt = normalizeAttemptRow(row);
     return {
       id: attempt.id,
-      score: attempt.score,
+      score: attempt.score ?? 0,
       completed_at: attempt.completed_at,
     };
   }
@@ -354,7 +354,8 @@ export async function finalizeTestAttemptPrisma(input: {
       const startedAt = candidate?.startedAt ?? now;
       const startedMs = startedAt.getTime();
       const elapsedSec = Math.max(0, Math.floor((now.getTime() - startedMs) / 1000));
-      if (durationSec > 0 && elapsedSec > durationSec) {
+      const submitGraceSec = 60;
+      if (durationSec > 0 && elapsedSec > durationSec + submitGraceSec) {
         throw new AttemptDeadlineError();
       }
 
@@ -436,27 +437,48 @@ export async function upsertExamProgressPrisma(input: {
   startedAtIso?: string;
   proctorSessionId?: string;
   proctorViolationCount?: number;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; startedAtIso: string }> {
   await ensureAttemptConstraintsPrisma();
 
   if (isElevateXTestId(input.testId)) {
     const done = await findCompletedElevateXAttemptForUser(input.userId);
-    if (done) return { id: done.id };
+    if (done) {
+      const row = await prisma.testAttempt.findFirst({
+        where: { id: done.id },
+        select: { startedAt: true },
+      });
+      return {
+        id: done.id,
+        startedAtIso: row?.startedAt?.toISOString() ?? new Date().toISOString(),
+      };
+    }
   } else {
     const prior = await findCompletedAttemptForTestPrisma(input.userId, input.testId);
-    if (prior) return { id: prior.id };
+    if (prior) {
+      const row = await prisma.testAttempt.findFirst({
+        where: { id: prior.id },
+        select: { startedAt: true },
+      });
+      return {
+        id: prior.id,
+        startedAtIso: row?.startedAt?.toISOString() ?? new Date().toISOString(),
+      };
+    }
   }
 
   if (input.attemptId?.trim()) {
     const row = await prisma.testAttempt.findFirst({
       where: { id: input.attemptId.trim(), userId: input.userId },
-      select: { id: true, status: true, completedAt: true },
+      select: { id: true, status: true, completedAt: true, startedAt: true },
     });
     if (
       row &&
       isCompletedAttemptStatus(row.status, row.completedAt?.toISOString() ?? null)
     ) {
-      return { id: row.id };
+      return {
+        id: row.id,
+        startedAtIso: row.startedAt?.toISOString() ?? new Date().toISOString(),
+      };
     }
   }
 
@@ -488,7 +510,16 @@ export async function upsertExamProgressPrisma(input: {
       where: { id: input.attemptId, userId: input.userId, status: 'in_progress' },
       data: patch,
     });
-    if (updated.count > 0) return { id: input.attemptId };
+    if (updated.count > 0) {
+      const row = await prisma.testAttempt.findFirst({
+        where: { id: input.attemptId, userId: input.userId },
+        select: { startedAt: true },
+      });
+      return {
+        id: input.attemptId,
+        startedAtIso: row?.startedAt?.toISOString() ?? input.startedAtIso ?? now.toISOString(),
+      };
+    }
   }
 
   const openWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
@@ -512,21 +543,29 @@ export async function upsertExamProgressPrisma(input: {
 
   const existing = open[0];
   if (existing) {
-    await prisma.testAttempt.update({
+    const updated = await prisma.testAttempt.update({
       where: { id: existing.id },
       data: patch,
+      select: { id: true, startedAt: true },
     });
-    return { id: existing.id };
+    return {
+      id: updated.id,
+      startedAtIso: updated.startedAt?.toISOString() ?? now.toISOString(),
+    };
   }
 
+  const startedAt = input.startedAtIso ? new Date(input.startedAtIso) : now;
   const created = await prisma.testAttempt.create({
     data: {
       ...patch,
-      startedAt: input.startedAtIso ? new Date(input.startedAtIso) : now,
+      startedAt,
     },
-    select: { id: true },
+    select: { id: true, startedAt: true },
   });
-  return { id: created.id };
+  return {
+    id: created.id,
+    startedAtIso: created.startedAt?.toISOString() ?? startedAt.toISOString(),
+  };
 }
 
 export async function loadTestRowForTakePrisma(testId: string): Promise<Test | null> {
@@ -569,12 +608,34 @@ export async function loadTestRowForTakePrisma(testId: string): Promise<Test | n
 }
 
 export async function loadQuestionsForTakePrisma(testId: string) {
+  const { dedupeQuestionsByStem } = await import('@/lib/questions/dedupe-questions');
+
+  const links = await prisma.testQuestion.findMany({
+    where: { testId },
+    orderBy: { sortOrder: 'asc' },
+  });
+  if (links.length) {
+    const ids = links.map((l) => l.questionId);
+    const rows = await prisma.question.findMany({ where: { id: { in: ids } } });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = links
+      .map((l) => byId.get(l.questionId))
+      .filter((r): r is NonNullable<typeof r> => r != null);
+    if (ordered.length) {
+      return dedupeQuestionsByStem(
+        ordered.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
+      );
+    }
+  }
+
   const direct = await prisma.question.findMany({
     where: { testId },
     orderBy: { createdAt: 'asc' },
   });
   if (direct.length) {
-    return direct.map((q) => adaptQuestionRow(q as Record<string, unknown>));
+    return dedupeQuestionsByStem(
+      direct.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
+    );
   }
 
   const fer = await prisma.facultyExamRequest.findFirst({
@@ -585,7 +646,9 @@ export async function loadQuestionsForTakePrisma(testId: string) {
     const { facultyQuestionsToUiQuestions } = await import('@/lib/load-test-for-take');
     const { parseQuestionsJson } = await import('@/lib/faculty-exams');
     const items = parseQuestionsJson(fer.questionsJson);
-    if (items.length) return facultyQuestionsToUiQuestions(items, testId);
+    if (items.length) {
+      return dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, testId));
+    }
   }
 
   return [];
@@ -667,6 +730,52 @@ export function scoreFromAttemptRow(row: AttemptRow): number {
   );
 }
 
+export type OpenAttemptForTest = {
+  id: string;
+  answers: Record<string, unknown>;
+  scorePercent: number | null;
+  savedAtIso: string;
+  startedAtIso: string | null;
+};
+
+export async function findOpenAttemptForTestPrisma(
+  userId: string,
+  testId: string,
+): Promise<OpenAttemptForTest | null> {
+  const resolvedTestId = await resolveTestIdForInsertPrisma(testId);
+  const row = await prisma.testAttempt.findFirst({
+    where: {
+      userId,
+      testId: resolvedTestId,
+      status: { in: ['in_progress', 'started', 'active'] },
+      completedAt: null,
+    },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      answers: true,
+      percentageScore: true,
+      score: true,
+      startedAt: true,
+      createdAt: true,
+    },
+  });
+  if (!row) return null;
+
+  const answers =
+    row.answers != null && typeof row.answers === 'object'
+      ? (row.answers as Record<string, unknown>)
+      : {};
+
+  return {
+    id: row.id,
+    answers,
+    scorePercent: roundScorePercent(Number(row.percentageScore ?? row.score ?? 0)),
+    savedAtIso: row.startedAt?.toISOString() ?? row.createdAt.toISOString(),
+    startedAtIso: row.startedAt?.toISOString() ?? null,
+  };
+}
+
 export async function fetchInProgressAttemptsPrisma(): Promise<
   Array<{ id: string; userId: string; testId: string | null; testTitle: string | null; score: number }>
 > {
@@ -679,9 +788,9 @@ export async function fetchInProgressAttemptsPrisma(): Promise<
       testTitle: true,
       percentageScore: true,
       score: true,
-      updatedAt: true,
+      createdAt: true,
     },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { createdAt: 'desc' },
     take: 500,
   });
 

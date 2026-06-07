@@ -1,4 +1,4 @@
-import type { FacultyExamQuestion } from '@/lib/faculty-exams';
+import type { FacultyExamQuestion, FacultyMcqQuestion } from '@/lib/faculty-exams';
 import type { Question } from '@/lib/types';
 import { forkRng } from '@/lib/competitive-exam/seed-rng';
 import {
@@ -59,7 +59,7 @@ function technicalCategoryForSlug(slug: string): PlacementDepartment['technicalC
   return 'cse';
 }
 
-function questionToFaculty(q: Question): FacultyExamQuestion {
+function questionToFaculty(q: Question): FacultyMcqQuestion {
   const letters = ['A', 'B', 'C', 'D'] as const;
   const opts =
     q.option_a != null && q.option_b != null
@@ -112,10 +112,10 @@ export function generateSyllabusMcqsForSlug(
   slug: string,
   name: string,
   targetCount = DEFAULT_SYLLABUS_QUESTIONS_PER_TOPIC,
-): FacultyExamQuestion[] {
+): FacultyMcqQuestion[] {
   const cap = Math.min(MAX_SYLLABUS_QUESTIONS_PER_TOPIC, Math.max(10, targetCount));
-  const base = getCuratedBaseMcqsForSlug(slug, name);
-  const out: FacultyExamQuestion[] = base.map((q) => ({
+  const base = getCuratedBaseMcqsForSlug(slug, name) as FacultyMcqQuestion[];
+  const out: FacultyMcqQuestion[] = base.map((q) => ({
     ...q,
     explanation: q.explanation ?? `${CURATED_BANK_MARKER} · ${name}`,
   }));

@@ -58,7 +58,12 @@ export async function publishSyllabusExam(
 
   const testId = testRow.id as string;
 
-  const questionRows = input.questions.map((q) => ({
+  const mcqQuestions = input.questions.filter(
+    (q): q is import('@/lib/faculty-exams').FacultyMcqQuestion =>
+      (q as { question_type?: string }).question_type !== 'coding',
+  );
+
+  const questionRows = mcqQuestions.map((q) => ({
     test_id: testId,
     question_text: q.question_text,
     question_type: 'mcq',
@@ -80,7 +85,7 @@ export async function publishSyllabusExam(
   if (qError) throw new Error(qError.message);
 
   if (inserted?.length) {
-    await linkTestQuestions(admin, testId, inserted);
+    await linkTestQuestions(admin, testId, inserted as Array<{ id: unknown }>);
   }
 
   return { testId };

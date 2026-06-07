@@ -170,6 +170,7 @@ export async function loadQuestionsForTake(
   client: DbServiceClient,
   testId: string,
 ): Promise<Question[]> {
+  const { dedupeQuestionsByStem } = await import('@/lib/questions/dedupe-questions');
   for (const id of testIdVariants(testId)) {
     const { data: directQs, error: directErr } = await client
       .from('questions')
@@ -178,7 +179,9 @@ export async function loadQuestionsForTake(
       .order('id', { ascending: true });
 
     if (!directErr && directQs?.length) {
-      return directQs.map((q) => adaptQuestionRow(q as Record<string, unknown>));
+      return dedupeQuestionsByStem(
+        directQs.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
+      );
     }
   }
 
@@ -206,7 +209,7 @@ export async function loadQuestionsForTake(
       const row = byId.get(String(link.question_id));
       if (row) ordered.push(adaptQuestionRow(row as Record<string, unknown>));
     }
-    if (ordered.length) return ordered;
+    if (ordered.length) return dedupeQuestionsByStem(ordered);
 
     const { data: joined, error: joinErr } = await client
       .from('test_questions')
@@ -219,7 +222,7 @@ export async function loadQuestionsForTake(
         .map(extractJoinedQuestion)
         .filter((q): q is Record<string, unknown> => q != null)
         .map(adaptQuestionRow);
-      if (fromJoin.length) return fromJoin;
+      if (fromJoin.length) return dedupeQuestionsByStem(fromJoin);
     }
   }
 
@@ -241,7 +244,7 @@ export async function loadQuestionsForTake(
         (fer.test_type as string | null) ?? null,
       );
       if (items.length) {
-        return facultyQuestionsToUiQuestions(items, String(testId));
+        return dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, String(testId)));
       }
     }
   }

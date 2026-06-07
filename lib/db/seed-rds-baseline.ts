@@ -119,8 +119,11 @@ export async function seedRdsBaseline(): Promise<{
 export async function bootstrapRdsAdmin(): Promise<{ email: string; created: boolean }> {
   await ensureRdsSchemaReadyForWrites();
 
-  const email = (process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in').trim().toLowerCase();
-  const password = process.env.PREPINDIA_ADMIN_PASSWORD || 'RCE_T&P';
+  const { getConfiguredAdminEmail, getConfiguredAdminPassword } = await import(
+    '@/lib/admin-defaults'
+  );
+  const email = getConfiguredAdminEmail();
+  const password = getConfiguredAdminPassword();
   const hash = await bcrypt.hash(password, 12);
 
   const user = await prisma.user.upsert({

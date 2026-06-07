@@ -40,9 +40,9 @@ function shouldKeepFacultyRequest(
   startIst: string,
 ): boolean {
   return (
-    isOnOrAfterTodayIst(row.created_at, startIst) ||
-    isOnOrAfterTodayIst(row.reviewed_at, startIst) ||
-    isOnOrAfterTodayIst(row.updated_at, startIst)
+    isOnOrAfterTodayIst(String(row.created_at ?? ''), startIst) ||
+    isOnOrAfterTodayIst(String(row.reviewed_at ?? ''), startIst) ||
+    isOnOrAfterTodayIst(String(row.updated_at ?? ''), startIst)
   );
 }
 
@@ -146,8 +146,8 @@ export async function cleanupExamsKeepToday(
       const requestId = row.faculty_exam_request_id ? String(row.faculty_exam_request_id) : '';
       const keepByRequest = requestId && keepFacultyIds.has(requestId);
       const keepByDate =
-        isOnOrAfterTodayIst(row.created_at, startIst) ||
-        isOnOrAfterTodayIst(row.updated_at, startIst);
+        isOnOrAfterTodayIst(String(row.created_at ?? ''), startIst) ||
+        isOnOrAfterTodayIst(String(row.updated_at ?? ''), startIst);
       if (keepByRequest || keepByDate) continue;
       deleteScheduleIds.push(String(row.id));
       if (row.test_id && !protectTestId(String(row.test_id))) {
@@ -292,8 +292,8 @@ export async function cleanupExamsKeepToday(
     const deleteEvaloraIds = (evaloraRows ?? [])
       .filter(
         (row) =>
-          !isOnOrAfterTodayIst(row.created_at, startIst) &&
-          !isOnOrAfterTodayIst(row.updated_at, startIst),
+          !isOnOrAfterTodayIst(String(row.created_at ?? ''), startIst) &&
+          !isOnOrAfterTodayIst(String(row.updated_at ?? ''), startIst),
       )
       .map((row) => String(row.id));
     summary.deletedEvaloraScheduleIds = deleteEvaloraIds;

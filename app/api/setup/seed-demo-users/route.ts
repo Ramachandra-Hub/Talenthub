@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 import { getDbService, type DbServiceClient } from '@/lib/db/get-db-service';
 import { COLLEGE } from '@/lib/college-brand';
 import { facultyAuthEmail, studentAuthEmail } from '@/lib/college-auth';
@@ -7,6 +8,8 @@ import {
   DEMO_STUDENT_ACCOUNTS,
 } from '@/lib/demo-credentials';
 import { assertSetupDeploymentReady } from '@/lib/setup/deployment-ready';
+import { readServiceError } from '@/lib/db/service-error';
+import { isStrictProduction } from '@/lib/production';
 
 async function upsertAuthUser(
   db: DbServiceClient,
@@ -18,7 +21,7 @@ async function upsertAuthUser(
     page: 1,
     perPage: 1000,
   });
-  if (listError) return { error: listError.message };
+  if (listError) return { error: readServiceError(listError) ?? 'listUsers failed' };
 
   const existing = listed.users.find((u) => (u.email ?? '').toLowerCase() === email.toLowerCase());
 
@@ -28,7 +31,7 @@ async function upsertAuthUser(
       email_confirm: true,
       user_metadata: metadata,
     });
-    if (updateError) return { error: updateError.message };
+    if (updateError) return { error: readServiceError(updateError) ?? 'updateUser failed' };
     return { id: existing.id, created: false };
   }
 
@@ -45,7 +48,10 @@ async function upsertAuthUser(
 }
 
 /** Creates demo student/faculty logins for UAT (not admin). */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   const ready = assertSetupDeploymentReady();
   if (!ready.ok) {
     return NextResponse.json({ error: ready.error }, { status: 500 });
@@ -99,41 +105,45 @@ export async function POST() {
     });
   }
 
-  const facultyEmail = facultyAuthEmail(DEMO_FACULTY_ACCOUNT.employeeId);
-  const facultyMeta = {
-    role: 'faculty',
-    full_name: DEMO_FACULTY_ACCOUNT.fullName,
-    employee_id: DEMO_FACULTY_ACCOUNT.employeeId,
-    department: DEMO_FACULTY_ACCOUNT.department,
-  };
-  const facultyOutcome = await upsertAuthUser(
-    db,
-    facultyEmail,
-    DEMO_FACULTY_ACCOUNT.password,
-    facultyMeta,
-  );
-  if ('error' in facultyOutcome) {
-    return NextResponse.json({ error: facultyOutcome.error, partial: results }, { status: 500 });
-  }
-
-  await db.from('faculty_profiles').upsert(
-    {
-      user_id: facultyOutcome.id,
+  const seedFaculty =
+    !isStrictProduction() || process.env.ALLOW_DEMO_FACULTY_SEED === 'true';
+  if (seedFaculty) {
+    const facultyEmail = facultyAuthEmail(DEMO_FACULTY_ACCOUNT.employeeId);
+    const facultyMeta = {
+      role: 'faculty',
+      full_name: DEMO_FACULTY_ACCOUNT.fullName,
       employee_id: DEMO_FACULTY_ACCOUNT.employeeId,
       department: DEMO_FACULTY_ACCOUNT.department,
-      full_name: DEMO_FACULTY_ACCOUNT.fullName,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' },
-  );
+    };
+    const facultyOutcome = await upsertAuthUser(
+      db,
+      facultyEmail,
+      DEMO_FACULTY_ACCOUNT.password,
+      facultyMeta,
+    );
+    if ('error' in facultyOutcome) {
+      return NextResponse.json({ error: facultyOutcome.error, partial: results }, { status: 500 });
+    }
 
-  results.push({
-    role: 'faculty',
-    identifier: DEMO_FACULTY_ACCOUNT.employeeId,
-    email: facultyEmail,
-    password: DEMO_FACULTY_ACCOUNT.password,
-    status: facultyOutcome.created ? 'created' : 'updated',
-  });
+    await db.from('faculty_profiles').upsert(
+      {
+        user_id: facultyOutcome.id,
+        employee_id: DEMO_FACULTY_ACCOUNT.employeeId,
+        department: DEMO_FACULTY_ACCOUNT.department,
+        full_name: DEMO_FACULTY_ACCOUNT.fullName,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    );
+
+    results.push({
+      role: 'faculty',
+      identifier: DEMO_FACULTY_ACCOUNT.employeeId,
+      email: facultyEmail,
+      password: DEMO_FACULTY_ACCOUNT.password,
+      status: facultyOutcome.created ? 'created' : 'updated',
+    });
+  }
 
   return NextResponse.json({
     success: true,

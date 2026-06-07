@@ -266,7 +266,7 @@ export async function publishFacultyExamRequest(
   if (qError) throw new Error(qError.message);
 
   if (inserted?.length) {
-    await linkTestQuestions(admin, testIdStr, inserted);
+    await linkTestQuestions(admin, testIdStr, inserted as Array<{ id: unknown }>);
   }
 
   const approvedBase = {

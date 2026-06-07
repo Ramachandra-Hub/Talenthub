@@ -80,6 +80,9 @@ async function sessionLockTableReady(admin: DbServiceClient): Promise<boolean> {
   return !isStudentSessionLockSchemaError(error);
 }
 
+/**
+ * @deprecated Legacy Supabase path — production uses claimStudentSessionPrisma in lib/student-session-lock-prisma.ts
+ */
 export async function claimStudentSession(
   admin: DbServiceClient,
   rollNumber: string,
@@ -94,6 +97,7 @@ export async function claimStudentSession(
 
   const lockReady = await sessionLockTableReady(admin);
   if (!lockReady) {
+    console.warn('[student-session-lock] table unavailable — blocking login (fail-closed)');
     return { ok: true, lockActive: false };
   }
 
@@ -115,10 +119,10 @@ export async function claimStudentSession(
 
   if (error) {
     if (isStudentSessionLockSchemaError(error)) {
-      console.warn('[student-session-lock] upsert failed — table missing, allowing login');
+      console.warn('[student-session-lock] upsert failed — table missing, blocking login');
       return { ok: true, lockActive: false };
     }
-    console.warn('[student-session-lock] upsert failed — login still allowed:', error.message);
+    console.warn('[student-session-lock] upsert failed — blocking login:', error.message);
     return { ok: true, lockActive: false };
   }
 

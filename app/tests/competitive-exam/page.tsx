@@ -9,15 +9,37 @@ import {
   COMPETITIVE_ALL_INDIA_QUESTIONS,
 } from '@/lib/constants';
 import { COMPETITIVE_SESSION_SEED_KEY } from '@/lib/competitive-exam/exam-definition';
+import { fetchWithAuth } from '@/lib/fetch-with-auth';
+import { getClientUser } from '@/lib/client-auth';
 
 export default function CompetitiveExamLandingPage() {
   const router = useRouter();
 
-  const begin = () => {
-    const seed =
+  const begin = async () => {
+    const user = await getClientUser();
+    if (!user?.id) {
+      router.push('/auth/login/student?redirect=/tests/competitive-exam');
+      return;
+    }
+
+    const localSeed =
       typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const res = await fetchWithAuth('/api/student/competitive-exam/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed: localSeed }),
+    });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      alert(json.error ?? 'Could not start your competitive exam session. Try again.');
+      return;
+    }
+
+    const json = (await res.json()) as { seed?: string };
+    const seed = json.seed?.trim() || localSeed;
     sessionStorage.setItem(COMPETITIVE_SESSION_SEED_KEY, seed);
     router.push('/tests/competitive-exam/take');
   };

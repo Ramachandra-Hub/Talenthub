@@ -11,6 +11,9 @@ import {
   COMPETITIVE_SESSION_SEED_KEY,
   getCompetitiveAllIndiaTestMeta,
 } from '@/lib/competitive-exam/exam-definition';
+import { fetchWithAuth } from '@/lib/fetch-with-auth';
+import { getClientUser } from '@/lib/client-auth';
+import { sanitizeQuestionsForStudent } from '@/lib/questions/sanitize-for-student';
 import { TestProvider } from '@/app/tests/take/[testId]/test-context';
 import TestInterface from '@/app/tests/take/[testId]/test-interface';
 
@@ -20,17 +23,47 @@ export default function CompetitiveExamTakePage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(COMPETITIVE_SESSION_SEED_KEY);
-    if (!raw) {
-      router.replace('/tests/competitive-exam');
-      return;
-    }
-    setSeed(raw);
+    let cancelled = false;
+
+    const hydrate = async () => {
+      const user = await getClientUser();
+      if (!user?.id) {
+        router.replace('/auth/login/student?redirect=/tests/competitive-exam/take');
+        return;
+      }
+
+      try {
+        const res = await fetchWithAuth('/api/student/competitive-exam/session');
+        if (res.ok) {
+          const json = (await res.json()) as { seed?: string };
+          const serverSeed = json.seed?.trim();
+          if (serverSeed) {
+            sessionStorage.setItem(COMPETITIVE_SESSION_SEED_KEY, serverSeed);
+            if (!cancelled) setSeed(serverSeed);
+            return;
+          }
+        }
+      } catch {
+        // fall through to local cache
+      }
+
+      const local = sessionStorage.getItem(COMPETITIVE_SESSION_SEED_KEY);
+      if (!local) {
+        router.replace('/tests/competitive-exam');
+        return;
+      }
+      if (!cancelled) setSeed(local);
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const questions = useMemo(() => {
     if (!seed) return [];
-    return buildCompetitiveExamPaper(seed);
+    return sanitizeQuestionsForStudent(buildCompetitiveExamPaper(seed));
   }, [seed]);
 
   const test = useMemo(() => getCompetitiveAllIndiaTestMeta(), []);

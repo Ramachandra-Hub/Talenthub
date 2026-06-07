@@ -405,7 +405,9 @@ export async function buildAllLiveWritingActivityPrisma(
     ? await prisma.testAttempt.findMany({
         where: {
           status: { in: ['completed', 'submitted'] },
-          completedAt: { not: null, gte: sessionSince },
+          completedAt: sessionSince
+            ? { not: null, gte: sessionSince }
+            : { not: null },
           OR: [
             { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
             { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },

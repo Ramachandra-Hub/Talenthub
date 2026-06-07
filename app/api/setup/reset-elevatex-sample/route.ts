@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 import { getDbService } from '@/lib/db/get-db-service';
 import { resetElevateXSampleStudents } from '@/lib/elevatex-sample-seed';
 import { ELEVATEX_SAMPLE_COUNT } from '@/lib/elevatex-sample-credentials';
@@ -10,7 +11,10 @@ export const maxDuration = 120;
  * Deletes EXS1001–EXS1120 (and legacy EX26001–15) auth accounts and related rows
  * so students can register again with their own passwords.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     const ready = assertSetupDeploymentReady();
     if (!ready.ok) {

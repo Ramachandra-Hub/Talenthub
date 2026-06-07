@@ -374,10 +374,13 @@ async function loadActiveSessionWriters(
       if (authUser?.user) {
         usersById.set(uid, {
           email: authUser.user.email ?? '',
-          full_name:
-            (authUser.user.user_metadata?.full_name as string | undefined) ??
-            (authUser.user.user_metadata?.name as string | undefined) ??
-            null,
+          full_name: (() => {
+            const meta = authUser.user.user_metadata as Record<string, unknown>;
+            return (
+              (typeof meta.full_name === 'string' ? meta.full_name : null) ??
+              (typeof meta.name === 'string' ? meta.name : null)
+            );
+          })(),
           metadata: authUser.user.user_metadata as Record<string, unknown>,
         });
       }
@@ -599,10 +602,13 @@ export async function buildLiveExamBoard(
         if (authUser?.user) {
           usersById.set(uid, {
             email: authUser.user.email ?? '',
-            full_name:
-              (authUser.user.user_metadata?.full_name as string | undefined) ??
-              (authUser.user.user_metadata?.name as string | undefined) ??
-              null,
+            full_name: (() => {
+              const meta = authUser.user.user_metadata as Record<string, unknown>;
+              return (
+                (typeof meta.full_name === 'string' ? meta.full_name : null) ??
+                (typeof meta.name === 'string' ? meta.name : null)
+              );
+            })(),
             metadata: authUser.user.user_metadata as Record<string, unknown>,
           });
         }

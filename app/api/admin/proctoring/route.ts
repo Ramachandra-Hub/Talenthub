@@ -33,14 +33,20 @@ export async function GET() {
       userMap.set(uid, {
         id: uid,
         email: authUser.user.email ?? '',
-        full_name:
-          (authUser.user.user_metadata?.full_name as string | undefined) ??
-          (authUser.user.user_metadata?.name as string | undefined) ??
-          null,
-        branch:
-          (authUser.user.user_metadata?.branch as string | undefined) ??
-          (authUser.user.user_metadata?.department as string | undefined) ??
-          null,
+        full_name: (() => {
+          const meta = authUser.user.user_metadata as Record<string, unknown>;
+          return (
+            (typeof meta.full_name === 'string' ? meta.full_name : null) ??
+            (typeof meta.name === 'string' ? meta.name : null)
+          );
+        })(),
+        branch: (() => {
+          const meta = authUser.user.user_metadata as Record<string, unknown>;
+          return (
+            (typeof meta.branch === 'string' ? meta.branch : null) ??
+            (typeof meta.department === 'string' ? meta.department : null)
+          );
+        })(),
       });
     }
   }

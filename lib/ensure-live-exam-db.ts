@@ -14,7 +14,7 @@ const CORE_TABLES = [
 ] as const;
 
 export function isLiveExamDbSchemaError(
-  error: Pick<PostgrestError, 'code' | 'message'> | null | undefined,
+  error: PostgrestError | null | undefined,
 ): boolean {
   if (!error) return false;
   const msg = (error.message ?? '').toLowerCase();

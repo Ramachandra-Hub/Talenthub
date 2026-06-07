@@ -5,7 +5,7 @@ import { RoleGate } from '@/components/role-gate';
 
 export function ProgrammingGated() {
   return (
-    <RoleGate allow={['student', 'guest']}>
+    <RoleGate allow={['student']}>
       <ProgrammingExamWorkspace />
     </RoleGate>
   );

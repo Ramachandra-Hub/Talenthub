@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 import { getDbService } from '@/lib/db/get-db-service';
 import {
   ELEVATEX_SAMPLE_COUNT,
@@ -17,7 +18,10 @@ export const maxDuration = 120;
  * Creates 120 ElevateX Slot 1 test students (EXS1001–EXS1120), removes legacy EX26001–15,
  * and go-lives ElevateX for 10:00 AM IST today.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     const ready = assertSetupDeploymentReady();
     if (!ready.ok) {

@@ -25,6 +25,14 @@ function bootstrapAllowed(adminCount: number): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    const secret = process.env.RDS_SETUP_SECRET?.trim();
+    const header = request.headers.get('x-setup-secret')?.trim();
+    if (!secret || header !== secret) {
+      return NextResponse.json({ error: 'Bootstrap requires X-Setup-Secret in production.' }, { status: 403 });
+    }
+  }
+
   if (!process.env.AUTH_SECRET?.trim() || !process.env.DATABASE_URL?.trim()) {
     return NextResponse.json({ error: 'Configure AUTH_SECRET and DATABASE_URL' }, { status: 500 });
   }

@@ -12,7 +12,7 @@ export async function POST() {
 
   try {
     let resolved = await resolveAppUserById(user.id);
-    if (!resolved && session.user.role === 'admin') {
+    if (!resolved && user.role === 'admin') {
       await ensureAdminUser(user.id);
       resolved = await resolveAppUserById(user.id);
     }

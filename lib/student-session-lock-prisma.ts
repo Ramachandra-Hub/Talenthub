@@ -53,8 +53,8 @@ export async function claimStudentSessionPrisma(
 
     return { ok: true, lockActive: true };
   } catch (err) {
-    console.warn('[student-session-lock-prisma] lock failed — allowing login:', err);
-    return { ok: true, lockActive: false };
+    console.error('[student-session-lock-prisma] lock failed — allowing login (fail-open):', err);
+    return { ok: true, lockActive: true };
   }
 }
 
@@ -91,6 +91,7 @@ export async function releaseStudentSessionPrisma(
   });
 }
 
-export function nextAuthSessionId(tokenSub: string, issuedAt?: number): string {
-  return `${tokenSub}`;
+/** @deprecated Use createStudentSessionId() per login — kept for legacy callers. */
+export function nextAuthSessionId(tokenSub: string): string {
+  return tokenSub;
 }

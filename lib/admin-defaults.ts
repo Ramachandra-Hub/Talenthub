@@ -1,7 +1,5 @@
-/** Default institutional admin (overridable via .env.local). */
+/** Default institutional admin email (overridable via .env.local). */
 export const DEFAULT_ADMIN_EMAIL = 'admin@rce.ac.in';
-
-export const DEFAULT_ADMIN_PASSWORD = 'RCE_T&P';
 
 export function getConfiguredAdminEmail(): string {
   return (
@@ -10,11 +8,18 @@ export function getConfiguredAdminEmail(): string {
 }
 
 export function getConfiguredAdminPassword(): string {
-  return process.env.PREPINDIA_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+  const fromEnv = process.env.PREPINDIA_ADMIN_PASSWORD?.trim();
+  if (fromEnv) return fromEnv;
+  throw new Error(
+    'PREPINDIA_ADMIN_PASSWORD must be set in .env.local (and in production). No default password is shipped in source.',
+  );
 }
 
 export function getAllowlistedAdminEmails(): string[] {
   const configured = getConfiguredAdminEmail();
+  const isProd =
+    process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+  if (isProd) return [configured];
   return [...new Set([DEFAULT_ADMIN_EMAIL, configured])];
 }
 

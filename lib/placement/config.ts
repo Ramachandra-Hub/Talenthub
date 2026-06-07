@@ -173,7 +173,7 @@ export function describeTechnicalSection(
     case 'mcq':
       return `${departmentName} — ${TECHNICAL_MCQ_COUNT} unique department MCQs (no repeats within your paper). Negative marking may apply.`;
     case 'coding':
-      return `${departmentName} — exactly ${TECHNICAL_CODING_COUNT} unique coding problems from a large bank. Each problem has multiple hidden test cases with explanations after you run them. Use the in-browser compiler.`;
+      return `${departmentName} — exactly ${TECHNICAL_CODING_COUNT} unique coding problems from a large bank. Each problem has the sample case when you click Run sample. Use the in-browser compiler.`;
     case 'both':
       return `${departmentName} — ${TECHNICAL_MCQ_COUNT} unique department MCQs plus ${TECHNICAL_CODING_COUNT} unique coding problems (non-repeating). Complete both parts in this section.`;
   }

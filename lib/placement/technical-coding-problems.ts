@@ -42,7 +42,7 @@ function makeProblem(
     examPurpose,
     sampleInput,
     sampleOutput,
-    testCases: [sample, ...hiddenTests],
+    testCases: [sample],
   };
 }
 
@@ -413,7 +413,7 @@ function buildTechnicalCodingBank(): ProgrammingProblem[] {
 export const TECHNICAL_CODING_BANK: ProgrammingProblem[] = buildTechnicalCodingBank();
 export const TECHNICAL_CODING_BANK_SIZE = TECHNICAL_CODING_BANK.length;
 
-/** Three unique problem families per student (seed + branch). */
+/** Three unique coding problem types per student (seed + branch), each with its own numeric variant. */
 export function buildTechnicalCodingProblems(
   seed: string,
   departmentId: string,

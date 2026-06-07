@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
+import { fetchWithAuth } from '@/lib/fetch-with-auth';
 import type { RmsetPaperWithTopics, RmsetTopic } from '@/lib/rmset/types';
 import {
   RMSET_DEFAULT_DURATION_MINUTES,
@@ -27,7 +28,7 @@ export default function AdminRmsetPage() {
   const [durationMinutes, setDurationMinutes] = useState(RMSET_DEFAULT_DURATION_MINUTES);
 
   const load = async () => {
-    const res = await fetch('/api/admin/rmset');
+    const res = await fetchWithAuth('/api/admin/rmset');
     if (res.ok) {
       const json = (await res.json()) as {
         topics?: RmsetTopic[];
@@ -61,7 +62,7 @@ export default function AdminRmsetPage() {
     }
     setPublishing(true);
     try {
-      const res = await fetch('/api/admin/rmset', {
+      const res = await fetchWithAuth('/api/admin/rmset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -6,7 +6,8 @@ import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getAuthSetupErrors } from '@/lib/auth/config-check';
 import { prisma } from '@/lib/prisma';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
-import { claimStudentSessionPrisma, nextAuthSessionId } from '@/lib/student-session-lock-prisma';
+import { claimStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
+import { createStudentSessionId } from '@/lib/student-session-cookie';
 import { cookies } from 'next/headers';
 
 export type StudentSignInInput = {
@@ -18,7 +19,7 @@ export type StudentSignInInput = {
 
 export type StudentSignInResult =
   | { error: string }
-  | { userId: string; email: string };
+  | { userId: string; email: string; sessionId: string };
 
 export async function runStudentCredentialSignIn(
   input: StudentSignInInput,
@@ -101,7 +102,7 @@ export async function runStudentCredentialSignIn(
     };
   }
 
-  const sessionId = nextAuthSessionId(user.id);
+  const sessionId = createStudentSessionId();
   const lock = await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
   if (!lock.lockActive) {
     return {
@@ -120,12 +121,13 @@ export async function runStudentCredentialSignIn(
     });
   }
 
-  return { userId: user.id, email: user.email };
+  return { userId: user.id, email: user.email, sessionId };
 }
 
 /** Attach NextAuth session cookies to a Route Handler JSON response. */
 export async function copyAuthSessionCookiesToResponse(
   response: Response,
+  studentSessionId?: string,
 ): Promise<Response> {
   const jar = await cookies();
   const isProd = process.env.NODE_ENV === 'production';
@@ -136,6 +138,10 @@ export async function copyAuthSessionCookiesToResponse(
       'Set-Cookie',
       `${c.name}=${encodeURIComponent(c.value)}; Path=/; HttpOnly; SameSite=Lax${isProd ? '; Secure' : ''}`,
     );
+  }
+  if (studentSessionId) {
+    const { studentSessionCookieHeader } = await import('@/lib/student-session-cookie');
+    headers.append('Set-Cookie', studentSessionCookieHeader(studentSessionId));
   }
   return new Response(response.body, {
     status: response.status,

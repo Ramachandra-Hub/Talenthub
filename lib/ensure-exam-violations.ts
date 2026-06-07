@@ -4,7 +4,7 @@ import postgres from 'postgres';
 import { resolvePostgresUrl } from '@/lib/postgres-url';
 
 export function isExamViolationsSchemaError(
-  error: Pick<PostgrestError, 'code' | 'message'> | null | undefined,
+  error: PostgrestError | null | undefined,
 ): boolean {
   if (!error) return false;
   const msg = (error.message ?? '').toLowerCase();

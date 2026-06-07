@@ -15,7 +15,14 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   if (!isS3Configured()) {
-    return NextResponse.json({ error: 'S3 storage is not configured' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Proctor screenshot storage is not configured on this server.',
+        s3Configured: false,
+        skipped: true,
+      },
+      { status: 503 },
+    );
   }
 
   const rl = rateLimitInMemory(`proctor-upload:${clientIp(request)}`, 60, 60_000);

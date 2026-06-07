@@ -36,8 +36,7 @@ export async function POST(request: Request) {
       if (useAwsStack()) {
         userId = (await auth())?.user?.id;
       } else {
-        const session = await getDbService();
-        userId = session ? (await session.auth.getUser()).data.user?.id : undefined;
+        userId = (await service.auth.getUser('')).data.user?.id;
       }
       if (service && userId) {
         await service.from('coding_submissions').insert({

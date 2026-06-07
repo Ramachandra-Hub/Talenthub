@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { InterviewErrorBoundary } from '@/components/interview-error-boundary';
+import { StatusAlert } from '@/components/ui/status-alert';
 import { getClientUser } from '@/lib/client-auth';
 import {
   fetchProfileViaApi,

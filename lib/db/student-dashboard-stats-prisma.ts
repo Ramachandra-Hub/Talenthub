@@ -11,11 +11,13 @@ const ATTEMPTS_STAT_KEY = 'attempts_feed';
 
 function parseAttemptsPayload(raw: Prisma.JsonValue | null | undefined): DashboardStatEntry[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((row): row is DashboardStatEntry => {
-    if (!row || typeof row !== 'object') return false;
+  const out: DashboardStatEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
     const o = row as DashboardStatEntry;
-    return Boolean(o.id && o.user_id && o.test_name != null);
-  });
+    if (o.id && o.user_id && o.test_name != null) out.push(o);
+  }
+  return out;
 }
 
 export async function appendStudentDashboardStatPrisma(

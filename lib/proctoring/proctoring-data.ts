@@ -1,4 +1,4 @@
-import type { DbServiceClient } from '@/lib/db/get-db-service';
+import type { DbServiceClient, PostgrestError } from '@/lib/db/get-db-service';
 import { isExamViolationsSchemaError } from '@/lib/ensure-exam-violations';
 
 export type ProctorViolationRow = {
@@ -20,11 +20,17 @@ export type ProctoringSummary = {
 };
 
 function isMissingTable(error: unknown): boolean {
-  return isExamViolationsSchemaError(
+  const err: PostgrestError | null =
     error && typeof error === 'object'
-      ? (error as { code?: string; message?: string })
-      : null,
-  );
+      ? {
+          message:
+            typeof (error as { message?: string }).message === 'string'
+              ? (error as { message: string }).message
+              : 'Unknown error',
+          code: (error as { code?: string }).code,
+        }
+      : null;
+  return isExamViolationsSchemaError(err);
 }
 
 function parseProctorFromAnswers(

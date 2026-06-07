@@ -42,7 +42,11 @@ loadEnvLocal();
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 const email = (process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in').trim().toLowerCase();
-const password = process.env.PREPINDIA_ADMIN_PASSWORD || 'RCE_T&P';
+const password = process.env.PREPINDIA_ADMIN_PASSWORD?.trim();
+if (!password) {
+  console.error('❌ Set PREPINDIA_ADMIN_PASSWORD in .env.local (required — no default password).');
+  process.exit(1);
+}
 const fullName = 'RCE Training & Placement Admin';
 
 if (!url || !serviceKey || serviceKey.includes('YOUR_')) {

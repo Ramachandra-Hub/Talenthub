@@ -8,16 +8,36 @@ import {
   upsertExamProgressPrisma,
 } from '@/lib/db/test-attempts-prisma';
 import { assertStudentCanReportProgressPrisma } from '@/lib/db/exam-access-prisma';
+import { computeServerScorePercent } from '@/lib/exam-v2/server-score';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
+import { rateLimitInMemory } from '@/lib/rate-limit';
+import {
+  recordExamProgressWrite,
+  shouldPersistExamProgress,
+} from '@/lib/exam-v2/progress-throttle';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
   try {
     const auth = await requireAuth(['student'], request);
     if ('response' in auth) return auth.response;
+
+    const userId = auth.ctx.user.id;
+    const burst = rateLimitInMemory(`exam-progress:${userId}`, 12, 60_000);
+    if (!burst.ok) {
+      return NextResponse.json(
+        {
+          error: 'Progress saves are too frequent. Your answers are still saved locally.',
+          retryAfterSec: burst.retryAfterSec,
+          throttled: true,
+        },
+        { status: 429 },
+      );
+    }
 
     let body: Record<string, unknown>;
     try {
@@ -27,20 +47,40 @@ export async function POST(request: Request) {
     }
 
     const testId = String(body.testId ?? '').trim();
-    const scorePercent = Number(body.scorePercent);
-    if (!testId || !Number.isFinite(scorePercent)) {
-      return NextResponse.json({ error: 'testId and scorePercent are required' }, { status: 400 });
+    let scorePercent = Number(body.scorePercent);
+    if (!testId) {
+      return NextResponse.json({ error: 'testId is required' }, { status: 400 });
     }
 
-    const userId = auth.ctx.user.id;
+    const attemptId = typeof body.attemptId === 'string' ? body.attemptId : '';
     const nowIso = new Date().toISOString();
+    const startedAtIso =
+      typeof body.startedAtIso === 'string' ? body.startedAtIso : nowIso;
+
+    const earlyThrottle = shouldPersistExamProgress(userId, testId, attemptId || undefined);
+    if (!earlyThrottle.persist) {
+      return NextResponse.json({
+        id: earlyThrottle.attemptId ?? attemptId ?? null,
+        startedAtIso: earlyThrottle.startedAtIso ?? startedAtIso,
+        scorePercent: earlyThrottle.scorePercent ?? (Number.isFinite(scorePercent) ? scorePercent : 0),
+        throttled: true,
+      });
+    }
+
     const testName = typeof body.testName === 'string' ? body.testName : 'Live exam';
     const elapsedSec = Number(body.elapsedSec) || 0;
     const answers =
       body.answers != null && typeof body.answers === 'object'
         ? (body.answers as Record<string, unknown>)
         : {};
-    const attemptId = typeof body.attemptId === 'string' ? body.attemptId : '';
+
+    if (Object.keys(answers).length > 0 && !isElevateXTestId(testId)) {
+      const rescored = await computeServerScorePercent(testId, answers);
+      if (rescored) scorePercent = rescored.scorePercent;
+    } else if (!Number.isFinite(scorePercent)) {
+      scorePercent = 0;
+    }
+
     const proctorSessionId =
       typeof body.proctorSessionId === 'string' ? body.proctorSessionId.trim() : '';
     const proctorViolationCount = Number(body.proctorViolationCount) || 0;
@@ -116,12 +156,24 @@ export async function POST(request: Request) {
       elapsedSec,
       answers,
       attemptId: attemptId || undefined,
-      startedAtIso: typeof body.startedAtIso === 'string' ? body.startedAtIso : nowIso,
+      startedAtIso,
       proctorSessionId: proctorSessionId || undefined,
       proctorViolationCount,
     });
 
-    return NextResponse.json({ id: result.id });
+    recordExamProgressWrite({
+      userId,
+      testId,
+      attemptId: result.id,
+      startedAtIso: result.startedAtIso,
+      scorePercent,
+    });
+
+    return NextResponse.json({
+      id: result.id,
+      startedAtIso: result.startedAtIso,
+      scorePercent,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Progress save failed';
     console.error('[test-attempts/progress]', message, err);

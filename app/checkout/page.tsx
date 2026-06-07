@@ -13,11 +13,11 @@ export default function CheckoutPage() {
           Payment and subscription flows are disabled. All students can access practice features for free.
         </p>
         <div className="flex gap-3 justify-center">
-          <Button onClick={() => router.push('/tests')} className="bg-blue-600 hover:bg-blue-700 text-white">
-            Go to Tests
+          <Button onClick={() => router.push('/exams')} className="bg-blue-600 hover:bg-blue-700 text-white">
+            Go to Examinations
           </Button>
-          <Button onClick={() => router.push('/dashboard')} variant="outline">
-            Go to Dashboard
+          <Button onClick={() => router.push('/auth/role')} variant="outline">
+            Sign in
           </Button>
         </div>
       </Card>

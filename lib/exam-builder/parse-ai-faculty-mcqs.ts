@@ -1,6 +1,6 @@
-import type { FacultyExamQuestion } from '@/lib/faculty-exams';
+import type { FacultyExamQuestion, FacultyMcqQuestion } from '@/lib/faculty-exams';
 
-function letterOk(s: string): s is FacultyExamQuestion['correct_answer'] {
+function letterOk(s: string): s is FacultyMcqQuestion['correct_answer'] {
   return /^[ABCD]$/.test(s);
 }
 
@@ -37,7 +37,7 @@ export function parseAiTextToFacultyQuestions(raw: string): FacultyExamQuestion[
 
       let correct = String(row.correct_answer ?? row.answer ?? 'A').trim().toUpperCase();
       if (correct.length > 1) correct = correct.charAt(0);
-      const correct_answer: FacultyExamQuestion['correct_answer'] = letterOk(correct) ? correct : 'A';
+      const correct_answer: FacultyMcqQuestion['correct_answer'] = letterOk(correct) ? correct : 'A';
 
       if (!option_a || !option_b || !option_c || !option_d) continue;
 

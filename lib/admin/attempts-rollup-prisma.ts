@@ -19,8 +19,13 @@ function parseStatAttempts(raw: unknown): DashboardStatEntry[] {
   });
 }
 
+function resolveAttemptTitle(row: AttemptRow, testName: string): string {
+  const title = row.test_title;
+  return typeof title === 'string' && title.trim() ? title : testName;
+}
+
 function rowScore(row: AttemptRow, testName: string): number {
-  if (isElevateXAttemptMeta(row.test_id, row.test_title ?? testName)) {
+  if (isElevateXAttemptMeta(String(row.test_id ?? ''), resolveAttemptTitle(row, testName))) {
     const scorecard = parseElevateXScorecardFromAnswers(row.answers);
     if (scorecard && typeof scorecard.percentage === 'number') {
       return resolveStoredPercent(scorecard.percentage, null, null);
@@ -48,7 +53,7 @@ function attemptFromRow(row: AttemptRow, testName: string): RollupAttempt {
   const elevatexId =
     row.test_id != null && String(row.test_id).trim()
       ? String(row.test_id)
-      : isElevateXAttemptMeta(row.test_id, row.test_title ?? testName)
+      : isElevateXAttemptMeta(String(row.test_id ?? ''), resolveAttemptTitle(row, testName))
         ? 'placement_full'
         : null;
   return {

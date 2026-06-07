@@ -125,7 +125,11 @@ export async function recordDashboardAttempt(
         attemptId?: string;
         priorAttempt?: { id?: string };
         error?: string;
+        code?: string;
       };
+      if (json.code === 'deadline_exceeded') {
+        throw new Error(json.error ?? 'Exam deadline reached. Submission was not saved.');
+      }
       const priorId = String(json.attemptId ?? json.priorAttempt?.id ?? '').trim();
       if (priorId) {
         return { attemptId: priorId, savedToServer: true, alreadyCompleted: true };
@@ -137,81 +141,60 @@ export async function recordDashboardAttempt(
     }
 
     if (res.ok) {
-      savedToServer = true;
       const json = (await res.json()) as {
         id?: string;
         attempt?: DashboardAttemptView;
         attempts?: DashboardAttemptView[];
+        warning?: string;
       };
+      const serverId = String(json.id ?? '').trim();
+      if (!serverId || serverId.startsWith('pending-')) {
+        throw new Error(
+          json.warning ??
+            'Your attempt could not be fully saved on the server. Please check your connection and try again.',
+        );
+      }
+      savedToServer = true;
+      attemptId = serverId;
       if (json.attempts?.length) {
         cacheApiAttempts(user.id, json.attempts);
       } else if (json.attempt) {
         cacheApiAttempts(user.id, [json.attempt]);
       }
-      if (json.id) {
-        attemptId = json.id;
-        saveLocalTestAttempt(user.id, json.id, {
-          attempt: {
-            id: json.id,
-            user_id: user.id,
-            test_id: input.testId,
-            started_at: nowIso,
-            completed_at: nowIso,
-            score: input.scorePercent,
-            answers: null,
-            time_taken: elapsedSec,
-            status: 'completed' as const,
-            created_at: nowIso,
-          },
-          test,
-        });
-        pushDashboardFeedEntry(
-          user.id,
-          buildFeedEntry({
-            id: json.id,
-            userId: user.id,
-            testId: input.testId,
-            testName: input.testName,
-            scorePercent: input.scorePercent,
-            elapsedSec,
-            completedAtIso: nowIso,
-          }),
-        );
-      }
+      saveLocalTestAttempt(user.id, serverId, {
+        attempt: {
+          id: serverId,
+          user_id: user.id,
+          test_id: input.testId,
+          started_at: nowIso,
+          completed_at: nowIso,
+          score: input.scorePercent,
+          answers: null,
+          time_taken: elapsedSec,
+          status: 'completed' as const,
+          created_at: nowIso,
+        },
+        test,
+      });
+      pushDashboardFeedEntry(
+        user.id,
+        buildFeedEntry({
+          id: serverId,
+          userId: user.id,
+          testId: input.testId,
+          testName: input.testName,
+          scorePercent: input.scorePercent,
+          elapsedSec,
+          completedAtIso: nowIso,
+        }),
+      );
+    } else {
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(json.error ?? `Server rejected submission (${res.status}).`);
     }
-  } catch {
-    /* fall through to local-only save */
-  }
-
-  if (!savedToServer) {
-    const localPayload = {
-      attempt: {
-        id: attemptId,
-        user_id: ownerId,
-        test_id: input.testId,
-        started_at: nowIso,
-        completed_at: nowIso,
-        score: input.scorePercent,
-        answers: null,
-        time_taken: elapsedSec,
-        status: 'completed' as const,
-        created_at: nowIso,
-      },
-      test,
-    };
-    saveLocalTestAttempt(ownerId, attemptId, localPayload);
-    pushDashboardFeedEntry(
-      ownerId,
-      buildFeedEntry({
-        id: attemptId,
-        userId: ownerId,
-        testId: input.testId,
-        testName: input.testName,
-        scorePercent: input.scorePercent,
-        elapsedSec,
-        completedAtIso: nowIso,
-      }),
-    );
+  } catch (err) {
+    if (err instanceof Error) throw err;
+    throw new Error('Could not reach the server. Check your connection and try again.');
   }
 
   return { attemptId, savedToServer };

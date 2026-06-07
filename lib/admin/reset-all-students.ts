@@ -1,4 +1,5 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { readServiceError } from '@/lib/db/service-error';
 
 export type ResetAllStudentsResult = {
   authUsersDeleted: number;
@@ -25,7 +26,7 @@ async function listAllAuthUsers(
   const users: Array<{ id: string; email: string; metadata: Record<string, unknown> }> = [];
   for (let page = 1; page <= 100; page += 1) {
     const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(readServiceError(error) ?? 'listUsers failed');
     if (!data?.users?.length) break;
     for (const user of data.users) {
       users.push({
@@ -117,7 +118,7 @@ export async function resetAllStudentsForExamDay(
     if (protectedIds.has(user.id)) continue;
     const { error: delErr } = await db.auth.admin.deleteUser(user.id);
     if (delErr) {
-      errors.push(`auth ${user.email || user.id}: ${delErr.message}`);
+      errors.push(`auth ${user.email || user.id}: ${readServiceError(delErr) ?? 'delete failed'}`);
       continue;
     }
     result.authUsersDeleted += 1;

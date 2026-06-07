@@ -8,6 +8,8 @@ export type ClientUser = {
 };
 
 export function isAwsClientMode(): boolean {
+  if (process.env.NEXT_PUBLIC_USE_AWS_STACK === 'false') return false;
+  if (process.env.NEXT_PUBLIC_USE_AWS_STACK === 'true') return true;
   return true;
 }
 

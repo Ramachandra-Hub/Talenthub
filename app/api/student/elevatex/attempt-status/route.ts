@@ -8,6 +8,7 @@ import { fetchElevateXTechnicalFormatForDepartment } from '@/lib/elevatex-admin'
 import { getDbService } from '@/lib/db/get-db-service';
 import { placementDepartmentIdFromBranch } from '@/lib/placement/student-candidate';
 import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
+import { isElevateXExamWindowOpenPrisma } from '@/lib/elevatex/exam-window';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,8 @@ export async function GET(request: Request) {
       technicalFormat = await fetchElevateXTechnicalFormatForDepartment(admin, departmentId);
     }
 
+    const examWindowOpen = await isElevateXExamWindowOpenPrisma();
+
     const prior = await findCompletedElevateXAttempt({
       userId: session.user.id,
       rollNumber: rollNumber || undefined,
@@ -45,6 +48,7 @@ export async function GET(request: Request) {
     if (!prior) {
       return NextResponse.json({
         completed: false,
+        examWindowOpen,
         departmentId,
         technicalFormat,
       });
@@ -52,6 +56,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       completed: true,
+      examWindowOpen,
       attemptId: prior.id,
       score: prior.score,
       completedAt: prior.completed_at,
@@ -60,6 +65,13 @@ export async function GET(request: Request) {
     });
   } catch (err) {
     console.error('[elevatex/attempt-status]', err);
-    return NextResponse.json({ completed: false });
+    return NextResponse.json(
+      {
+        completed: false,
+        statusError: true,
+        error: 'Could not verify ElevateX status. Try again in a moment.',
+      },
+      { status: 503 },
+    );
   }
 }

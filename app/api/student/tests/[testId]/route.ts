@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { useAwsStack } from '@/lib/aws/stack';
 import { loadQuestionsForTake, loadTestRowForTake } from '@/lib/load-test-for-take';
-import { loadTestSections } from '@/lib/exam-v2/load-sections';
+import { loadTestSections, loadTestSectionsPrisma } from '@/lib/exam-v2/load-sections';
 import { requireAuth } from '@/lib/server-auth';
 import { findCompletedAttemptForTest } from '@/lib/test-attempts';
 import { checkStudentExamAccess } from '@/lib/exam-access';
@@ -15,6 +15,7 @@ import {
   resolveStudentProfilePrisma,
 } from '@/lib/db/test-attempts-prisma';
 import { checkStudentExamAccessPrisma } from '@/lib/db/exam-access-prisma';
+import { sanitizeQuestionsForStudent } from '@/lib/questions/sanitize-for-student';
 
 type RouteContext = { params: Promise<{ testId: string }> };
 
@@ -53,6 +54,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const priorAttempt = await findCompletedAttemptForTestPrisma(userId, trimmedId);
     const questions = await loadQuestionsForTakePrisma(trimmedId);
+    const sections = await loadTestSectionsPrisma(trimmedId);
 
     if (!questions.length) {
       return NextResponse.json(
@@ -60,7 +62,7 @@ export async function GET(_request: Request, context: RouteContext) {
           error: 'This test has no questions yet. Ask your faculty or admin to republish the exam.',
           test,
           questions: [],
-          sections: [],
+          sections,
         },
         { status: 404 },
       );
@@ -68,8 +70,8 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       test: { ...test, total_questions: questions.length },
-      questions,
-      sections: [],
+      questions: sanitizeQuestionsForStudent(questions),
+      sections,
       priorAttempt,
       schedule: access.schedule,
     });
@@ -129,7 +131,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
   return NextResponse.json({
     test: { ...test, total_questions: questions.length },
-    questions,
+    questions: sanitizeQuestionsForStudent(questions),
     sections,
     priorAttempt,
     schedule: access.schedule,

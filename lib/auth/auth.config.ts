@@ -9,7 +9,7 @@ export const authConfig = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 60 * 60 * 12, // 12 hours — exam day
+    maxAge: 60 * 60 * 8, // 8 hours — exam day (JWT; no server revocation list)
   },
   cookies: {
     sessionToken: {

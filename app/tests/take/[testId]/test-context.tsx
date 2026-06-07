@@ -18,6 +18,11 @@ interface TestContextType {
   setTimeRemaining: React.Dispatch<React.SetStateAction<number>>;
   isSubmitted: boolean;
   setIsSubmitted: (submitted: boolean) => void;
+  restoreExamState: (payload: {
+    answers: Record<string, TestAnswer>;
+    currentQuestionIndex: number;
+    timeRemaining?: number;
+  }) => void;
 }
 
 const TestContext = createContext<TestContextType | undefined>(undefined);
@@ -51,6 +56,21 @@ export function TestProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const restoreExamState = useCallback(
+    (payload: {
+      answers: Record<string, TestAnswer>;
+      currentQuestionIndex: number;
+      timeRemaining?: number;
+    }) => {
+      setAnswers(payload.answers);
+      setCurrentQuestionIndex(payload.currentQuestionIndex);
+      if (payload.timeRemaining !== undefined) {
+        setTimeRemaining(payload.timeRemaining);
+      }
+    },
+    [setTimeRemaining],
+  );
+
   return (
     <TestContext.Provider
       value={{
@@ -63,6 +83,7 @@ export function TestProvider({ children }: { children: React.ReactNode }) {
         setTimeRemaining,
         isSubmitted,
         setIsSubmitted,
+        restoreExamState,
       }}
     >
       {children}

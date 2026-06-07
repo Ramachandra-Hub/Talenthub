@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 
 type Row = Record<string, unknown>;
 type DbResult<T> = {
-  data: T;
+  data: T | null;
   error: { message: string; code?: string } | null;
   count?: number | null;
 };
@@ -21,8 +21,12 @@ type Filter =
   | { kind: 'not'; col: string; op: string; val: unknown }
   | { kind: 'gte'; col: string; val: unknown }
   | { kind: 'lte'; col: string; val: unknown }
+  | { kind: 'lt'; col: string; val: unknown }
+  | { kind: 'like'; col: string; val: unknown }
   | { kind: 'contains'; col: string; val: unknown }
   | { kind: 'jsonEq'; path: string; val: unknown };
+
+type SqlValue = string | number | boolean | null | string[] | Date;
 
 const TABLE_NAMES = new Set([
   'users',
@@ -176,12 +180,13 @@ class TableQuery {
     return this;
   }
 
-  delete() {
+  delete(opts?: { count?: 'exact' }) {
     this.op = 'delete';
+    if (opts?.count === 'exact') this.headCount = true;
     return this;
   }
 
-  upsert(row: Row | Row[], opts?: { onConflict?: string }) {
+  upsert(row: Row | Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) {
     this.op = 'upsert';
     this.insertRows = Array.isArray(row) ? row : [row];
     this.upsertConflict = opts?.onConflict ?? 'id';
@@ -215,6 +220,16 @@ class TableQuery {
 
   lte(col: string, val: unknown) {
     this.filters.push({ kind: 'lte', col, val });
+    return this;
+  }
+
+  lt(col: string, val: unknown) {
+    this.filters.push({ kind: 'lt', col, val });
+    return this;
+  }
+
+  like(col: string, val: unknown) {
+    this.filters.push({ kind: 'like', col, val });
     return this;
   }
 
@@ -272,6 +287,12 @@ class TableQuery {
       } else if (f.kind === 'lte') {
         parts.push(`${quoteIdent(f.col)} <= $${i++}`);
         values.push(f.val);
+      } else if (f.kind === 'lt') {
+        parts.push(`${quoteIdent(f.col)} < $${i++}`);
+        values.push(f.val);
+      } else if (f.kind === 'like') {
+        parts.push(`${quoteIdent(f.col)}::text LIKE $${i++}`);
+        values.push(f.val);
       } else if (f.kind === 'contains') {
         parts.push(`${quoteIdent(f.col)}::jsonb @> $${i++}::jsonb`);
         values.push(JSON.stringify(f.val));
@@ -299,7 +320,7 @@ class TableQuery {
     if (this.offsetN != null && !this.headCount) sqlText += ` OFFSET ${this.offsetN}`;
 
     try {
-      const rows = await db.unsafe(sqlText, values);
+      const rows = await db.unsafe(sqlText, values as SqlValue[]);
       if (this.headCount) {
         const countRow = Array.isArray(rows) ? rows[0] : undefined;
         return { data: null, error: null, count: countRow?.count ?? 0 } as DbResult<null> & {
@@ -328,7 +349,7 @@ class TableQuery {
           const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
           const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) RETURNING *`;
           try {
-            inserted = (await db.unsafe(sqlText, vals)) as Row[];
+            inserted = (await db.unsafe(sqlText, vals as SqlValue[])) as Row[];
             lastErr = null;
             break;
           } catch (err) {
@@ -362,7 +383,7 @@ class TableQuery {
     const allVals = [...setVals, ...values];
     const sqlText = `UPDATE public.${quoteIdent(this.table)} SET ${setParts.join(', ')}${clause} RETURNING *`;
     try {
-      const rows = await db.unsafe(sqlText, allVals);
+      const rows = await db.unsafe(sqlText, allVals as SqlValue[]);
       return { data: rowsToSnake(rows as Row[]), error: null };
     } catch (err) {
       return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
@@ -374,7 +395,7 @@ class TableQuery {
     const { clause, values } = this.buildWhere(1);
     const sqlText = `DELETE FROM public.${quoteIdent(this.table)}${clause} RETURNING *`;
     try {
-      const rows = await db.unsafe(sqlText, values);
+      const rows = await db.unsafe(sqlText, values as SqlValue[]);
       return { data: rowsToSnake(rows as Row[]), error: null };
     } catch (err) {
       return { data: null, error: { message: err instanceof Error ? err.message : String(err) } };
@@ -401,7 +422,7 @@ class TableQuery {
           .map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`)
           .join(', ');
         const sqlText = `INSERT INTO public.${quoteIdent(this.table)} (${cols.map(quoteIdent).join(', ')}) VALUES (${placeholders}) ON CONFLICT (${conflictSql}) DO UPDATE SET ${updates} RETURNING *`;
-        const inserted = await db.unsafe(sqlText, vals);
+        const inserted = await db.unsafe(sqlText, vals as SqlValue[]);
         results.push(...rowsToSnake(inserted as Row[]));
       }
       return { data: results, error: null };
@@ -439,7 +460,13 @@ class TableQuery {
     }
     if (this.op === 'insert') return this.runInsert();
     if (this.op === 'update') return this.runUpdate();
-    if (this.op === 'delete') return this.runDelete();
+    if (this.op === 'delete') {
+      const res = await this.runDelete();
+      if (this.headCount && !res.error) {
+        return { data: null, error: null, count: (res.data ?? []).length };
+      }
+      return res;
+    }
     if (this.op === 'upsert') return this.runUpsert();
     return { data: null, error: { message: 'Unknown operation' } };
   }
@@ -471,6 +498,12 @@ export function createPrismaServiceClient() {
   return {
     from(table: string) {
       return new TableQuery(table);
+    },
+    rpc(_fn: string, _args?: Record<string, unknown>) {
+      return Promise.resolve({
+        data: null,
+        error: { message: 'rpc is not supported on the Prisma service client' },
+      });
     },
     auth: {
       admin: {
@@ -588,7 +621,8 @@ export function createPrismaServiceClient() {
           return { data: {}, error: null };
         },
       },
-      async getUser(token: string) {
+      async getUser(token?: string) {
+        if (!token) return { data: { user: null }, error: null };
         const { decode } = await import('next-auth/jwt');
         const secret = process.env.AUTH_SECRET;
         if (!secret) return { data: { user: null }, error: { message: 'AUTH_SECRET missing' } };

@@ -3,6 +3,7 @@ import { useAwsStack } from '@/lib/aws/stack';
 import { ensureRdsSchema, isRdsSchemaReady } from '@/lib/db/ensure-rds-schema';
 import { bootstrapRdsAdmin, seedRdsBaseline } from '@/lib/db/seed-rds-baseline';
 import { prisma } from '@/lib/prisma';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -69,7 +70,10 @@ async function buildRdsStatus() {
 }
 
 /** GET — RDS setup status (for /setup page). */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     const { status, body } = await buildRdsStatus();
     return NextResponse.json(body, { status });
@@ -85,6 +89,9 @@ export async function GET() {
 
 /** POST — create/update schema, seed sample data, bootstrap admin. */
 export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     if (!useAwsStack()) {
       return NextResponse.json(

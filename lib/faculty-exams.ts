@@ -17,6 +17,10 @@ export type FacultyMcqQuestion = {
 
 export type FacultyExamQuestion = FacultyMcqQuestion | FacultyCodingQuestion;
 
+export function isFacultyMcqQuestion(q: FacultyExamQuestion): q is FacultyMcqQuestion {
+  return (q as FacultyCodingQuestion).question_type !== 'coding';
+}
+
 export type FacultyExamRequest = {
   id: string;
   faculty_user_id: string;

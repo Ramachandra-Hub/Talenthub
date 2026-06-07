@@ -170,8 +170,7 @@ Return ONLY a JSON array. Each item:
   };
 
   const importToBank = async () => {
-    const db = null;
-    if (!db || !categoryId || !raw.trim()) return;
+    if (!categoryId || !raw.trim()) return;
 
     const resolvedId = await resolveCategoryIdForImport();
     if (!resolvedId) return;
@@ -191,12 +190,20 @@ Return ONLY a JSON array. Each item:
       explanation: q.explanation,
       tags: q.tags,
     }));
-    const { error } = await db.from('questions').insert(rows);
-    if (error) {
-      setMessage(error.message);
+    const res = await fetch('/api/admin/questions', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions: rows }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; count?: number };
+    if (!res.ok) {
+      setMessage(json.error ?? 'Import failed');
       return;
     }
-    setMessage(`Imported ${rows.length} question(s) into "${selectedCategory?.name ?? 'category'}".`);
+    setMessage(
+      `Imported ${json.count ?? rows.length} question(s) into "${selectedCategory?.name ?? 'category'}".`,
+    );
   };
 
   if (loading) {

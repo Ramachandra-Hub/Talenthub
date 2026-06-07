@@ -4,6 +4,8 @@
  */
 import { createPrismaServiceClient } from '@/lib/db/prisma-service-client';
 
+export type PostgrestError = { message: string; code?: string };
+
 export type DbServiceClient = ReturnType<typeof createPrismaServiceClient>;
 
 export function getDbService(): DbServiceClient {

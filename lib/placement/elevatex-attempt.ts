@@ -3,9 +3,13 @@ import type { PlacementTechnicalFormat } from '@/lib/placement/types';
 
 export type ElevateXAttemptStatus = {
   completed: boolean;
+  /** Whether the official ElevateX exam window is open (evalora_module_schedules). */
+  examWindowOpen?: boolean;
   attemptId?: string;
   score?: number;
   completedAt?: string | null;
+  /** True when the status API could not be reached — do not allow a new attempt. */
+  statusError?: boolean;
   /** Server-resolved from admin config (students cannot override). */
   technicalFormat?: PlacementTechnicalFormat;
   departmentId?: string;
@@ -25,9 +29,9 @@ export async function fetchElevateXAttemptStatus(
       credentials: 'include',
       cache: 'no-store',
     });
-    if (!res.ok) return { completed: false };
+    if (!res.ok) return { completed: false, statusError: true };
     return (await res.json()) as ElevateXAttemptStatus;
   } catch {
-    return { completed: false };
+    return { completed: false, statusError: true };
   }
 }

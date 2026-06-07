@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { guardSetupRoute } from '@/lib/setup/guard-setup-route';
 import { getDbService } from '@/lib/db/get-db-service';
 import {
   ELEVATEX_SAMPLE_COUNT,
@@ -10,7 +11,10 @@ import { assertSetupDeploymentReady } from '@/lib/setup/deployment-ready';
 export const maxDuration = 120;
 
 /** Clears ElevateX attempts for EXS1001–EXS1120 so they can retake (logins unchanged). */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await guardSetupRoute(request);
+  if (denied) return denied;
+
   try {
     const ready = assertSetupDeploymentReady();
     if (!ready.ok) {
