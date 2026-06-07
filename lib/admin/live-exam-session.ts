@@ -1,8 +1,8 @@
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { scheduleEndMs, scheduleStartMs } from '@/lib/exam-schedule';
 
-const SESSION_START_GRACE_MS = 2 * 60 * 1000;
-const SESSION_END_GRACE_MS = 15 * 60 * 1000;
+export const SESSION_START_GRACE_MS = 2 * 60 * 1000;
+export const SESSION_END_GRACE_MS = 15 * 60 * 1000;
 
 /** Attempt belongs to this scheduled exam session (not a prior ElevateX run). */
 export function attemptInLiveExamSession(
@@ -34,4 +34,9 @@ export function attemptInLiveExamSession(
 
 export function liveSessionSince(schedule: ExamScheduleRow): Date {
   return new Date(scheduleStartMs(schedule.starts_at));
+}
+
+/** Session lower bound for submitted-attempt queries (matches attemptInLiveExamSession grace). */
+export function liveSessionSinceWithGrace(schedule: ExamScheduleRow): Date {
+  return new Date(scheduleStartMs(schedule.starts_at) - SESSION_START_GRACE_MS);
 }

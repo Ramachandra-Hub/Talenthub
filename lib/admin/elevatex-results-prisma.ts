@@ -227,8 +227,13 @@ async function ensureElevateXExamClosedForAdmin(): Promise<void> {
   await finalizeOpenElevateXAttemptsAfterExamPrisma().catch(() => undefined);
 }
 
-export async function loadElevateXAdminResultsPrisma(): Promise<ElevateXAdminResultRow[]> {
-  await ensureElevateXExamClosedForAdmin();
+export async function loadElevateXAdminResultsPrisma(options?: {
+  /** Skip auto-finalize while admin is viewing a live session. */
+  liveMode?: boolean;
+}): Promise<ElevateXAdminResultRow[]> {
+  if (!options?.liveMode) {
+    await ensureElevateXExamClosedForAdmin();
+  }
 
   const adminIds = await loadAdminUserIds();
   const byUser = new Map<string, ElevateXAdminResultRow>();
@@ -365,7 +370,6 @@ async function loadElevateXSubmittedUserIds(sessionSince?: Date): Promise<Set<st
   const since = sessionSince ?? null;
   const rows = await prisma.testAttempt.findMany({
     where: {
-      status: { in: ['completed', 'submitted'] },
       completedAt: { not: null, ...(since ? { gte: since } : {}) },
       ...elevatexTitleWhere(),
     },

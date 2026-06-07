@@ -20,20 +20,26 @@ export async function GET(request: Request) {
     : null;
 
   const todayKey = getTodayDateKeyInIST();
+  const sessionSinceDate =
+    sessionSinceMs != null && !Number.isNaN(sessionSinceMs)
+      ? new Date(sessionSinceMs - 2 * 60 * 1000)
+      : undefined;
+
   const [rowsRaw, inProgress, todayRows] = await Promise.all([
-    loadElevateXAdminResultsPrisma(),
+    loadElevateXAdminResultsPrisma({ liveMode: Boolean(sessionStartsAt) }),
     loadElevateXInProgressPrisma({
-      sessionSince: sessionSinceMs != null ? new Date(sessionStartsAt) : undefined,
+      sessionSince: sessionSinceDate,
       forceDuringLiveAdmin: Boolean(sessionStartsAt),
     }),
     loadElevateXResultsForDateKeyPrisma(todayKey),
   ]);
 
   let rows = rowsRaw;
-  if (sessionSinceMs != null && !Number.isNaN(sessionSinceMs)) {
+  if (sessionSinceDate) {
+    const cutoffMs = sessionSinceDate.getTime();
     rows = rowsRaw.filter((r) => {
       const at = r.submitted_at ? new Date(r.submitted_at).getTime() : 0;
-      return at >= sessionSinceMs - 2 * 60 * 1000;
+      return at >= cutoffMs;
     });
   }
   const rowsSorted = [...rows]

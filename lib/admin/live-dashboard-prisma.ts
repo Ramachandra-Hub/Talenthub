@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { isScheduleLiveNow, resolveExamScheduleStatus } from '@/lib/exam-schedule';
@@ -18,7 +19,11 @@ import {
 import type { RollupAttempt } from '@/lib/admin/attempts-rollup';
 import type { ElevateXInProgressRow } from '@/lib/admin/elevatex-results-prisma';
 import type { LiveBoardEntry, LiveExamBoard, LiveWritingEntry } from '@/lib/admin/live-dashboard-data';
-import { attemptInLiveExamSession, liveSessionSince } from '@/lib/admin/live-exam-session';
+import {
+  attemptInLiveExamSession,
+  liveSessionSinceWithGrace,
+  SESSION_END_GRACE_MS,
+} from '@/lib/admin/live-exam-session';
 import { elevateXPartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
 import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
@@ -172,6 +177,125 @@ export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> 
   return ensureElevateXLiveScheduleFallback(sorted);
 }
 
+function scheduleAttemptMatchWhere(schedule: ExamScheduleRow): Prisma.TestAttemptWhereInput | null {
+  const testId = String(schedule.test_id ?? '').trim();
+  if (isElevateXSchedule(schedule)) {
+    return {
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
+        { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
+      ],
+    };
+  }
+  if (testId && !isElevateXTestId(testId)) {
+    return { testId };
+  }
+  const title = schedule.title?.trim();
+  if (title && title.length > 2) {
+    return { testTitle: { contains: title.slice(0, 48), mode: 'insensitive' } };
+  }
+  return null;
+}
+
+function mapFreshAttemptRow(
+  row: {
+    id: string;
+    userId: string;
+    testId: string | null;
+    testTitle: string | null;
+    status: string;
+    createdAt: Date;
+    completedAt: Date | null;
+    percentageScore: { toNumber?: () => number } | number | null;
+    score: { toNumber?: () => number } | number | null;
+    totalScore: { toNumber?: () => number } | number | null;
+    answers: unknown;
+    timeTaken: number | null;
+  },
+  schedule: ExamScheduleRow,
+): RollupAttempt | null {
+  const num = (v: { toNumber?: () => number } | number | null) =>
+    v == null ? null : typeof v === 'number' ? v : Number(v);
+
+  const created_at = row.createdAt.toISOString();
+  const completed_at = row.completedAt?.toISOString() ?? null;
+  const inSession = attemptInLiveExamSession({ created_at, completed_at }, schedule);
+  const elevateX = isElevateXSchedule(schedule);
+  const partial = elevateX
+    ? elevateXPartialScoreFromAttemptRow({
+        answers: row.answers,
+        percentageScore: num(row.percentageScore),
+        score: num(row.score),
+        totalScore: num(row.totalScore),
+      })
+    : resolveStoredPercent(
+        num(row.percentageScore),
+        num(row.score),
+        num(row.totalScore),
+      );
+  const submitted =
+    Boolean(completed_at) || isCompletedAttemptStatus(row.status, completed_at);
+  const inProgress =
+    !submitted && partial > 0 && isInProgressStatus(row.status);
+
+  if (!inSession && !inProgress && !submitted) return null;
+
+  if (submitted && completed_at && !inSession) {
+    const completedMs = new Date(completed_at).getTime();
+    const startMs = scheduleStartMs(schedule.starts_at) - 2 * 60 * 1000;
+    const endMs = scheduleEndMs(schedule.ends_at);
+    if (completedMs < startMs) return null;
+    if (endMs != null && completedMs > endMs + SESSION_END_GRACE_MS) return null;
+  }
+
+  const scorecard = elevateX ? parseElevateXScorecardFromAnswers(row.answers) : null;
+  const score = scorecard ? scorecard.percentage : partial;
+
+  return {
+    id: row.id,
+    user_id: row.userId,
+    test_id: row.testId,
+    test_name: row.testTitle ?? schedule.title ?? 'Live exam',
+    score,
+    status: submitted ? 'completed' : String(row.status ?? 'in_progress'),
+    created_at,
+    completed_at,
+    time_taken: row.timeTaken,
+    source: 'test_attempts',
+  };
+}
+
+/** Pull live rows directly from RDS so submits / proctor auto-submits appear immediately. */
+async function loadFreshScheduleAttemptsPrisma(schedule: ExamScheduleRow): Promise<RollupAttempt[]> {
+  const matchWhere = scheduleAttemptMatchWhere(schedule);
+  if (!matchWhere) return [];
+
+  const since = liveSessionSinceWithGrace(schedule);
+  const rows = await prisma.testAttempt.findMany({
+    where: {
+      AND: [
+        matchWhere,
+        {
+          OR: [
+            { createdAt: { gte: since } },
+            { completedAt: { gte: since } },
+            { startedAt: { gte: since } },
+          ],
+        },
+      ],
+    },
+    orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
+    take: 800,
+  });
+
+  const out: RollupAttempt[] = [];
+  for (const row of rows) {
+    const mapped = mapFreshAttemptRow(row, schedule);
+    if (mapped) out.push(mapped);
+  }
+  return out;
+}
+
 /** Prefer completed attempts over stale in-progress autosave / heartbeat rows. */
 function pickBetterAttempt(prev: RollupAttempt, next: RollupAttempt): RollupAttempt {
   const prevDone = isCompletedAttemptStatus(prev.status, prev.completed_at);
@@ -222,7 +346,6 @@ export async function loadElevateXLiveSubmittedUserIdsPrisma(
 ): Promise<Set<string>> {
   const rows = await prisma.testAttempt.findMany({
     where: {
-      status: { in: ['completed', 'submitted'] },
       completedAt: { not: null, gte: sessionSince },
       OR: [
         { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
@@ -256,68 +379,13 @@ export async function buildLiveExamBoardPrisma(
     ) {
       return true;
     }
-    return (
-      isElevateXSchedule(schedule) &&
-      !a.completed_at &&
-      a.score > 0 &&
-      isInProgressStatus(a.status)
-    );
+    if (!a.completed_at && a.score > 0 && isInProgressStatus(a.status)) {
+      return attemptMatchesSchedule(a, schedule);
+    }
+    return false;
   });
 
-  // Pull fresh ElevateX rows (autosave + submit) even if rollup cache is stale.
-  if (isElevateXSchedule(schedule)) {
-    const since = liveSessionSince(schedule);
-    const liveRows = await prisma.testAttempt.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
-              { createdAt: { gte: since } },
-              { completedAt: { gte: since } },
-            ],
-          },
-          {
-            OR: [
-              { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
-              { testTitle: { contains: ELEVATEX_EXAM_NAME, mode: 'insensitive' } },
-            ],
-          },
-        ],
-      },
-      orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
-      take: 500,
-    });
-    for (const row of liveRows) {
-      const created_at = row.createdAt.toISOString();
-      const completed_at = row.completedAt?.toISOString() ?? null;
-      const partial = elevateXPartialScoreFromAttemptRow({
-        answers: row.answers,
-        percentageScore: row.percentageScore != null ? Number(row.percentageScore) : null,
-        score: row.score != null ? Number(row.score) : null,
-        totalScore: row.totalScore != null ? Number(row.totalScore) : null,
-      });
-      const inSession = attemptInLiveExamSession({ created_at, completed_at }, schedule);
-      if (!inSession && !(partial > 0 && !completed_at)) continue;
-
-      const status = String(row.status ?? '').toLowerCase();
-      const scorecard = parseElevateXScorecardFromAnswers(row.answers);
-      const score = scorecard ? scorecard.percentage : partial;
-      matched.push({
-        id: row.id,
-        user_id: row.userId,
-        test_id: row.testId,
-        test_name: row.testTitle ?? ELEVATEX_EXAM_NAME,
-        score,
-        status: row.completedAt
-          ? 'completed'
-          : status || 'in_progress',
-        created_at,
-        completed_at,
-        time_taken: row.timeTaken,
-        source: 'test_attempts',
-      });
-    }
-  }
+  matched.push(...(await loadFreshScheduleAttemptsPrisma(schedule)));
 
   const latestByUser = new Map<string, RollupAttempt>();
   for (const a of matched) {
@@ -400,11 +468,10 @@ export async function buildAllLiveWritingActivityPrisma(
   });
 
   const elevatexSchedule = schedules.find((s) => isElevateXSchedule(s));
-  const sessionSince = elevatexSchedule ? liveSessionSince(elevatexSchedule) : null;
+  const sessionSince = elevatexSchedule ? liveSessionSinceWithGrace(elevatexSchedule) : null;
   const elevatexSubmitted = elevatexSchedule
     ? await prisma.testAttempt.findMany({
         where: {
-          status: { in: ['completed', 'submitted'] },
           completedAt: sessionSince
             ? { not: null, gte: sessionSince }
             : { not: null },
@@ -459,7 +526,6 @@ export async function loadElevateXSessionSubmittedEntriesPrisma(
   const studentById = new Map(students.map((s) => [s.id, s]));
   const rows = await prisma.testAttempt.findMany({
     where: {
-      status: { in: ['completed', 'submitted'] },
       completedAt: { not: null, gte: sessionSince },
       OR: [
         { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
@@ -467,7 +533,7 @@ export async function loadElevateXSessionSubmittedEntriesPrisma(
       ],
     },
     orderBy: { completedAt: 'desc' },
-    take: 500,
+    take: 800,
     select: {
       id: true,
       userId: true,

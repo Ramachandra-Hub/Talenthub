@@ -13,7 +13,7 @@ import {
   mergeSessionSubmittedIntoLiveBoards,
 } from '@/lib/admin/live-dashboard-prisma';
 import { loadAdminStudentsPrisma } from '@/lib/admin/attempts-rollup-prisma';
-import { liveSessionSince } from '@/lib/admin/live-exam-session';
+import { liveSessionSinceWithGrace } from '@/lib/admin/live-exam-session';
 import {
   loadElevateXInProgressPrisma,
   type ElevateXInProgressRow,
@@ -30,7 +30,9 @@ export async function GET(request: Request) {
 
   const liveSchedules = await listLiveExamSchedulesPrisma();
   const elevatexSchedule = liveSchedules.find((s) => isElevateXSchedule(s)) ?? null;
-  const sessionSince = elevatexSchedule ? liveSessionSince(elevatexSchedule) : undefined;
+  const sessionSince = elevatexSchedule
+    ? liveSessionSinceWithGrace(elevatexSchedule)
+    : undefined;
 
   const submittedFromDb =
     sessionSince != null
