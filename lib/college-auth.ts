@@ -48,8 +48,15 @@ export function validateAdminUsername(username: string): string | null {
   return null;
 }
 
+export const ADMIN_PASSWORD_MIN = 6;
+
 export function validatePassword(password: string, min = 8): string | null {
   if (!password) return 'Password is required';
   if (password.length < min) return `Password must be at least ${min} characters`;
   return null;
+}
+
+/** Admin portal — allows the institutional default (7 chars). */
+export function validateAdminPassword(password: string): string | null {
+  return validatePassword(password, ADMIN_PASSWORD_MIN);
 }

@@ -12,6 +12,7 @@ import {
 import {
   adminAuthEmail,
   studentAuthEmail,
+  validateAdminPassword,
   validatePassword,
   validateRollNumber,
 } from '@/lib/college-auth';
@@ -75,7 +76,7 @@ export function buildAuthProviders(): Provider[] {
         await ensureSchemaForAuth();
         const username = String(credentials?.username ?? '').trim();
         const password = String(credentials?.password ?? '');
-        if (!username || validatePassword(password)) return null;
+        if (!username || validateAdminPassword(password)) return null;
 
         const email = adminAuthEmail(username);
         let user = await prisma.user.findUnique({

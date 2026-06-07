@@ -8,7 +8,6 @@ import {
   upsertExamProgressPrisma,
 } from '@/lib/db/test-attempts-prisma';
 import { assertStudentCanReportProgressPrisma } from '@/lib/db/exam-access-prisma';
-import { computeServerScorePercent } from '@/lib/exam-v2/server-score';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
@@ -27,17 +26,6 @@ export async function POST(request: Request) {
     if ('response' in auth) return auth.response;
 
     const userId = auth.ctx.user.id;
-    const burst = rateLimitInMemory(`exam-progress:${userId}`, 12, 60_000);
-    if (!burst.ok) {
-      return NextResponse.json(
-        {
-          error: 'Progress saves are too frequent. Your answers are still saved locally.',
-          retryAfterSec: burst.retryAfterSec,
-          throttled: true,
-        },
-        { status: 429 },
-      );
-    }
 
     let body: Record<string, unknown>;
     try {
@@ -67,6 +55,20 @@ export async function POST(request: Request) {
       });
     }
 
+    const burst = rateLimitInMemory(`exam-progress:${userId}`, 8, 60_000);
+    if (!burst.ok) {
+      return NextResponse.json(
+        {
+          id: attemptId || null,
+          startedAtIso,
+          scorePercent: Number.isFinite(scorePercent) ? scorePercent : 0,
+          throttled: true,
+          retryAfterSec: burst.retryAfterSec,
+        },
+        { status: 200 },
+      );
+    }
+
     const testName = typeof body.testName === 'string' ? body.testName : 'Live exam';
     const elapsedSec = Number(body.elapsedSec) || 0;
     const answers =
@@ -74,10 +76,7 @@ export async function POST(request: Request) {
         ? (body.answers as Record<string, unknown>)
         : {};
 
-    if (Object.keys(answers).length > 0 && !isElevateXTestId(testId)) {
-      const rescored = await computeServerScorePercent(testId, answers);
-      if (rescored) scorePercent = rescored.scorePercent;
-    } else if (!Number.isFinite(scorePercent)) {
+    if (!Number.isFinite(scorePercent)) {
       scorePercent = 0;
     }
 
@@ -177,6 +176,13 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Progress save failed';
     console.error('[test-attempts/progress]', message, err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          'Progress could not be saved on the server right now. Your answers are still saved locally.',
+        code: 'progress_persist_failed',
+      },
+      { status: 503 },
+    );
   }
 }

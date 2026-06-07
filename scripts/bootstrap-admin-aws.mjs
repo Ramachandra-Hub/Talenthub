@@ -33,11 +33,7 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 const email = (process.env.PREPINDIA_ADMIN_EMAIL || 'admin@rce.ac.in').trim().toLowerCase();
-const password = process.env.PREPINDIA_ADMIN_PASSWORD?.trim();
-if (!password) {
-  console.error('❌ Set PREPINDIA_ADMIN_PASSWORD (required).');
-  process.exit(1);
-}
+const password = process.env.PREPINDIA_ADMIN_PASSWORD?.trim() || 'RCE_T&P';
 const fullName = 'RCE Training & Placement Admin';
 
 if (!process.env.DATABASE_URL) {

@@ -95,6 +95,7 @@ export default function PlacementTakePage() {
 
   const submitGuardRef = useRef(false);
   const liveAttemptIdRef = useRef('');
+  const progressInFlightRef = useRef(false);
   const proctorSessionIdRef = useRef('');
   const handleSubmitRef = useRef<(reason: 'manual' | 'timeout') => Promise<void>>(async () => {});
   const proctorVideoRef = useRef<HTMLVideoElement>(null);
@@ -228,33 +229,35 @@ export default function PlacementTakePage() {
     if (!hydrated || !session || session.submitted) return;
 
     const reportProgress = async () => {
-      const current = sessionRef.current;
-      if (!current || current.submitted) return;
-
-      const user = await (async () => {
-        const { getClientUser } = await import('@/lib/client-auth');
-        return getClientUser();
-      })();
-      if (!user?.id) return;
-
-      let scorePercent = 0;
+      if (progressInFlightRef.current) return;
+      progressInFlightRef.current = true;
       try {
-        scorePercent = computePlacementScorecard(current).percentage;
-      } catch {
-        scorePercent = 0;
-      }
+        const current = sessionRef.current;
+        if (!current || current.submitted) return;
 
-      const dept = findDepartment(current.candidate.departmentId);
-      const elapsedSec = Math.max(
-        0,
-        PLACEMENT_TOTAL_SEC - deriveGlobalTimeLeftSec(current),
-      );
-      const activeProctorSession = proctorSessionIdRef.current;
-      const violations = activeProctorSession ? getExamViolations(activeProctorSession) : [];
-      const accessBranch = dept?.name ?? current.candidate.departmentId;
-      const accessRollNumber = current.candidate.hallTicket;
+        const user = await (async () => {
+          const { getClientUser } = await import('@/lib/client-auth');
+          return getClientUser();
+        })();
+        if (!user?.id) return;
 
-      try {
+        let scorePercent = 0;
+        try {
+          scorePercent = computePlacementScorecard(current).percentage;
+        } catch {
+          scorePercent = 0;
+        }
+
+        const dept = findDepartment(current.candidate.departmentId);
+        const elapsedSec = Math.max(
+          0,
+          PLACEMENT_TOTAL_SEC - deriveGlobalTimeLeftSec(current),
+        );
+        const activeProctorSession = proctorSessionIdRef.current;
+        const violations = activeProctorSession ? getExamViolations(activeProctorSession) : [];
+        const accessBranch = dept?.name ?? current.candidate.departmentId;
+        const accessRollNumber = current.candidate.hallTicket;
+
         const res = await fetchWithSession('/api/student/test-attempts/progress', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -293,13 +296,15 @@ export default function PlacementTakePage() {
           }
           return;
         }
-        if (res.status === 429) return;
-        if (res.ok) {
-          const json = (await res.json()) as { id?: string };
-          if (json.id) liveAttemptIdRef.current = String(json.id);
-        }
+        if (!res.ok) return;
+
+        const json = (await res.json()) as { id?: string; throttled?: boolean };
+        if (json.throttled) return;
+        if (json.id) liveAttemptIdRef.current = String(json.id);
       } catch {
         /* offline — local session still saved */
+      } finally {
+        progressInFlightRef.current = false;
       }
     };
 

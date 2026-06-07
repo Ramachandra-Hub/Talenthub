@@ -93,19 +93,29 @@ async function abandonOtherElevateXInProgress(
 
 type AttemptConstraintGlobal = {
   attemptConstraintsEnsured?: boolean;
+  attemptConstraintsAttempted?: boolean;
 };
 
 const attemptConstraintGlobal = globalThis as typeof globalThis & AttemptConstraintGlobal;
 
 export async function ensureAttemptConstraintsPrisma(): Promise<void> {
   if (attemptConstraintGlobal.attemptConstraintsEnsured) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_user_test_idx
-    ON test_attempts (user_id, test_id)
-    WHERE test_id IS NOT NULL
-      AND status IN ('completed', 'submitted')
-  `);
-  attemptConstraintGlobal.attemptConstraintsEnsured = true;
+  if (attemptConstraintGlobal.attemptConstraintsAttempted) return;
+  attemptConstraintGlobal.attemptConstraintsAttempted = true;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_user_test_idx
+      ON test_attempts (user_id, test_id)
+      WHERE test_id IS NOT NULL
+        AND status IN ('completed', 'submitted')
+    `);
+    attemptConstraintGlobal.attemptConstraintsEnsured = true;
+  } catch (err) {
+    console.warn(
+      '[test-attempts] ensureAttemptConstraints skipped:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 function toAttemptRow(row: {

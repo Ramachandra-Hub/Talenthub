@@ -9,7 +9,7 @@ import { AuthCard } from '@/components/auth/auth-card';
 import {
   adminAuthEmail,
   validateAdminUsername,
-  validatePassword,
+  validateAdminPassword,
 } from '@/lib/college-auth';
 import { StatusAlert } from '@/components/ui/status-alert';
 import { joinApiErrorParts } from '@/lib/api-error-message';
@@ -49,7 +49,7 @@ function AdminLoginForm() {
     setError(null);
     const errs: Record<string, string> = {};
     const userErr = validateAdminUsername(username);
-    const passErr = validatePassword(password);
+    const passErr = validateAdminPassword(password);
     if (userErr) errs.username = userErr;
     if (passErr) errs.password = passErr;
     setFieldErrors(errs);
@@ -106,7 +106,7 @@ function AdminLoginForm() {
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="admin@your-college.edu"
+              placeholder={DEFAULT_ADMIN_EMAIL}
               className="bg-white border-slate-300"
               autoComplete="username"
               required
