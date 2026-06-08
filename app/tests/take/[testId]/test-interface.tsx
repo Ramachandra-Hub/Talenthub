@@ -17,7 +17,6 @@ import { getClientUser } from '@/lib/client-auth';
 import { isCodingQuestion } from '@/lib/practice-mappers';
 import { formatScorePercentLabel, roundScorePercent } from '@/lib/format-score';
 import { isSchemaMissingError } from '@/lib/fallback-question-bank';
-import { useExamAutosave } from '@/hooks/use-exam-autosave';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import type { ProctorSubmitReason, ProctorSummary } from '@/lib/exam-v2/proctoring-config';
@@ -27,8 +26,7 @@ import {
   mergeExamViolations,
 } from '@/lib/exam-v2/proctoring';
 import { useSectionExam } from '@/hooks/use-section-exam';
-import { clearExamDraft, loadExamDraft } from '@/lib/exam-v2/autosave';
-import { mergeExamRestorePayload } from '@/lib/exam-v2/merge-exam-restore';
+import { clearExamDraft } from '@/lib/exam-v2/autosave';
 import { assignQuestionsToSections } from '@/lib/exam-v2/load-sections';
 import { scoreBySections, scoreMcqWithNegativeMarking } from '@/lib/exam-v2/scoring';
 import { computeSectionProgress, type TestSectionConfig } from '@/lib/exam-v2/section-timer';
@@ -88,7 +86,6 @@ export default function TestInterface({
     setTimeRemaining,
     isSubmitted,
     setIsSubmitted,
-    restoreExamState,
   } = useTest();
 
   const [submitting, setSubmitting] = useState(false);
@@ -97,8 +94,6 @@ export default function TestInterface({
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
   const [liveAttemptId, setLiveAttemptId] = useState<string | null>(null);
   const [liveScorePercent, setLiveScorePercent] = useState<number | null>(null);
-  const restoreRanRef = useRef(false);
-
   const speedSecRaw = test.question_time_limit_sec;
   const speedActive =
     typeof speedSecRaw === 'number' && speedSecRaw > 0 ? true : false;
@@ -159,61 +154,12 @@ export default function TestInterface({
     liveAttemptIdRef.current = liveAttemptId;
   }, [liveAttemptId]);
 
-  useExamAutosave({
-    testId: test.id,
-    attemptId: liveAttemptId,
-    enabled: fullAccess,
-    answers,
-    currentQuestionIndex,
-    timeRemaining,
-    isSubmitted,
-  });
-
   useEffect(() => {
-    if (!fullAccess || isSubmitted || test.id.startsWith('fallback-') || restoreRanRef.current) {
-      return;
-    }
-    restoreRanRef.current = true;
-
-    void (async () => {
-      const draft = loadExamDraft(test.id);
-      let server = null;
-
-      const user = await getClientUser();
-      if (user) {
-        const res = await fetchWithAuth(
-          `/api/student/test-attempts/open?testId=${encodeURIComponent(test.id)}`,
-        );
-        if (res.ok) {
-          const json = (await res.json()) as {
-            openAttempt?: {
-              id: string;
-              answers: Record<string, unknown>;
-              scorePercent?: number | null;
-              savedAtIso: string;
-            } | null;
-          };
-          server = json.openAttempt ?? null;
-          if (server?.scorePercent != null && Number.isFinite(server.scorePercent)) {
-            setLiveScorePercent(server.scorePercent);
-          }
-        }
-      }
-
-      const merged = mergeExamRestorePayload(test.id, draft, server);
-      if (!merged) return;
-
-      restoreExamState({
-        answers: merged.answers,
-        currentQuestionIndex: merged.currentQuestionIndex,
-        timeRemaining: merged.timeRemaining,
-      });
-      if (merged.attemptId) {
-        liveAttemptIdRef.current = merged.attemptId;
-        setLiveAttemptId(merged.attemptId);
-      }
-    })();
-  }, [fullAccess, isSubmitted, restoreExamState, test.id]);
+    if (!fullAccess || isSubmitted || test.id.startsWith('fallback-')) return;
+    clearExamDraft(test.id);
+    window.sessionStorage.removeItem(`exam:start:${test.id}`);
+    window.sessionStorage.removeItem(`exam:serverStart:${test.id}`);
+  }, [fullAccess, isSubmitted, test.id]);
 
   const sectionMode = examSections.length > 0 && fullAccess;
   const questionsBySection = useMemo(

@@ -32,21 +32,16 @@ import { fetchElevateXAttemptStatus } from '@/lib/placement/elevatex-attempt';
 import {
   buildPlacementSession,
   clearPlacementDrafts,
-  loadActivePlacementSession,
-  loadSessionByHallTicket,
   getPlacementCompletedAttemptId,
   saveCandidateDraft,
-  loadPlacementProctorSessionId,
   savePlacementProctorSessionId,
   saveSession,
-  syncSessionTimer,
 } from '@/lib/placement/session';
 
 export default function PlacementAssessmentStartPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<StudentElevateXProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [resumeAvailable, setResumeAvailable] = useState(false);
   const [starting, setStarting] = useState(false);
   const [priorAttempt, setPriorAttempt] = useState<{
     attemptId: string;
@@ -54,7 +49,6 @@ export default function PlacementAssessmentStartPage() {
     completedAt?: string | null;
   } | null>(null);
   const [showProctorGate, setShowProctorGate] = useState(false);
-  const [pendingResume, setPendingResume] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [technicalFormat, setTechnicalFormat] = useState<PlacementTechnicalFormat>('mcq');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -117,11 +111,9 @@ export default function PlacementAssessmentStartPage() {
           score: status.score,
           completedAt: status.completedAt,
         });
-        setResumeAvailable(false);
         clearPlacementDrafts(studentProfile.hallTicket);
       } else {
-        const existing = loadActivePlacementSession(studentProfile.hallTicket);
-        setResumeAvailable(Boolean(existing && !existing.submitted));
+        clearPlacementDrafts(studentProfile.hallTicket);
       }
     } catch (err) {
       console.error('[placement/assessment] loadStudent', err);
@@ -139,18 +131,9 @@ export default function PlacementAssessmentStartPage() {
     void loadStudent();
   }, [loadStudent]);
 
-  const continueToExam = (resumeExisting: boolean) => {
+  const continueToExam = () => {
     if (!profile) return;
-    if (resumeExisting) {
-      const existing = loadActivePlacementSession(profile.hallTicket);
-      if (existing && !existing.submitted) {
-        saveCandidateDraft(existing.candidate);
-        saveSession(syncSessionTimer(existing));
-        router.push('/placement/take');
-        return;
-      }
-    }
-
+    clearPlacementDrafts(profile.hallTicket);
     const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat });
     const session = buildPlacementSession(candidate);
     saveCandidateDraft(candidate);
@@ -158,8 +141,7 @@ export default function PlacementAssessmentStartPage() {
     router.push('/placement/take');
   };
 
-  const requireProctorThen = (resume: boolean) => {
-    setPendingResume(resume);
+  const requireProctorThen = () => {
     setShowProctorGate(true);
   };
 
@@ -169,8 +151,7 @@ export default function PlacementAssessmentStartPage() {
     const proctorId = createProctorSessionId(getElevateXTestId(), authUserId ?? undefined);
     savePlacementProctorSessionId(proctorId);
     setShowProctorGate(false);
-    continueToExam(pendingResume);
-    setPendingResume(false);
+    continueToExam();
   };
 
   const handleStart = () => {
@@ -183,27 +164,8 @@ export default function PlacementAssessmentStartPage() {
       return;
     }
 
-    const existing = loadActivePlacementSession(profile.hallTicket);
-    if (existing && !existing.submitted) {
-      const resume = window.confirm(
-        'A saved ElevateX session was found on this device.\n\nPress OK to resume where you left off.\nPress Cancel to choose another option.',
-      );
-      if (resume) {
-        if (!loadPlacementProctorSessionId()) {
-          requireProctorThen(true);
-          return;
-        }
-        continueToExam(true);
-        return;
-      }
-      const startFresh = window.confirm(
-        'Start a new attempt? Your saved progress on this device will be deleted.',
-      );
-      if (!startFresh) return;
-      clearPlacementDrafts(profile.hallTicket);
-    }
-
-    requireProctorThen(false);
+    clearPlacementDrafts(profile.hallTicket);
+    requireProctorThen();
   };
 
   if (loading) {
@@ -302,7 +264,10 @@ export default function PlacementAssessmentStartPage() {
               <strong>Proctoring</strong> — camera and tab monitoring (same as RMSET); violations may
               auto-submit your paper.
             </li>
-            <li>Do not refresh or leave the tab during the exam.</li>
+            <li>
+              <strong>No resume</strong> — if you leave, refresh, or close the tab, you cannot continue
+              this attempt. Finish in one sitting or submit before exiting.
+            </li>
             <li>
               On the last section, tap <strong>Mark as done</strong>, then confirm <strong>Submit test</strong>{' '}
               in the popup.
@@ -362,22 +327,6 @@ export default function PlacementAssessmentStartPage() {
               >
                 {starting ? 'Starting…' : 'Start ElevateX exam'}
               </Button>
-              {resumeAvailable ? (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const existing = loadActivePlacementSession(profile.hallTicket);
-                    if (!existing || existing.submitted) return;
-                    if (!loadPlacementProctorSessionId()) {
-                      requireProctorThen(true);
-                      return;
-                    }
-                    continueToExam(true);
-                  }}
-                >
-                  Resume saved session
-                </Button>
-              ) : null}
               <Button variant="ghost" asChild>
                 <Link href="/exams">Back to examinations</Link>
               </Button>

@@ -28,20 +28,14 @@ import { isSignupDisabled } from '@/lib/auth-features';
 import { defaultRedirectForRole } from '@/lib/roles';
 import { useAppRole } from '@/lib/use-app-role';
 import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
-import {
-  createProctorSessionId,
-  loadTestProctorSessionId,
-  mergeExamViolations,
-  saveTestProctorSessionId,
-} from '@/lib/exam-v2/proctoring';
-import { loadExamDraft } from '@/lib/exam-v2/autosave';
+import { createProctorSessionId, saveTestProctorSessionId } from '@/lib/exam-v2/proctoring';
+import { clearExamDraft } from '@/lib/exam-v2/autosave';
 import { RmsetExamIntro } from '@/components/rmset/rmset-exam-intro';
 import { isRmsetTestCategorySlug } from '@/lib/rmset/student-exam-intro';
 import { getAttemptIndexForUser } from '@/lib/local-test-attempts';
 import { sanitizeQuestionsForStudent } from '@/lib/questions/sanitize-for-student';
 import { testIdsMatch, type CompletedAttemptSummary } from '@/lib/test-attempts';
 import { getClientUser, isAwsClientMode } from '@/lib/client-auth';
-import { fetchWithAuth } from '@/lib/fetch-with-auth';
 
 /** `pending` = waiting on auth session; avoid starting the test until resolved. */
 type PracticeAccessState = 'pending' | 'guest' | 'full';
@@ -77,41 +71,6 @@ export default function TakeTestPage({
       setPracticeAccess('full');
     }
   }, []);
-
-  useEffect(() => {
-    if (practiceAccess !== 'full' || !testId) return;
-
-    void (async () => {
-      const storedProctor = loadTestProctorSessionId(testId);
-      const draft = loadExamDraft(testId);
-      if (!storedProctor || !draft) return;
-
-      const user = await getClientUser();
-      if (user) {
-        try {
-          const res = await fetchWithAuth(
-            `/api/student/test-attempts/open?testId=${encodeURIComponent(testId)}`,
-          );
-          if (res.ok) {
-            const json = (await res.json()) as {
-              openAttempt?: { answers?: Record<string, unknown> } | null;
-            };
-            const proctor = json.openAttempt?.answers?.__proctor as
-              | { violations?: Array<{ type: string; at: string }> }
-              | undefined;
-            if (proctor?.violations?.length) {
-              mergeExamViolations(storedProctor, proctor.violations);
-            }
-          }
-        } catch {
-          /* local sessionStorage violations still apply */
-        }
-      }
-
-      setProctorSessionId(storedProctor);
-      setTestStarted(true);
-    })();
-  }, [practiceAccess, testId]);
 
   useEffect(() => {
     const refreshAccess = async () => {
@@ -324,9 +283,10 @@ export default function TakeTestPage({
 
   const beginProctoredExam = () => {
     void getClientUser().then((user) => {
-      const existing = loadTestProctorSessionId(testId);
-      const sessionId =
-        existing ?? createProctorSessionId(testId, user?.id ?? undefined);
+      clearExamDraft(testId);
+      window.sessionStorage.removeItem(`exam:start:${testId}`);
+      window.sessionStorage.removeItem(`exam:serverStart:${testId}`);
+      const sessionId = createProctorSessionId(testId, user?.id ?? undefined);
       saveTestProctorSessionId(testId, sessionId);
       setProctorSessionId(sessionId);
       setTestStarted(true);

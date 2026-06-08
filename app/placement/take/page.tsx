@@ -23,14 +23,14 @@ import { ELEVATEX_SERVER_PROGRESS_INTERVAL_MS } from '@/lib/exam-v2/progress-int
 import {
   clearPlacementDrafts,
   clearPlacementProctorSessionId,
+  consumePlacementSessionHandoff,
   getPlacementCompletedAttemptId,
-  loadActivePlacementSession,
   loadCandidateDraft,
   loadPlacementProctorSessionId,
+  loadSession,
   deriveGlobalTimeLeftSec,
   markPlacementCompleted,
   saveScorecardForAttempt,
-  saveSession,
 } from '@/lib/placement/session';
 import { recordDashboardAttempt } from '@/lib/record-dashboard-attempt';
 import { fetchWithSession } from '@/lib/client-auth';
@@ -165,16 +165,17 @@ export default function PlacementTakePage() {
         return;
       }
 
-      const loaded = hallTicket ? loadActivePlacementSession(hallTicket) : null;
-      if (!loaded) {
+      const loaded = loadSession();
+      if (
+        !loaded ||
+        loaded.submitted ||
+        (hallTicket && loaded.candidate.hallTicket !== hallTicket)
+      ) {
         router.replace('/placement/assessment');
         return;
       }
-      if (loaded.submitted) {
-        setBlocked(true);
-        router.replace('/placement/assessment');
-        return;
-      }
+
+      consumePlacementSessionHandoff();
 
       if (deriveGlobalTimeLeftSec(loaded) <= 0) {
         setSession(loaded);
@@ -189,7 +190,6 @@ export default function PlacementTakePage() {
         return;
       }
 
-      saveSession(loaded);
       setSession(loaded);
       setHydrated(true);
       const storedProctor = loadPlacementProctorSessionId();
@@ -213,16 +213,6 @@ export default function PlacementTakePage() {
   useEffect(() => {
     proctorSessionIdRef.current = proctorSessionId;
   }, [proctorSessionId]);
-
-  // Autosave (every 5s) — uses ref so the latest answers are always persisted.
-  useEffect(() => {
-    if (!session) return;
-    const id = window.setInterval(() => {
-      const current = sessionRef.current;
-      if (current && !current.submitted) saveSession(current);
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [session]);
 
   // Report in-progress attempt so admin live leaderboard shows students writing.
   useEffect(() => {
@@ -434,7 +424,6 @@ export default function PlacementTakePage() {
         }
 
         const attemptId = submitRes.attemptId;
-        saveSession({ ...session, submitted: true });
         saveScorecardForAttempt(attemptId, { ...scorecard, attemptId });
         markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);
         clearPlacementDrafts(scorecard.candidate.hallTicket);
@@ -487,9 +476,7 @@ export default function PlacementTakePage() {
           );
         }
 
-        const next = { ...prev, globalTimeLeftSec: nextGlobal };
-        saveSession(next);
-        return next;
+        return { ...prev, globalTimeLeftSec: nextGlobal };
       });
     }, 1000);
     return () => window.clearInterval(id);
@@ -712,8 +699,8 @@ export default function PlacementTakePage() {
         <Card className="max-w-lg w-full p-6 shadow-md border-slate-200 text-center">
           <h1 className="text-xl font-bold text-slate-900 mb-2">{PLACEMENT_EXAM_NAME}</h1>
           <p className="text-sm text-slate-600 mb-4">
-            Proctoring is enabled from the start page. Return there to grant camera access once, then
-            resume your exam.
+            Proctoring is enabled from the start page. Return there to grant camera access and start
+            your exam.
           </p>
           <Button type="button" onClick={() => router.replace('/placement/assessment')}>
             Return to start page
@@ -946,11 +933,8 @@ export default function PlacementTakePage() {
           </Card>
 
           <p className="text-[11px] text-slate-500 text-center">
-            Need to leave?{' '}
-            <Link href="/placement" className="underline">
-              Your progress is auto-saved
-            </Link>{' '}
-            — you can return and resume on this device.
+            Do not leave or refresh this page — your attempt cannot be resumed. Submit when you are
+            finished.
           </p>
         </section>
       </main>

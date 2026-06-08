@@ -275,17 +275,24 @@ export function syncSessionTimer(session: PlacementSession): PlacementSession {
   return { ...session, globalTimeLeftSec: deriveGlobalTimeLeftSec(session) };
 }
 
+/** Handoff from start page → take page only (not a durable resume draft). */
 export function saveSession(session: PlacementSession): void {
   if (typeof window === 'undefined') return;
   const synced = syncSessionTimer(session);
   try {
     window.sessionStorage.setItem(PLACEMENT_DRAFT_SESSION_KEY, JSON.stringify(synced));
-    window.localStorage.setItem(
-      `${PLACEMENT_DRAFT_SESSION_KEY}:${synced.candidate.hallTicket}`,
-      JSON.stringify(synced),
-    );
   } catch {
     // quota / private browsing — best effort
+  }
+}
+
+/** Remove in-flight exam handoff so refresh/back cannot resume the paper. */
+export function consumePlacementSessionHandoff(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(PLACEMENT_DRAFT_SESSION_KEY);
+  } catch {
+    // ignore
   }
 }
 
@@ -314,20 +321,18 @@ export function loadSessionByHallTicket(hallTicket: string): PlacementSession | 
   );
 }
 
-/** Prefer durable localStorage draft, then sessionStorage — keeps timer + answers on refresh. */
+/** @deprecated Exams no longer support resume — use {@link loadSession} for one-time handoff only. */
 export function loadActivePlacementSession(hallTicket: string): PlacementSession | null {
   if (!hallTicket) return null;
-  const fromLocal = loadSessionByHallTicket(hallTicket);
   const fromSession = loadSession();
-  const picked =
-    fromLocal && !fromLocal.submitted && fromLocal.candidate.hallTicket === hallTicket
-      ? fromLocal
-      : fromSession &&
-          !fromSession.submitted &&
-          fromSession.candidate.hallTicket === hallTicket
-        ? fromSession
-        : null;
-  return picked ? syncSessionTimer(picked) : null;
+  if (
+    !fromSession ||
+    fromSession.submitted ||
+    fromSession.candidate.hallTicket !== hallTicket
+  ) {
+    return null;
+  }
+  return syncSessionTimer(fromSession);
 }
 
 export function clearPlacementDrafts(hallTicket?: string): void {
