@@ -62,6 +62,8 @@ function submitErrorResponse(error: unknown, testId = ''): NextResponse {
       error:
         'Your submission could not be saved on the server. Check your connection and submit again.',
       code: 'submit_persist_failed',
+      retryable: true,
+      detail: process.env.NODE_ENV === 'development' ? message : undefined,
     },
     { status: 503 },
   );
@@ -211,7 +213,7 @@ export async function POST(request: Request) {
       }
 
       if (accessRollNumber) {
-        await syncStudentRollNumberPrisma(userId, accessRollNumber);
+        void syncStudentRollNumberPrisma(userId, accessRollNumber).catch(() => undefined);
       }
 
       if (isElevateXTestId(testId) && !attemptId) {

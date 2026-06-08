@@ -5,8 +5,8 @@ export async function fetchSubmitWithRetry(
   fetchFn: SubmitFetch,
   options?: { attempts?: number; baseDelayMs?: number },
 ): Promise<Response> {
-  const maxAttempts = Math.max(1, options?.attempts ?? 3);
-  const baseDelayMs = options?.baseDelayMs ?? 800;
+  const maxAttempts = Math.max(1, options?.attempts ?? 5);
+  const baseDelayMs = options?.baseDelayMs ?? 1000;
   let last: Response | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {

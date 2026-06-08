@@ -360,24 +360,65 @@ function buildProctorMetadata(input: FinalizeAttemptInput): Prisma.InputJsonValu
   } as Prisma.InputJsonValue;
 }
 
-/** Fast path: single-row update when autosave already created the attempt (no advisory lock). */
-async function finalizeOpenAttemptDirectPrisma(
+function clampScorePercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, roundScorePercent(value)));
+}
+
+function clampRawNetScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(99999999.99, Math.max(0, value));
+}
+
+function openAttemptWhereForTest(
+  userId: string,
+  testId: string,
+  resolvedTestId: string | null,
+): PrismaTypes.TestAttemptWhereInput {
+  const base: PrismaTypes.TestAttemptWhereInput = {
+    userId,
+    status: { in: [...OPEN_ATTEMPT_STATUSES] },
+    completedAt: null,
+  };
+  if (isElevateXTestId(testId)) {
+    return { ...base, ...elevateXTitleWhere() };
+  }
+  if (resolvedTestId) {
+    return { ...base, testId: resolvedTestId };
+  }
+  return base;
+}
+
+async function findOpenCandidateForFinalize(
+  userId: string,
+  testId: string,
+  resolvedTestId: string | null,
+  attemptId?: string,
+) {
+  const id = attemptId?.trim();
+  if (id) {
+    const byId = await prisma.testAttempt.findFirst({
+      where: {
+        id,
+        userId,
+        status: { in: [...OPEN_ATTEMPT_STATUSES] },
+        completedAt: null,
+      },
+    });
+    if (byId) return byId;
+  }
+  return prisma.testAttempt.findFirst({
+    where: openAttemptWhereForTest(userId, testId, resolvedTestId),
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+async function completeOpenAttemptRow(
   input: FinalizeAttemptInput,
   resolvedTestId: string | null,
-): Promise<{ id: string; elapsedSec: number } | null> {
-  const attemptId = input.attemptId?.trim();
-  if (!attemptId) return null;
-
-  const candidate = await prisma.testAttempt.findFirst({
-    where: {
-      id: attemptId,
-      userId: input.userId,
-      status: { in: [...OPEN_ATTEMPT_STATUSES] },
-      completedAt: null,
-    },
-  });
-  if (!candidate) return null;
-
+  candidate: { id: string; startedAt: Date | null },
+  answers: Record<string, unknown>,
+): Promise<{ id: string; elapsedSec: number }> {
   const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
     ? {
         userId: input.userId,
@@ -385,11 +426,17 @@ async function finalizeOpenAttemptDirectPrisma(
         id: { not: candidate.id },
         ...elevateXTitleWhere(),
       }
-    : {
-        userId: input.userId,
-        testId: resolvedTestId,
-        status: { in: ['completed', 'submitted'] },
-      };
+    : resolvedTestId
+      ? {
+          userId: input.userId,
+          testId: resolvedTestId,
+          status: { in: ['completed', 'submitted'] },
+        }
+      : {
+          userId: input.userId,
+          status: { in: ['completed', 'submitted'] },
+          id: { not: candidate.id },
+        };
   const prior = await prisma.testAttempt.findFirst({
     where: priorWhere,
     orderBy: { completedAt: 'desc' },
@@ -407,6 +454,8 @@ async function finalizeOpenAttemptDirectPrisma(
     startedAt,
     now,
   });
+  const scorePercent = clampScorePercent(input.scorePercent);
+  const rawNetScore = clampRawNetScore(input.rawNetScore);
   const proctorMetadata = buildProctorMetadata(input);
 
   const updated = await prisma.testAttempt.update({
@@ -417,10 +466,10 @@ async function finalizeOpenAttemptDirectPrisma(
       startedAt,
       completedAt: now,
       status: 'completed',
-      score: input.scorePercent,
-      percentageScore: input.scorePercent,
-      totalScore: input.rawNetScore,
-      answers: input.answers as Prisma.InputJsonValue,
+      score: scorePercent,
+      percentageScore: scorePercent,
+      totalScore: rawNetScore,
+      answers: answers as Prisma.InputJsonValue,
       timeTaken: elapsedForPersist,
       proctorMetadata,
     },
@@ -444,6 +493,129 @@ async function finalizeOpenAttemptDirectPrisma(
   return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedForPersist };
 }
 
+/** Fast path: single-row update when autosave already created the attempt (no advisory lock). */
+async function finalizeOpenAttemptDirectPrisma(
+  input: FinalizeAttemptInput,
+  resolvedTestId: string | null,
+): Promise<{ id: string; elapsedSec: number } | null> {
+  const candidate = await findOpenCandidateForFinalize(
+    input.userId,
+    input.testId,
+    resolvedTestId,
+    input.attemptId,
+  );
+  if (!candidate) return null;
+
+  try {
+    return await completeOpenAttemptRow(input, resolvedTestId, candidate, input.answers);
+  } catch (error) {
+    if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
+      throw error;
+    }
+    const minimal = {
+      __submit_recovery: true,
+      scorePercent: clampScorePercent(input.scorePercent),
+    };
+    return completeOpenAttemptRow(input, resolvedTestId, candidate, minimal);
+  }
+}
+
+/** Last resort — score + status only so students are not stuck after RDS timeouts. */
+async function finalizeEmergencySubmitPrisma(
+  input: FinalizeAttemptInput,
+  resolvedTestId: string | null,
+): Promise<{ id: string; elapsedSec: number }> {
+  const now = new Date(input.submittedAtIso);
+  const title = input.testName?.trim() || 'Practice test';
+  const scorePercent = clampScorePercent(input.scorePercent);
+  const rawNetScore = clampRawNetScore(input.rawNetScore);
+  const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
+  const elapsedForPersist = resolveElapsedForFinalize({
+    clientElapsedSec: input.clientElapsedSec,
+    durationSec,
+    startedAt: now,
+    now,
+  });
+  const minimalAnswers = {
+    __emergency_submit: true,
+    scorePercent,
+    at: input.submittedAtIso,
+  };
+  const proctorMetadata = buildProctorMetadata(input);
+
+  const attemptId = input.attemptId?.trim();
+  if (attemptId) {
+    const row = await prisma.testAttempt.findFirst({
+      where: { id: attemptId, userId: input.userId },
+      select: { id: true },
+    });
+    if (row) {
+      const updated = await prisma.testAttempt.update({
+        where: { id: row.id },
+        data: {
+          testId: resolvedTestId,
+          testTitle: title,
+          completedAt: now,
+          status: 'completed',
+          score: scorePercent,
+          percentageScore: scorePercent,
+          totalScore: rawNetScore,
+          answers: minimalAnswers as Prisma.InputJsonValue,
+          timeTaken: elapsedForPersist,
+          proctorMetadata,
+        },
+        select: { id: true, timeTaken: true },
+      });
+      return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedForPersist };
+    }
+  }
+
+  const open = await findOpenCandidateForFinalize(
+    input.userId,
+    input.testId,
+    resolvedTestId,
+    input.attemptId,
+  );
+  if (open) {
+    const updated = await prisma.testAttempt.update({
+      where: { id: open.id },
+      data: {
+        testId: resolvedTestId,
+        testTitle: title,
+        completedAt: now,
+        status: 'completed',
+        score: scorePercent,
+        percentageScore: scorePercent,
+        totalScore: rawNetScore,
+        answers: minimalAnswers as Prisma.InputJsonValue,
+        timeTaken: elapsedForPersist,
+        proctorMetadata,
+      },
+      select: { id: true, timeTaken: true },
+    });
+    return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedForPersist };
+  }
+
+  const created = await prisma.testAttempt.create({
+    data: {
+      userId: input.userId,
+      testId: resolvedTestId,
+      testTitle: title,
+      startedAt: now,
+      completedAt: now,
+      status: 'completed',
+      score: scorePercent,
+      percentageScore: scorePercent,
+      totalScore: rawNetScore,
+      answers: minimalAnswers as Prisma.InputJsonValue,
+      timeTaken: elapsedForPersist,
+      proctorMetadata,
+    },
+    select: { id: true, timeTaken: true },
+  });
+  return { id: created.id, elapsedSec: created.timeTaken ?? elapsedForPersist };
+}
+
 export async function finalizeTestAttemptPrisma(
   input: FinalizeAttemptInput,
 ): Promise<{ id: string; elapsedSec: number }> {
@@ -454,37 +626,37 @@ export async function finalizeTestAttemptPrisma(
   const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
   const proctorMetadata = buildProctorMetadata(input);
 
-  if (input.attemptId?.trim()) {
-    try {
-      const fast = await withPrismaRetry(
-        () => finalizeOpenAttemptDirectPrisma(input, resolvedTestId),
-        3,
-      );
-      if (fast) return fast;
-    } catch (error) {
-      if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
-        throw error;
-      }
+  try {
+    const fast = await withPrismaRetry(
+      () => finalizeOpenAttemptDirectPrisma(input, resolvedTestId),
+      3,
+    );
+    if (fast) return fast;
+  } catch (error) {
+    if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
+      throw error;
     }
   }
 
-  const lockKey = `${input.userId}:${resolvedTestId || input.testId}`;
   const runFinalize = async () =>
     prisma.$transaction(
       async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
-
       const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
         ? {
             userId: input.userId,
             status: { in: ['completed', 'submitted'] },
             ...elevateXTitleWhere(),
           }
-        : {
-            userId: input.userId,
-            testId: resolvedTestId,
-            status: { in: ['completed', 'submitted'] },
-          };
+        : resolvedTestId
+          ? {
+              userId: input.userId,
+              testId: resolvedTestId,
+              status: { in: ['completed', 'submitted'] },
+            }
+          : {
+              userId: input.userId,
+              status: { in: ['completed', 'submitted'] },
+            };
 
       const prior = await tx.testAttempt.findFirst({
         where: priorWhere,
@@ -511,25 +683,14 @@ export async function finalizeTestAttemptPrisma(
         throw new AttemptConflictError(candidate.id);
       }
       if (!candidate) {
-        const openWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
-          ? {
-              userId: input.userId,
-              status: { in: [...OPEN_ATTEMPT_STATUSES] },
-              completedAt: null,
-              ...elevateXTitleWhere(),
-            }
-          : {
-              userId: input.userId,
-              testId: resolvedTestId,
-              status: { in: [...OPEN_ATTEMPT_STATUSES] },
-              completedAt: null,
-            };
         candidate = await tx.testAttempt.findFirst({
-          where: openWhere,
+          where: openAttemptWhereForTest(input.userId, input.testId, resolvedTestId),
           orderBy: { createdAt: 'desc' },
         });
       }
 
+      const scorePercent = clampScorePercent(input.scorePercent);
+      const rawNetScore = clampRawNetScore(input.rawNetScore);
       const startedAt = candidate?.startedAt ?? now;
       const elapsedForPersist = resolveElapsedForFinalize({
         clientElapsedSec: input.clientElapsedSec,
@@ -547,9 +708,9 @@ export async function finalizeTestAttemptPrisma(
             startedAt,
             completedAt: now,
             status: 'completed',
-            score: input.scorePercent,
-            percentageScore: input.scorePercent,
-            totalScore: input.rawNetScore,
+            score: scorePercent,
+            percentageScore: scorePercent,
+            totalScore: rawNetScore,
             answers: input.answers as Prisma.InputJsonValue,
             timeTaken: elapsedForPersist,
             proctorMetadata,
@@ -570,9 +731,9 @@ export async function finalizeTestAttemptPrisma(
           startedAt: now,
           completedAt: now,
           status: 'completed',
-          score: input.scorePercent,
-          percentageScore: input.scorePercent,
-          totalScore: input.rawNetScore,
+          score: scorePercent,
+          percentageScore: scorePercent,
+          totalScore: rawNetScore,
           answers: input.answers as Prisma.InputJsonValue,
           timeTaken: elapsedForPersist,
           proctorMetadata,
@@ -584,11 +745,11 @@ export async function finalizeTestAttemptPrisma(
       }
       return { id: created.id, elapsedSec: created.timeTaken ?? elapsedForPersist };
     },
-      { maxWait: 10_000, timeout: 25_000 },
+      { maxWait: 5_000, timeout: 15_000 },
     );
 
   try {
-    return await withPrismaRetry(runFinalize, 3);
+    return await withPrismaRetry(runFinalize, 2);
   } catch (error) {
     if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
       throw error;
@@ -606,7 +767,17 @@ export async function finalizeTestAttemptPrisma(
       });
       if (latest) throw new AttemptConflictError(latest.id);
     }
-    throw error;
+    console.warn('[finalizeTestAttempt] transaction failed, emergency submit:', msg);
+    try {
+      return await withPrismaRetry(
+        () => finalizeEmergencySubmitPrisma(input, resolvedTestId),
+        2,
+      );
+    } catch (emergencyErr) {
+      const emergencyMsg = emergencyErr instanceof Error ? emergencyErr.message : String(emergencyErr);
+      console.error('[finalizeTestAttempt] emergency submit failed:', emergencyMsg);
+      throw error;
+    }
   }
 }
 
@@ -988,12 +1159,7 @@ export async function findOpenAttemptForTestPrisma(
 ): Promise<OpenAttemptForTest | null> {
   const resolvedTestId = await resolveTestIdForInsertPrisma(testId);
   const row = await prisma.testAttempt.findFirst({
-    where: {
-      userId,
-      testId: resolvedTestId,
-      status: { in: ['in_progress', 'started', 'active'] },
-      completedAt: null,
-    },
+    where: openAttemptWhereForTest(userId, testId, resolvedTestId),
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
