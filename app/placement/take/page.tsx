@@ -386,13 +386,18 @@ export default function PlacementTakePage() {
               }
             : undefined);
 
+        const elapsedForSubmit = Math.min(
+          PLACEMENT_TOTAL_SEC,
+          Math.max(0, PLACEMENT_TOTAL_SEC - deriveGlobalTimeLeftSec(session)),
+        );
+
         const submitRes = await recordDashboardAttempt({
           testId: elevateXTestId,
           testName,
           attemptId: liveAttemptIdRef.current || undefined,
           scorePercent: scorecard.percentage,
           rawNetScore: scorecard.earnedMarks,
-          elapsedSec: scorecard.totalElapsedSec,
+          elapsedSec: elapsedForSubmit,
           examKind: 'practice',
           accessBranch: dept?.name ?? scorecard.candidate.departmentId,
           accessYear: '',

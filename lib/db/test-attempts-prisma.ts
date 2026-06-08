@@ -42,6 +42,29 @@ export class AttemptDeadlineError extends Error {
   }
 }
 
+const OPEN_ATTEMPT_STATUSES = ['in_progress', 'started', 'active'] as const;
+
+export function isTransientPrismaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /timeout|timed out|ECONNRESET|ECONNREFUSED|too many clients|connection|P1001|P1008|P1017|P2024|Can't reach database/i.test(
+    msg,
+  );
+}
+
+export async function withPrismaRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (!isTransientPrismaError(err) || attempt >= retries) throw err;
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    }
+  }
+  throw last;
+}
+
 /** Close stray autosave rows after a student has submitted ElevateX. */
 export async function reconcileElevateXStaleInProgressPrisma(): Promise<number> {
   const completed = await prisma.testAttempt.findMany({
@@ -280,6 +303,8 @@ export async function finalizeTestAttemptPrisma(input: {
   answers: Record<string, unknown>;
   submittedAtIso: string;
   attemptId?: string;
+  /** Browser-reported elapsed seconds — used when DB startedAt is stale (rescheduled exams). */
+  clientElapsedSec?: number;
   durationSec?: number;
   proctorSessionId?: string;
   proctorViolations?: number;
@@ -303,8 +328,8 @@ export async function finalizeTestAttemptPrisma(input: {
       : undefined;
 
   const lockKey = `${input.userId}:${resolvedTestId || input.testId}`;
-  try {
-    return await prisma.$transaction(
+  const runFinalize = async () =>
+    prisma.$transaction(
       async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
@@ -348,13 +373,15 @@ export async function finalizeTestAttemptPrisma(input: {
         const openWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
           ? {
               userId: input.userId,
-              status: 'in_progress',
+              status: { in: [...OPEN_ATTEMPT_STATUSES] },
+              completedAt: null,
               ...elevateXTitleWhere(),
             }
           : {
               userId: input.userId,
               testId: resolvedTestId,
-              status: 'in_progress',
+              status: { in: [...OPEN_ATTEMPT_STATUSES] },
+              completedAt: null,
             };
         candidate = await tx.testAttempt.findFirst({
           where: openWhere,
@@ -364,10 +391,30 @@ export async function finalizeTestAttemptPrisma(input: {
 
       const startedAt = candidate?.startedAt ?? now;
       const startedMs = startedAt.getTime();
-      const elapsedSec = Math.max(0, Math.floor((now.getTime() - startedMs) / 1000));
-      const submitGraceSec = 60;
-      if (durationSec > 0 && elapsedSec > durationSec + submitGraceSec) {
-        throw new AttemptDeadlineError();
+      const serverElapsedSec = Math.max(0, Math.floor((now.getTime() - startedMs) / 1000));
+      const clientElapsedSec =
+        input.clientElapsedSec != null && Number.isFinite(input.clientElapsedSec)
+          ? Math.max(0, Math.floor(input.clientElapsedSec))
+          : null;
+      // Prefer browser timer on final submit (startedAt may be stale after reschedule or failed autosave).
+      let elapsedForPersist =
+        clientElapsedSec != null && clientElapsedSec > 0 ? clientElapsedSec : serverElapsedSec;
+      const submitGraceSec = 10 * 60;
+      if (durationSec > 0) {
+        const deadlineLimit = durationSec + submitGraceSec;
+        if (elapsedForPersist > deadlineLimit) {
+          if (
+            clientElapsedSec != null &&
+            clientElapsedSec > 0 &&
+            clientElapsedSec <= deadlineLimit
+          ) {
+            elapsedForPersist = clientElapsedSec;
+          } else if (clientElapsedSec != null && clientElapsedSec > 0) {
+            elapsedForPersist = Math.min(elapsedForPersist, deadlineLimit);
+          } else {
+            throw new AttemptDeadlineError();
+          }
+        }
       }
 
       if (candidate) {
@@ -383,7 +430,7 @@ export async function finalizeTestAttemptPrisma(input: {
             percentageScore: input.scorePercent,
             totalScore: input.rawNetScore,
             answers: input.answers as Prisma.InputJsonValue,
-            timeTaken: elapsedSec,
+            timeTaken: elapsedForPersist,
             proctorMetadata: proctorMetadata as Prisma.InputJsonValue | undefined,
           },
           select: { id: true, timeTaken: true },
@@ -391,7 +438,7 @@ export async function finalizeTestAttemptPrisma(input: {
         if (isElevateXTestId(input.testId)) {
           await abandonOtherElevateXInProgress(tx, input.userId, updated.id, now);
         }
-        return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedSec };
+        return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedForPersist };
       }
 
       const created = await tx.testAttempt.create({
@@ -406,7 +453,7 @@ export async function finalizeTestAttemptPrisma(input: {
           percentageScore: input.scorePercent,
           totalScore: input.rawNetScore,
           answers: input.answers as Prisma.InputJsonValue,
-          timeTaken: elapsedSec,
+          timeTaken: elapsedForPersist,
           proctorMetadata: proctorMetadata as Prisma.InputJsonValue | undefined,
         },
         select: { id: true, timeTaken: true },
@@ -414,10 +461,13 @@ export async function finalizeTestAttemptPrisma(input: {
       if (isElevateXTestId(input.testId)) {
         await abandonOtherElevateXInProgress(tx, input.userId, created.id, now);
       }
-      return { id: created.id, elapsedSec: created.timeTaken ?? elapsedSec };
+      return { id: created.id, elapsedSec: created.timeTaken ?? elapsedForPersist };
     },
-      { maxWait: 10_000, timeout: 30_000 },
+      { maxWait: 15_000, timeout: 45_000 },
     );
+
+  try {
+    return await withPrismaRetry(runFinalize, 2);
   } catch (error) {
     if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
       throw error;
@@ -437,6 +487,57 @@ export async function finalizeTestAttemptPrisma(input: {
     }
     throw error;
   }
+}
+
+/** Single-row heartbeat update when the client already has an open attempt id. */
+export async function patchOpenAttemptProgressPrisma(input: {
+  userId: string;
+  attemptId: string;
+  testName: string;
+  scorePercent: number;
+  elapsedSec: number;
+  answers: Record<string, unknown>;
+  proctorSessionId?: string;
+  proctorViolationCount?: number;
+}): Promise<{ id: string; startedAtIso: string } | null> {
+  const attemptId = input.attemptId.trim();
+  if (!attemptId) return null;
+
+  const row = await prisma.testAttempt.findFirst({
+    where: {
+      id: attemptId,
+      userId: input.userId,
+      status: { in: [...OPEN_ATTEMPT_STATUSES] },
+      completedAt: null,
+    },
+    select: { id: true, startedAt: true },
+  });
+  if (!row) return null;
+
+  const proctorMeta =
+    input.proctorSessionId || input.proctorViolationCount
+      ? {
+          proctor_session_id: input.proctorSessionId ?? null,
+          proctor_violations: input.proctorViolationCount ?? 0,
+        }
+      : undefined;
+
+  await prisma.testAttempt.update({
+    where: { id: row.id },
+    data: {
+      testTitle: input.testName,
+      percentageScore: input.scorePercent,
+      score: input.scorePercent,
+      answers: input.answers as Prisma.InputJsonValue,
+      timeTaken: input.elapsedSec,
+      proctorMetadata: proctorMeta as Prisma.InputJsonValue | undefined,
+    },
+  });
+
+  return {
+    id: row.id,
+    startedAtIso: row.startedAt?.toISOString() ?? new Date().toISOString(),
+  };
 }
 
 export async function upsertExamProgressPrisma(input: {
@@ -520,7 +621,11 @@ export async function upsertExamProgressPrisma(input: {
 
   if (input.attemptId) {
     const updated = await prisma.testAttempt.updateMany({
-      where: { id: input.attemptId, userId: input.userId, status: 'in_progress' },
+      where: {
+        id: input.attemptId,
+        userId: input.userId,
+        status: { in: [...OPEN_ATTEMPT_STATUSES] },
+      },
       data: patch,
     });
     if (updated.count > 0) {

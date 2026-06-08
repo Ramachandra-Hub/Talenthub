@@ -260,3 +260,115 @@ export async function assertStudentCanReportProgressPrisma(
 
   return strict;
 }
+
+export type SubmitAccessOpts = {
+  attemptId?: string;
+  /** Browser-reported seconds spent in the exam — used when autosave never created a DB row. */
+  clientElapsedSec?: number;
+  durationSec?: number;
+};
+
+/** Final submit — allow finishing an in-flight attempt even after the live window closes. */
+export async function assertStudentCanSubmitAttemptPrisma(
+  userId: string,
+  testId: string,
+  profile: { branch: string | null; academic_year: string | null; roll_number?: string | null },
+  opts: SubmitAccessOpts = {},
+): Promise<ExamAccessResult> {
+  const clientElapsedSec = Math.max(0, Math.floor(Number(opts.clientElapsedSec) || 0));
+  const durationSec = Math.max(0, Math.floor(Number(opts.durationSec) || 0));
+  const submitFinishGraceSec = 10 * 60;
+
+  const findOpenAttempt = async (whereExtra?: { id?: string }) => {
+    const base = {
+      userId,
+      status: { in: ['in_progress', 'started', 'active'] as const },
+      completedAt: null,
+      ...(whereExtra?.id ? { id: whereExtra.id } : {}),
+    };
+    return prisma.testAttempt.findFirst({
+      where: base,
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, testId: true, startedAt: true, createdAt: true },
+    });
+  };
+
+  if (isElevateXTestId(testId)) {
+    const elevatexWhere = {
+      userId,
+      status: { in: ['in_progress', 'started', 'active'] as const },
+      completedAt: null,
+      OR: [
+        { testTitle: { contains: 'ElevateX', mode: 'insensitive' as const } },
+        { testId: testId.trim() },
+      ],
+      ...(opts.attemptId?.trim() ? { id: opts.attemptId.trim() } : {}),
+    };
+    const open = await prisma.testAttempt.findFirst({
+      where: elevatexWhere,
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (open) return { allowed: true, schedule: null };
+
+    const maxSessionSec = Math.floor(ELEVATEX_MAX_SESSION_MS / 1000);
+    if (clientElapsedSec > 0 && clientElapsedSec <= maxSessionSec) {
+      return { allowed: true, schedule: null };
+    }
+
+    const windowOpen = await isElevateXExamWindowOpenPrisma();
+    if (windowOpen) return { allowed: true, schedule: null };
+
+    return {
+      allowed: false,
+      code: 'NOT_LIVE',
+      message: 'ElevateX is not live right now. Check your dashboard for the start time.',
+      schedule: null,
+    };
+  }
+
+  if (opts.attemptId?.trim()) {
+    const byId = await findOpenAttempt({ id: opts.attemptId.trim() });
+    if (byId?.testId && testIdsMatch(byId.testId, testId)) {
+      return { allowed: true, schedule: null };
+    }
+  }
+
+  const open = await findOpenAttempt();
+  if (open?.testId && testIdsMatch(open.testId, testId)) {
+    return { allowed: true, schedule: null };
+  }
+
+  if (
+    clientElapsedSec > 0 &&
+    durationSec > 0 &&
+    clientElapsedSec <= durationSec + submitFinishGraceSec
+  ) {
+    const schedules = await schedulesForTestPrisma(testId);
+    const now = Date.now();
+    const recentlyLive = schedules.some((s) => {
+      const endMs = s.ends_at ? new Date(s.ends_at).getTime() : NaN;
+      if (Number.isFinite(endMs) && now - endMs <= 30 * 60 * 1000) return true;
+      return isScheduleWindowOpen(s, now);
+    });
+    if (recentlyLive) {
+      return { allowed: true, schedule: schedules[0] ?? null };
+    }
+  }
+
+  const strict = await checkStudentExamAccessPrisma({
+    testId,
+    department: profile.branch ?? '',
+    year: profile.academic_year ?? '',
+    rollNumber: profile.roll_number ?? undefined,
+  });
+  if (strict.allowed) return strict;
+
+  if (open?.testId && testIdsMatch(open.testId, testId)) {
+    if (await inProgressWithinGrace(open.id, IN_PROGRESS_GRACE_MS)) {
+      return { allowed: true, schedule: strict.schedule ?? null };
+    }
+  }
+
+  return strict;
+}
