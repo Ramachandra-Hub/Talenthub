@@ -3,9 +3,12 @@ import type { PlacementScorecard } from '@/lib/placement/types';
 
 export async function fetchElevateXScorecardForAdmin(
   attemptId: string,
+  options?: { rollNumber?: string },
 ): Promise<{ scorecard: PlacementScorecard } | { error: string }> {
+  const roll = options?.rollNumber?.trim();
+  const qs = roll ? `?roll=${encodeURIComponent(roll)}` : '';
   const res = await fetchWithAuth(
-    `/api/admin/elevatex/scorecard/${encodeURIComponent(attemptId)}`,
+    `/api/admin/elevatex/scorecard/${encodeURIComponent(attemptId)}${qs}`,
     { cache: 'no-store' },
   );
   if (!res.ok) {

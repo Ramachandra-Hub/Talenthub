@@ -148,6 +148,7 @@ export async function attachElevateXScorecardToAttemptPrisma(
 /** Copy scorecard JSON onto a specific attempt row (admin repair). */
 export async function backfillElevateXScorecardToAttemptPrisma(
   targetAttemptId: string,
+  options?: { rollNumber?: string },
 ): Promise<
   | { ok: true; source: string; attemptId: string; userId: string }
   | { ok: false; error: string }
@@ -184,12 +185,15 @@ export async function backfillElevateXScorecardToAttemptPrisma(
     };
   }
 
-  const hit = await findElevateXScorecardForUserId(target.userId);
+  let hit = await findElevateXScorecardForUserId(target.userId);
+  if (!hit && options?.rollNumber) {
+    hit = await findElevateXScorecardByRoll(options.rollNumber);
+  }
   if (!hit) {
     return {
       ok: false,
       error:
-        'No scorecard found for this student in the database. They must open the exam, finish, and click Submit while online.',
+        'Section-wise scorecard is not stored yet. The student must finish and click Submit while online (or wait a minute and open Full report again).',
     };
   }
 

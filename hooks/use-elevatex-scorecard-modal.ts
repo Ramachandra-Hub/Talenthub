@@ -10,15 +10,20 @@ export type ElevateXScorecardModalTarget = {
   rollNumber?: string;
 };
 
-async function tryBackfillScorecard(attemptId: string): Promise<boolean> {
+async function tryBackfillScorecard(
+  attemptId: string,
+  rollNumber?: string,
+): Promise<boolean> {
   try {
     const res = await fetch('/api/admin/elevatex/backfill-scorecard', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attemptId }),
+      body: JSON.stringify({ attemptId, rollNumber: rollNumber?.trim() || undefined }),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean };
+    return json.ok === true;
   } catch {
     return false;
   }
@@ -43,16 +48,20 @@ export function useElevateXScorecardModal() {
     setLoadError(null);
     setLoading(true);
     try {
-      let result = await fetchElevateXScorecardForAdmin(next.attemptId);
+      let result = await fetchElevateXScorecardForAdmin(next.attemptId, {
+        rollNumber: next.rollNumber,
+      });
       if ('error' in result) {
-        const backfilled = await tryBackfillScorecard(next.attemptId);
+        const backfilled = await tryBackfillScorecard(next.attemptId, next.rollNumber);
         if (backfilled) {
-          result = await fetchElevateXScorecardForAdmin(next.attemptId);
+          result = await fetchElevateXScorecardForAdmin(next.attemptId, {
+            rollNumber: next.rollNumber,
+          });
         }
       }
       if ('error' in result) {
         setLoadError(
-          `${result.error} If the student submitted while online, click Full report again — the server will try to recover the scorecard automatically.`,
+          `${result.error} If they just submitted, wait a moment and click Full report again.`,
         );
         return;
       }

@@ -42,14 +42,14 @@ export async function GET(request: Request) {
   );
 }
 
-/** POST { attemptId } — copy scorecard from another row/stats onto this attempt. */
+/** POST { attemptId, rollNumber? } — copy scorecard from another row/stats onto this attempt. */
 export async function POST(request: Request) {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
-  let body: { attemptId?: string };
+  let body: { attemptId?: string; rollNumber?: string };
   try {
-    body = (await request.json()) as { attemptId?: string };
+    body = (await request.json()) as { attemptId?: string; rollNumber?: string };
   } catch {
     return NextResponse.json({ error: 'JSON body required' }, { status: 400 });
   }
@@ -59,12 +59,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'attemptId is required' }, { status: 400 });
   }
 
-  const result = await backfillElevateXScorecardToAttemptPrisma(attemptId);
+  const rollNumber = String(body.rollNumber ?? '').trim() || undefined;
+  const result = await backfillElevateXScorecardToAttemptPrisma(attemptId, { rollNumber });
   if (!result.ok) {
-    return NextResponse.json({ ok: false, error: result.error }, { status: 404 });
+    // 200 (not 404) — client treats this as "no scorecard to copy yet", not a missing route.
+    return NextResponse.json({ ok: false, error: result.error });
   }
 
-  const loaded = await fetchElevateXScorecardForAttemptPrisma(attemptId);
+  const loaded = await fetchElevateXScorecardForAttemptPrisma(attemptId, { rollNumber });
   return NextResponse.json({
     ...result,
     ok: true,

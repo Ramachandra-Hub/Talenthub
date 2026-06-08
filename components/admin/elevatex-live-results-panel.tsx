@@ -353,7 +353,12 @@ export function ElevateXLiveResultsPanel({
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs text-[#1e3a5f]"
-                        disabled={scorecardModal.loading}
+                        disabled={scorecardModal.loading || !row.has_full_scorecard}
+                        title={
+                          row.has_full_scorecard
+                            ? 'Open section-wise PDF report'
+                            : 'Available after the student submits while online'
+                        }
                         onClick={() => openReport(row)}
                       >
                         Full report
