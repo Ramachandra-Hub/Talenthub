@@ -1086,10 +1086,8 @@ export async function goLiveExamScheduleNow(
   const now = new Date(nowMs).toISOString();
   const openNow = options?.openWindowNow !== false;
 
-  let startsAtIso = String(row.starts_at ?? now);
-  if (openNow && scheduleStartMs(startsAtIso) > nowMs) {
-    startsAtIso = now;
-  }
+  // Reopen / go-live always starts the window now so the live dashboard picks it up.
+  const startsAtIso = openNow ? now : String(row.starts_at ?? now);
 
   const normalizedEnd = normalizeEndsAtForGoLive(startsAtIso, row.ends_at ?? null);
 

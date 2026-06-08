@@ -6,6 +6,14 @@ import { isFacultyExamLiveForStudent } from '@/lib/exam-schedule';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
 import { requireAuth } from '@/lib/server-auth';
+import {
+  parseElevateXTechnicalConfig,
+  resolveTechnicalFormatForDepartment,
+} from '@/lib/placement/elevatex-technical-config';
+import {
+  technicalSectionSummary,
+} from '@/lib/placement/config';
+import { placementDepartmentIdFromBranch } from '@/lib/placement/student-candidate';
 
 export async function GET() {
   const auth = await requireAuth(['student']);
@@ -27,6 +35,10 @@ export async function GET() {
   const department = profile.branch ?? auth.ctx.resolved.department;
   const year = profile.academic_year ?? auth.ctx.resolved.academicYear;
 
+  const placementDeptId = department
+    ? placementDepartmentIdFromBranch(department)
+    : '';
+
   if (!department || !year) {
     return NextResponse.json({
       exams: [],
@@ -47,12 +59,35 @@ export async function GET() {
   const { data: scheduleRows } = await admin.from('exam_schedules').select('*');
   const schedules = (scheduleRows ?? []) as ExamScheduleRow[];
 
-  const exams = (requests ?? []).filter((r) => {
+  const exams = (requests ?? [])
+    .filter((r) => {
     const years = (r.target_years as string[]) ?? [];
     if (!academicYearInList(year, years)) return false;
     if (!examMatchesDepartment(r, department)) return false;
     return isFacultyExamLiveForStudent(r.id as string, schedules, department, year);
-  });
+    })
+    .map((r) => {
+      // For ElevateX, admin stores per-department technical format in `topic` as a serialized
+      // config blob (`elevatex_cfg:{...}`). Students should see a readable summary, not raw JSON.
+      const topic = (r.topic as string | null) ?? null;
+      if (!topic) return r;
+      if (!topic.startsWith('elevatex_cfg:')) return r;
+
+      const adminFormats = parseElevateXTechnicalConfig(topic);
+      const resolvedFormat = placementDeptId
+        ? resolveTechnicalFormatForDepartment(placementDeptId, adminFormats)
+        : null;
+
+      const label =
+        resolvedFormat != null
+          ? technicalSectionSummary(resolvedFormat)
+          : technicalSectionSummary('mcq');
+
+      return {
+        ...r,
+        topic: label,
+      };
+    });
 
   return NextResponse.json({ exams, department, year });
 }

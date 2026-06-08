@@ -27,6 +27,39 @@ import {
 import { elevateXPartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
 import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
+import { syncExpiredLiveExamSchedulesPrisma } from '@/lib/exam-schedule-sync';
+
+/** Prisma filter matching {@link isLiveForDashboard} — no row cap so rescheduled exams are not dropped. */
+function examScheduleLiveWindowWhere(now: Date): Prisma.ExamScheduleWhereInput {
+  return {
+    AND: [
+      {
+        OR: [{ endsAt: null }, { endsAt: { gte: now } }],
+      },
+      {
+        OR: [{ startsAt: { lte: now } }, { startsAt: null }],
+      },
+      {
+        OR: [{ status: 'live' }, { status: { in: ['scheduled', 'draft'] } }],
+      },
+    ],
+  };
+}
+
+function evaloraModuleLiveWindowWhere(now: Date): Prisma.EvaloraModuleScheduleWhereInput {
+  return {
+    AND: [
+      { status: { not: 'ended' } },
+      {
+        OR: [{ endsAt: null }, { endsAt: { gte: now } }],
+      },
+      { startsAt: { lte: now } },
+      {
+        OR: [{ status: 'live' }, { status: 'scheduled' }],
+      },
+    ],
+  };
+}
 
 function mapSchedule(row: {
   id: string;
@@ -38,6 +71,7 @@ function mapSchedule(row: {
   targetDepartments: unknown;
   targetYears: unknown;
   slotNumber: number | null;
+  facultyExamRequestId?: string | null;
 }): ExamScheduleRow {
   const nowIso = new Date().toISOString();
   return {
@@ -45,7 +79,7 @@ function mapSchedule(row: {
     title: row.title ?? 'Exam',
     description: null,
     notice: null,
-    faculty_exam_request_id: null,
+    faculty_exam_request_id: row.facultyExamRequestId ?? null,
     test_id: row.testId ?? '',
     status: row.status === 'live' || row.status === 'ended' ? row.status : 'scheduled',
     starts_at: row.startsAt?.toISOString() ?? nowIso,
@@ -127,16 +161,17 @@ export async function ensureElevateXLiveScheduleFallback(
 
 export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> {
   const now = Date.now();
+  const nowDate = new Date(now);
+  await syncExpiredLiveExamSchedulesPrisma(now);
+
   const [rows, moduleRows] = await Promise.all([
     prisma.examSchedule.findMany({
-      where: { status: { not: 'ended' } },
-      orderBy: { startsAt: 'desc' },
-      take: 100,
+      where: examScheduleLiveWindowWhere(nowDate),
+      orderBy: [{ updatedAt: 'desc' }, { startsAt: 'desc' }],
     }),
     prisma.evaloraModuleSchedule.findMany({
-      where: { status: { not: 'ended' } },
-      orderBy: { startsAt: 'desc' },
-      take: 100,
+      where: evaloraModuleLiveWindowWhere(nowDate),
+      orderBy: [{ updatedAt: 'desc' }, { startsAt: 'desc' }],
     }),
   ]);
 

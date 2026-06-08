@@ -3,9 +3,11 @@ import { requireAuth } from '@/lib/server-auth';
 import {
   ensureStudentUserRowPrisma,
   findCompletedAttemptForTestPrisma,
+  patchOpenAttemptProgressPrisma,
   resolveStudentProfilePrisma,
   syncStudentRollNumberPrisma,
   upsertExamProgressPrisma,
+  withPrismaRetry,
 } from '@/lib/db/test-attempts-prisma';
 import { assertStudentCanReportProgressPrisma } from '@/lib/db/exam-access-prisma';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
@@ -21,7 +23,25 @@ import { sanitizeAnswersForPersist } from '@/lib/exam-v2/sanitize-answers';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
+function softProgressFailure(body: {
+  attemptId: string;
+  startedAtIso: string;
+  scorePercent: number;
+}) {
+  return NextResponse.json({
+    id: body.attemptId || null,
+    startedAtIso: body.startedAtIso,
+    scorePercent: body.scorePercent,
+    saved: false,
+    throttled: true,
+  });
+}
+
 export async function POST(request: Request) {
+  let attemptIdForFallback = '';
+  let startedAtFallback = new Date().toISOString();
+  let scorePercentFallback = 0;
+
   try {
     const auth = await requireAuth(['student'], request);
     if ('response' in auth) return auth.response;
@@ -42,16 +62,19 @@ export async function POST(request: Request) {
     }
 
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : '';
+    attemptIdForFallback = attemptId;
     const nowIso = new Date().toISOString();
     const startedAtIso =
       typeof body.startedAtIso === 'string' ? body.startedAtIso : nowIso;
+    startedAtFallback = startedAtIso;
+    scorePercentFallback = Number.isFinite(scorePercent) ? scorePercent : 0;
 
     const earlyThrottle = shouldPersistExamProgress(userId, testId, attemptId || undefined);
     if (!earlyThrottle.persist) {
       return NextResponse.json({
         id: earlyThrottle.attemptId ?? attemptId ?? null,
         startedAtIso: earlyThrottle.startedAtIso ?? startedAtIso,
-        scorePercent: earlyThrottle.scorePercent ?? (Number.isFinite(scorePercent) ? scorePercent : 0),
+        scorePercent: earlyThrottle.scorePercent ?? scorePercentFallback,
         throttled: true,
       });
     }
@@ -62,7 +85,7 @@ export async function POST(request: Request) {
         {
           id: attemptId || null,
           startedAtIso,
-          scorePercent: Number.isFinite(scorePercent) ? scorePercent : 0,
+          scorePercent: scorePercentFallback,
           throttled: true,
           retryAfterSec: burst.retryAfterSec,
         },
@@ -74,16 +97,48 @@ export async function POST(request: Request) {
     const elapsedSec = Number(body.elapsedSec) || 0;
     const answers =
       body.answers != null && typeof body.answers === 'object'
-        ? (body.answers as Record<string, unknown>)
+        ? sanitizeAnswersForPersist(body.answers as Record<string, unknown>)
         : {};
 
     if (!Number.isFinite(scorePercent)) {
       scorePercent = 0;
     }
+    scorePercentFallback = scorePercent;
 
     const proctorSessionId =
       typeof body.proctorSessionId === 'string' ? body.proctorSessionId.trim() : '';
     const proctorViolationCount = Number(body.proctorViolationCount) || 0;
+
+    // Fast path: one DB round-trip when the student already has an open attempt id.
+    if (attemptId) {
+      const fast = await withPrismaRetry(() =>
+        patchOpenAttemptProgressPrisma({
+          userId,
+          attemptId,
+          testName,
+          scorePercent,
+          elapsedSec,
+          answers,
+          proctorSessionId: proctorSessionId || undefined,
+          proctorViolationCount,
+        }),
+      );
+      if (fast) {
+        recordExamProgressWrite({
+          userId,
+          testId,
+          attemptId: fast.id,
+          startedAtIso: fast.startedAtIso,
+          scorePercent,
+        });
+        return NextResponse.json({
+          id: fast.id,
+          startedAtIso: fast.startedAtIso,
+          scorePercent,
+          saved: true,
+        });
+      }
+    }
 
     await ensureStudentUserRowPrisma({ id: userId, email: auth.ctx.user.email });
     const profile = await resolveStudentProfilePrisma(userId);
@@ -113,7 +168,7 @@ export async function POST(request: Request) {
     }
 
     if (accessRollNumber) {
-      await syncStudentRollNumberPrisma(userId, accessRollNumber);
+      void syncStudentRollNumberPrisma(userId, accessRollNumber).catch(() => {});
     }
 
     if (isElevateXTestId(testId)) {
@@ -148,18 +203,20 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await upsertExamProgressPrisma({
-      userId,
-      testId,
-      testName,
-      scorePercent,
-      elapsedSec,
-      answers: sanitizeAnswersForPersist(answers),
-      attemptId: attemptId || undefined,
-      startedAtIso,
-      proctorSessionId: proctorSessionId || undefined,
-      proctorViolationCount,
-    });
+    const result = await withPrismaRetry(() =>
+      upsertExamProgressPrisma({
+        userId,
+        testId,
+        testName,
+        scorePercent,
+        elapsedSec,
+        answers,
+        attemptId: attemptId || undefined,
+        startedAtIso,
+        proctorSessionId: proctorSessionId || undefined,
+        proctorViolationCount,
+      }),
+    );
 
     recordExamProgressWrite({
       userId,
@@ -173,17 +230,15 @@ export async function POST(request: Request) {
       id: result.id,
       startedAtIso: result.startedAtIso,
       scorePercent,
+      saved: true,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Progress save failed';
     console.error('[test-attempts/progress]', message, err);
-    return NextResponse.json(
-      {
-        error:
-          'Progress could not be saved on the server right now. Your answers are still saved locally.',
-        code: 'progress_persist_failed',
-      },
-      { status: 503 },
-    );
+    return softProgressFailure({
+      attemptId: attemptIdForFallback,
+      startedAtIso: startedAtFallback,
+      scorePercent: scorePercentFallback,
+    });
   }
 }

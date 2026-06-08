@@ -61,9 +61,7 @@ export function TestReportsDashboard() {
   const [examType, setExamType] = useState<AdminExamType>(initialType);
   const [selectedTestId, setSelectedTestId] = useState('all');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
-    todayOnly ? 'completed' : 'all',
-  );
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [payload, setPayload] = useState<TestReportsPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,7 +118,7 @@ export function TestReportsDashboard() {
   const openTodayElevateX = () => {
     router.replace('/admin/reports?type=elevatex&today=1', { scroll: false });
     setExamType('elevatex');
-    setStatusFilter('completed');
+    setStatusFilter('all');
   };
 
   const filteredRows = useMemo(() => {
@@ -160,6 +158,25 @@ export function TestReportsDashboard() {
       highest_score: scores.length > 0 ? roundScorePercent(Math.max(...scores)) : 0,
     };
   }, [filteredRows]);
+
+  const displaySummary = useMemo(() => {
+    if (!payload) return null;
+    const hasActiveFilter =
+      statusFilter !== 'all' || search.trim().length > 0 || selectedTestId !== 'all';
+    if (!hasActiveFilter) return payload.summary;
+    return (
+      filteredSummary ?? {
+        ...payload.summary,
+        total_attempts: 0,
+        in_progress_count: 0,
+        completed_count: 0,
+        unique_students: 0,
+        avg_score: 0,
+        pass_rate: 0,
+        highest_score: 0,
+      }
+    );
+  }, [payload, filteredSummary, statusFilter, search, selectedTestId]);
 
   const downloadPdf = () => {
     if (!payload || filteredRows.length === 0) return;
@@ -325,37 +342,37 @@ export function TestReportsDashboard() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <StatCard
               label="Attempts"
-              value={payload.summary.total_attempts}
+              value={displaySummary?.total_attempts ?? 0}
               accent="navy"
               onClick={() => openCard('total_attempts')}
             />
             <StatCard
               label="In progress"
-              value={payload.summary.in_progress_count}
+              value={displaySummary?.in_progress_count ?? 0}
               accent="amber"
               onClick={() => openCard('in_progress')}
             />
             <StatCard
               label="Completed"
-              value={payload.summary.completed_count}
+              value={displaySummary?.completed_count ?? 0}
               accent="cyan"
               onClick={() => openCard('completed')}
             />
             <StatCard
               label="Students"
-              value={payload.summary.unique_students}
+              value={displaySummary?.unique_students ?? 0}
               accent="blue"
               onClick={() => openCard('unique_students')}
             />
             <StatCard
               label="Avg (completed)"
-              value={formatScorePercentLabel(payload.summary.avg_score)}
+              value={formatScorePercentLabel(displaySummary?.avg_score ?? 0)}
               accent="emerald"
               onClick={() => openCard('avg_score')}
             />
             <StatCard
               label="Highest"
-              value={formatScorePercentLabel(payload.summary.highest_score)}
+              value={formatScorePercentLabel(displaySummary?.highest_score ?? 0)}
               accent="amber"
               onClick={() => openCard('highest_score')}
             />

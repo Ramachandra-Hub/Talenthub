@@ -69,6 +69,14 @@ export default function AdminTestsPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (counts.live === 0) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 20_000);
+    return () => window.clearInterval(id);
+  }, [counts.live]);
+
   const filteredTests = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return tests.filter((test) => {
@@ -181,13 +189,15 @@ export default function AdminTestsPage() {
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Status</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Schedule</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Departments</th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Attempted</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Writing</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Submitted</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Total</th>
               </tr>
             </thead>
             <tbody>
               {filteredTests.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-gray-500">
+                  <td colSpan={8} className="text-center py-10 text-gray-500">
                     No tests match the current filters.
                   </td>
                 </tr>
@@ -222,6 +232,12 @@ export default function AdminTestsPage() {
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-700 max-w-xs">
                       {test.departments.length > 0 ? test.departments.join(', ') : 'All departments'}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-amber-700">
+                      {test.status === 'live' ? test.students_writing : '—'}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-green-700">
+                      {test.completed_attempts}
                     </td>
                     <td className="py-3 px-4 text-sm text-right font-semibold text-[#1e3a5f]">
                       {test.students_attempted}

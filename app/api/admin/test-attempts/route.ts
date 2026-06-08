@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
 import {
   loadAdminStudentsPrisma,
   loadAllAttemptsRollupPrisma,
@@ -36,8 +35,19 @@ export async function GET() {
     };
   });
 
+  const tests = Array.from(rollup.testsById.entries())
+    .map(([id, name]) => ({
+      id,
+      name,
+      attempt_count: enriched.filter(
+        (a) => a.test_id && (a.test_id === id || String(a.test_id) === id),
+      ).length,
+    }))
+    .sort((a, b) => b.attempt_count - a.attempt_count || a.name.localeCompare(b.name));
+
   return NextResponse.json({
     attempts: enriched,
+    tests,
     warnings: [],
     total: enriched.length,
   });

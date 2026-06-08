@@ -169,6 +169,7 @@ function AdminTestDetailModalContent({
   const stats = displayPayload?.summary;
   const rows = displayPayload?.rows ?? [];
   const studentsAttempted = stats?.unique_students ?? test.students_attempted;
+  const studentsWriting = stats?.in_progress_count ?? test.students_writing ?? 0;
   const completedAttempts = stats?.completed_count ?? test.completed_attempts;
   const avgScore = stats?.avg_score ?? test.avg_score;
   const totalAttempts = stats?.total_attempts ?? test.total_attempts;
@@ -261,7 +262,13 @@ function AdminTestDetailModalContent({
         </DialogDescription>
       </DialogHeader>
 
-      <section className="grid sm:grid-cols-3 gap-3">
+      <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-amber-800">Writing now</p>
+          <p className="mt-1 text-2xl font-bold text-amber-900">
+            {reportLoading ? '…' : studentsWriting}
+          </p>
+        </div>
         <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-blue-700">Students attempted</p>
           <p className="mt-1 text-2xl font-bold text-blue-900">
@@ -269,7 +276,7 @@ function AdminTestDetailModalContent({
           </p>
         </div>
         <div className="rounded-lg border border-green-100 bg-green-50/60 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-green-700">Completed attempts</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-green-700">Completed</p>
           <p className="mt-1 text-2xl font-bold text-green-900">
             {reportLoading ? '…' : completedAttempts}
           </p>

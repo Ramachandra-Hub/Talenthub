@@ -6,13 +6,12 @@ import {
   type ExamScheduleRow,
 } from '@/lib/exam-schedule';
 import { syncExpiredLiveExamSchedules } from '@/lib/exam-schedule-sync';
+import { filterAttemptsForTest, type RollupAttempt } from '@/lib/admin/attempts-rollup';
 import {
-  filterAttemptsForTest,
-  loadAdminStudents,
-  loadAllAttemptsRollup,
-  type RollupAttempt,
-} from '@/lib/admin/attempts-rollup';
-import { isCompletedAttemptStatus } from '@/lib/attempt-status';
+  loadAdminStudentsPrisma,
+  loadAllAttemptsRollupPrisma,
+} from '@/lib/admin/attempts-rollup-prisma';
+import { isCompletedAttemptStatus, isInProgressStatus } from '@/lib/attempt-status';
 import {
   filterRollupAttemptsForSchedule,
   latestAttemptPerUser,
@@ -44,6 +43,8 @@ export type AdminTestOverviewItem = {
   slot_number: number | null;
   faculty_department: string | null;
   students_attempted: number;
+  /** Unique students with an in-progress attempt (live exams). */
+  students_writing: number;
   completed_attempts: number;
   total_attempts: number;
   departments_attempted: DepartmentAttemptStat[];
@@ -91,9 +92,15 @@ function attemptStatsFromAttempts(
   studentBranchByUserId: Map<string, string | null>,
 ): Pick<
   AdminTestOverviewItem,
-  'students_attempted' | 'completed_attempts' | 'total_attempts' | 'departments_attempted' | 'avg_score'
+  | 'students_attempted'
+  | 'students_writing'
+  | 'completed_attempts'
+  | 'total_attempts'
+  | 'departments_attempted'
+  | 'avg_score'
 > {
   const students = new Set<string>();
+  const writingStudents = new Set<string>();
   const deptStudentSets = new Map<string, Set<string>>();
   let completed = 0;
   let scoreSum = 0;
@@ -101,6 +108,12 @@ function attemptStatsFromAttempts(
 
   for (const attempt of related) {
     if (attempt.user_id) students.add(attempt.user_id);
+    if (
+      isInProgressStatus(attempt.status) &&
+      !isCompletedAttemptStatus(attempt.status, attempt.completed_at)
+    ) {
+      writingStudents.add(attempt.user_id);
+    }
     if (isCompletedAttemptStatus(attempt.status, attempt.completed_at)) {
       completed += 1;
       scoreSum += attempt.score;
@@ -120,6 +133,7 @@ function attemptStatsFromAttempts(
 
   return {
     students_attempted: students.size,
+    students_writing: writingStudents.size,
     completed_attempts: completed,
     total_attempts: related.length,
     departments_attempted,
@@ -133,11 +147,17 @@ function attemptStatsForTest(
   studentBranchByUserId: Map<string, string | null>,
 ): Pick<
   AdminTestOverviewItem,
-  'students_attempted' | 'completed_attempts' | 'total_attempts' | 'departments_attempted' | 'avg_score'
+  | 'students_attempted'
+  | 'students_writing'
+  | 'completed_attempts'
+  | 'total_attempts'
+  | 'departments_attempted'
+  | 'avg_score'
 > {
   if (!testId) {
     return {
       students_attempted: 0,
+      students_writing: 0,
       completed_attempts: 0,
       total_attempts: 0,
       departments_attempted: [],
@@ -155,11 +175,17 @@ function attemptStatsForScheduleWindow(
   studentBranchByUserId: Map<string, string | null>,
 ): Pick<
   AdminTestOverviewItem,
-  'students_attempted' | 'completed_attempts' | 'total_attempts' | 'departments_attempted' | 'avg_score'
+  | 'students_attempted'
+  | 'students_writing'
+  | 'completed_attempts'
+  | 'total_attempts'
+  | 'departments_attempted'
+  | 'avg_score'
 > {
   if (!testId) {
     return {
       students_attempted: 0,
+      students_writing: 0,
       completed_attempts: 0,
       total_attempts: 0,
       departments_attempted: [],
@@ -195,8 +221,8 @@ export async function loadAdminTestsOverview(
   const items: AdminTestOverviewItem[] = [];
 
   const [{ attempts }, students] = await Promise.all([
-    loadAllAttemptsRollup(admin),
-    loadAdminStudents(admin),
+    loadAllAttemptsRollupPrisma(),
+    loadAdminStudentsPrisma(),
   ]);
 
   const studentBranchByUserId = new Map(students.map((s) => [s.id, s.branch]));
@@ -331,6 +357,7 @@ export async function loadAdminTestsOverview(
       kind_label: 'Faculty exam (not scheduled)',
       status: 'upcoming',
       status_label: 'Approved · awaiting schedule',
+      students_writing: 0,
       departments: departmentsForFacultyRequest(faculty),
       years: faculty.target_years ?? [],
       starts_at: null,

@@ -377,7 +377,17 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
   }
 
   if (!showingLive) {
-    return null;
+    return (
+      <section className="mb-8 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+          Live command centre
+        </p>
+        <p className="mt-2 text-slate-600">
+          No examinations are live right now. Open <strong>Tests</strong> or{' '}
+          <strong>Exam schedules</strong> to go live, then students will appear here while writing.
+        </p>
+      </section>
+    );
   }
 
   const entries = board?.entries ?? [];
