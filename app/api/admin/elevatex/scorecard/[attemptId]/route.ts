@@ -5,14 +5,15 @@ import { fetchElevateXScorecardForAttemptPrisma } from '@/lib/placement/fetch-el
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ attemptId: string }> },
 ) {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
   const { attemptId } = await params;
-  const result = await fetchElevateXScorecardForAttemptPrisma(attemptId);
+  const rollNumber = new URL(request.url).searchParams.get('roll')?.trim() || undefined;
+  const result = await fetchElevateXScorecardForAttemptPrisma(attemptId, { rollNumber });
 
   if (!('scorecard' in result)) {
     return NextResponse.json({ error: result.error }, { status: result.status });
