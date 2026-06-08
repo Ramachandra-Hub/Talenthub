@@ -12,8 +12,8 @@ import {
   fetchAttemptsForUserPrisma,
   submitTestAttemptLeanPrisma,
   linkProctorViolationsPrisma,
-  releaseStudentSessionPrisma,
 } from '@/lib/db/test-attempts-prisma';
+import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 import {
   assertStudentCanSubmitAttemptPrisma,
   type ExamAccessResult,
