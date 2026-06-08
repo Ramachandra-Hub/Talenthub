@@ -20,13 +20,15 @@ import {
 import { assertStudentCanSubmitAttemptPrisma } from '@/lib/db/exam-access-prisma';
 import type { TestAttempt } from '@/lib/types';
 import { isElevateXTestId } from '@/lib/elevatex';
-import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { prisma } from '@/lib/prisma';
 import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 import { computeProgrammingExamScorePercent } from '@/lib/exam-v2/grade-programming-exam';
-import { computeServerScorePercent } from '@/lib/exam-v2/server-score';
-import { sanitizeAnswersForPersist } from '@/lib/exam-v2/sanitize-answers';
+import {
+  sanitizeAnswersForPersist,
+  slimAnswersForSubmit,
+} from '@/lib/exam-v2/sanitize-answers';
+import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -114,29 +116,21 @@ export async function POST(request: Request) {
     const testId = String(body.testId ?? '').trim();
     submittedTestId = testId;
 
+    // Final submit uses client score (rescoring loads every question and often times out on RDS).
     try {
       if (examKind === 'programming' && Object.keys(answersIn).length > 0) {
-        const rescored = await computeProgrammingExamScorePercent(answersIn);
-        scorePercent = rescored.scorePercent;
-        body.rawNetScore = rescored.rawNetScore;
-        if (!totalQuestions) totalQuestions = rescored.totalQuestions;
-      } else if (testId && Object.keys(answersIn).length > 0 && !isElevateXTestId(testId)) {
         const rescored = await Promise.race([
-          computeServerScorePercent(testId, answersIn, {
-            skipCodingExecution: true,
-          }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
+          computeProgrammingExamScorePercent(answersIn),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_000)),
         ]);
         if (rescored) {
           scorePercent = rescored.scorePercent;
           body.rawNetScore = rescored.rawNetScore;
-          if (!totalQuestions) {
-            totalQuestions = rescored.totalQuestions;
-          }
+          if (!totalQuestions) totalQuestions = rescored.totalQuestions;
         }
       }
     } catch (err) {
-      console.warn('[test-attempts/submit] server rescoring skipped, using client score:', err);
+      console.warn('[test-attempts/submit] programming rescoring skipped, using client score:', err);
     }
 
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
@@ -147,36 +141,41 @@ export async function POST(request: Request) {
     const proctorAutoSubmit = Boolean(body.proctorAutoSubmit);
     const rawNetScore = Number(body.rawNetScore) || 0;
 
-    await ensureStudentUserRowPrisma({
+    const ensureUserPromise = ensureStudentUserRowPrisma({
       id: userId,
       email: auth.ctx.user.email,
     });
 
     let durationSec = 0;
-    if (testId) {
-      const dbTest = await prisma.test.findFirst({
-        where: { id: testId },
-        select: { duration: true, durationMinutes: true },
-      });
-      if (dbTest) {
-        const mins = Number(dbTest.duration ?? dbTest.durationMinutes ?? 0);
-        durationSec = Number.isFinite(mins) && mins > 0 ? mins * 60 : 0;
-      } else {
-        const fer = await prisma.facultyExamRequest.findFirst({
-          where: { publishedTestId: testId, status: 'approved' },
-          select: { durationMinutes: true },
-        });
-        const mins = Number(fer?.durationMinutes ?? 0);
-        durationSec = Number.isFinite(mins) && mins > 0 ? mins * 60 : 0;
-      }
-      if (isElevateXTestId(testId) && durationSec <= 0) {
-        durationSec = 60 * 60;
-      }
-    }
+    const durationPromise = testId
+      ? (async () => {
+          const dbTest = await prisma.test.findFirst({
+            where: { id: testId },
+            select: { duration: true, durationMinutes: true },
+          });
+          if (dbTest) {
+            const mins = Number(dbTest.duration ?? dbTest.durationMinutes ?? 0);
+            return Number.isFinite(mins) && mins > 0 ? mins * 60 : 0;
+          }
+          const fer = await prisma.facultyExamRequest.findFirst({
+            where: { publishedTestId: testId, status: 'approved' },
+            select: { durationMinutes: true },
+          });
+          const mins = Number(fer?.durationMinutes ?? 0);
+          return Number.isFinite(mins) && mins > 0 ? mins * 60 : 0;
+        })()
+      : Promise.resolve(0);
 
     let accessRollNumber: string | undefined;
     if (testId) {
-      const profile = await resolveStudentProfilePrisma(userId);
+      const [profile] = await Promise.all([
+        resolveStudentProfilePrisma(userId),
+        ensureUserPromise,
+      ]);
+      durationSec = await durationPromise;
+      if (isElevateXTestId(testId) && durationSec <= 0) {
+        durationSec = 60 * 60;
+      }
       const accessBranch =
         typeof body.accessBranch === 'string' && body.accessBranch.trim()
           ? body.accessBranch.trim()
@@ -215,10 +214,10 @@ export async function POST(request: Request) {
         await syncStudentRollNumberPrisma(userId, accessRollNumber);
       }
 
-      if (isElevateXTestId(testId)) {
+      if (isElevateXTestId(testId) && !attemptId) {
         const prior = await Promise.race([
-          findCompletedElevateXAttempt({ userId, rollNumber: accessRollNumber }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+          findCompletedElevateXAttemptForUser(userId),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000)),
         ]);
         if (prior) {
           return NextResponse.json(
@@ -232,9 +231,11 @@ export async function POST(request: Request) {
           );
         }
       }
+    } else {
+      await ensureUserPromise;
     }
 
-    const answersForDb = sanitizeAnswersForPersist(answersIn);
+    const answersForDb = sanitizeAnswersForPersist(slimAnswersForSubmit(answersIn));
 
     const finalized = await finalizeTestAttemptPrisma({
       userId,
@@ -263,37 +264,51 @@ export async function POST(request: Request) {
       totalQuestions: totalQuestions || undefined,
     });
 
-    if (proctorSessionId) {
-      try {
-        await linkProctorViolationsPrisma(userId, id, testId || null, proctorSessionId);
-      } catch (err) {
-        console.warn('[test-attempts/submit] proctor link skipped:', err);
+    void (async () => {
+      if (proctorSessionId) {
+        try {
+          await linkProctorViolationsPrisma(userId, id, testId || null, proctorSessionId);
+        } catch (err) {
+          console.warn('[test-attempts/submit] proctor link skipped:', err);
+        }
       }
-    }
-
-    try {
-      await appendStudentDashboardStatPrisma(userId, statEntry);
-    } catch (err) {
-      console.warn('[test-attempts/submit] dashboard stat append skipped:', err);
-    }
-
-    if (isElevateXTestId(testId)) {
       try {
-        await reconcileElevateXStaleInProgressPrisma();
+        await appendStudentDashboardStatPrisma(userId, statEntry);
       } catch (err) {
-        console.warn('[test-attempts/submit] elevatex reconcile skipped:', err);
+        console.warn('[test-attempts/submit] dashboard stat append skipped:', err);
       }
-    }
+      if (isElevateXTestId(testId)) {
+        try {
+          await reconcileElevateXStaleInProgressPrisma();
+        } catch (err) {
+          console.warn('[test-attempts/submit] elevatex reconcile skipped:', err);
+        }
+      }
+      try {
+        await releaseStudentSessionPrisma(userId);
+      } catch (err) {
+        console.warn('[test-attempts/submit] session release skipped:', err);
+      }
+    })();
 
+    let attempts: Array<TestAttempt & { test: Test }> = [];
     try {
-      await releaseStudentSessionPrisma(userId);
+      attempts = await Promise.race([
+        fetchStudentDashboardStatsPrisma(userId),
+        new Promise<Array<TestAttempt & { test: Test }>>((resolve) =>
+          setTimeout(() => resolve([]), 4_000),
+        ),
+      ]);
+      if (!attempts.some((row) => String(row.id) === String(id))) {
+        attempts = await Promise.race([
+          fetchAttemptsForUserPrisma(userId),
+          new Promise<Array<TestAttempt & { test: Test }>>((resolve) =>
+            setTimeout(() => resolve([]), 4_000),
+          ),
+        ]);
+      }
     } catch (err) {
-      console.warn('[test-attempts/submit] session release skipped:', err);
-    }
-
-    let attempts = await fetchStudentDashboardStatsPrisma(userId);
-    if (!attempts.some((row) => String(row.id) === String(id))) {
-      attempts = await fetchAttemptsForUserPrisma(userId);
+      console.warn('[test-attempts/submit] dashboard fetch skipped:', err);
     }
     const saved = attempts.find((row) => String(row.id) === String(id));
     const attempt: TestAttempt & { test: { name: string } } = saved ?? {

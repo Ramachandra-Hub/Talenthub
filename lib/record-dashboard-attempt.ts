@@ -6,6 +6,8 @@ import {
   cacheApiAttempts,
   type DashboardAttemptView,
 } from '@/lib/test-attempts';
+import { slimAnswersForSubmit } from '@/lib/exam-v2/sanitize-answers';
+import { fetchSubmitWithRetry } from '@/lib/submit-with-retry';
 
 export type ExamKind = 'practice' | 'programming' | 'department' | 'competitive';
 
@@ -98,28 +100,30 @@ export async function recordDashboardAttempt(
   let attemptId = `local-${input.examKind ?? 'practice'}-${Date.now()}`;
 
   try {
-    const res = await fetchWithSession('/api/student/test-attempts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        testId: input.testId,
-        testName: input.testName,
-        attemptId: input.attemptId,
-        scorePercent: input.scorePercent,
-        rawNetScore: input.rawNetScore ?? input.scorePercent,
-        elapsedSec,
-        startedAtIso: nowIso,
-        completedAtIso: nowIso,
-        examKind: input.examKind,
-        answers: input.answers,
-        proctorSessionId: input.proctorSessionId,
-        proctorViolations: input.proctorViolations ?? 0,
-        proctorAutoSubmit: input.proctorAutoSubmit ?? false,
-        accessBranch: input.accessBranch,
-        accessYear: input.accessYear,
-        accessRollNumber: input.accessRollNumber,
+    const res = await fetchSubmitWithRetry(() =>
+      fetchWithSession('/api/student/test-attempts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testId: input.testId,
+          testName: input.testName,
+          attemptId: input.attemptId,
+          scorePercent: input.scorePercent,
+          rawNetScore: input.rawNetScore ?? input.scorePercent,
+          elapsedSec,
+          startedAtIso: nowIso,
+          completedAtIso: nowIso,
+          examKind: input.examKind,
+          answers: input.answers ? slimAnswersForSubmit(input.answers) : undefined,
+          proctorSessionId: input.proctorSessionId,
+          proctorViolations: input.proctorViolations ?? 0,
+          proctorAutoSubmit: input.proctorAutoSubmit ?? false,
+          accessBranch: input.accessBranch,
+          accessYear: input.accessYear,
+          accessRollNumber: input.accessRollNumber,
+        }),
       }),
-    });
+    );
 
     if (res.status === 409) {
       const json = (await res.json()) as {

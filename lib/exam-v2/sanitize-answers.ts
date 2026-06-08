@@ -9,6 +9,30 @@ function jsonByteLength(value: unknown): number {
   }
 }
 
+/** Compact answer map for final submit — keeps scoring fields only (faster RDS writes). */
+export function slimAnswersForSubmit(
+  answers: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(answers)) {
+    if (key.startsWith('__') || key === '_type' || key === 'scorecard' || key === '__placement') {
+      out[key] = value;
+      continue;
+    }
+    if (!value || typeof value !== 'object') {
+      out[key] = value;
+      continue;
+    }
+    const row = value as Record<string, unknown>;
+    out[key] = {
+      questionId: row.questionId ?? key,
+      userAnswer: row.userAnswer ?? null,
+      isMarkedForReview: Boolean(row.isMarkedForReview),
+    };
+  }
+  return out;
+}
+
 /** Trim bulky exam payloads before RDS persist (avoids Vercel 4.5MB body / JSON column limits). */
 export function sanitizeAnswersForPersist(
   answers: Record<string, unknown>,

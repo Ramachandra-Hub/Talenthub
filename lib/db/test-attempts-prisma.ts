@@ -294,7 +294,7 @@ export async function persistTestAttemptPrisma(input: PersistAttemptInput): Prom
   return { id: row.id };
 }
 
-export async function finalizeTestAttemptPrisma(input: {
+type FinalizeAttemptInput = {
   userId: string;
   testId: string;
   testName: string;
@@ -303,29 +303,170 @@ export async function finalizeTestAttemptPrisma(input: {
   answers: Record<string, unknown>;
   submittedAtIso: string;
   attemptId?: string;
-  /** Browser-reported elapsed seconds — used when DB startedAt is stale (rescheduled exams). */
   clientElapsedSec?: number;
   durationSec?: number;
   proctorSessionId?: string;
   proctorViolations?: number;
   proctorAutoSubmit?: boolean;
-}): Promise<{ id: string; elapsedSec: number }> {
-  await ensureAttemptConstraintsPrisma();
+};
+
+function resolveElapsedForFinalize(input: {
+  clientElapsedSec?: number;
+  durationSec: number;
+  startedAt: Date;
+  now: Date;
+}): number {
+  const startedMs = input.startedAt.getTime();
+  const serverElapsedSec = Math.max(0, Math.floor((input.now.getTime() - startedMs) / 1000));
+  const clientElapsedSec =
+    input.clientElapsedSec != null && Number.isFinite(input.clientElapsedSec)
+      ? Math.max(0, Math.floor(input.clientElapsedSec))
+      : null;
+  let elapsedForPersist =
+    clientElapsedSec != null && clientElapsedSec > 0 ? clientElapsedSec : serverElapsedSec;
+  const submitGraceSec = 10 * 60;
+  const durationSec = input.durationSec;
+  if (durationSec > 0) {
+    const deadlineLimit = durationSec + submitGraceSec;
+    if (elapsedForPersist > deadlineLimit) {
+      if (
+        clientElapsedSec != null &&
+        clientElapsedSec > 0 &&
+        clientElapsedSec <= deadlineLimit
+      ) {
+        elapsedForPersist = clientElapsedSec;
+      } else if (clientElapsedSec != null && clientElapsedSec > 0) {
+        elapsedForPersist = Math.min(elapsedForPersist, deadlineLimit);
+      } else {
+        throw new AttemptDeadlineError();
+      }
+    }
+  }
+  return elapsedForPersist;
+}
+
+function buildProctorMetadata(input: FinalizeAttemptInput): Prisma.InputJsonValue | undefined {
+  if (
+    input.proctorSessionId == null &&
+    input.proctorViolations == null &&
+    input.proctorAutoSubmit == null
+  ) {
+    return undefined;
+  }
+  return {
+    proctor_session_id: input.proctorSessionId ?? null,
+    proctor_violations: input.proctorViolations ?? 0,
+    proctor_auto_submit: input.proctorAutoSubmit ?? false,
+  } as Prisma.InputJsonValue;
+}
+
+/** Fast path: single-row update when autosave already created the attempt (no advisory lock). */
+async function finalizeOpenAttemptDirectPrisma(
+  input: FinalizeAttemptInput,
+  resolvedTestId: string | null,
+): Promise<{ id: string; elapsedSec: number } | null> {
+  const attemptId = input.attemptId?.trim();
+  if (!attemptId) return null;
+
+  const candidate = await prisma.testAttempt.findFirst({
+    where: {
+      id: attemptId,
+      userId: input.userId,
+      status: { in: [...OPEN_ATTEMPT_STATUSES] },
+      completedAt: null,
+    },
+  });
+  if (!candidate) return null;
+
+  const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
+    ? {
+        userId: input.userId,
+        status: { in: ['completed', 'submitted'] },
+        id: { not: candidate.id },
+        ...elevateXTitleWhere(),
+      }
+    : {
+        userId: input.userId,
+        testId: resolvedTestId,
+        status: { in: ['completed', 'submitted'] },
+      };
+  const prior = await prisma.testAttempt.findFirst({
+    where: priorWhere,
+    orderBy: { completedAt: 'desc' },
+    select: { id: true },
+  });
+  if (prior) throw new AttemptConflictError(prior.id);
+
+  const title = input.testName?.trim() || 'Practice test';
+  const now = new Date(input.submittedAtIso);
+  const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
+  const startedAt = candidate.startedAt ?? now;
+  const elapsedForPersist = resolveElapsedForFinalize({
+    clientElapsedSec: input.clientElapsedSec,
+    durationSec,
+    startedAt,
+    now,
+  });
+  const proctorMetadata = buildProctorMetadata(input);
+
+  const updated = await prisma.testAttempt.update({
+    where: { id: candidate.id },
+    data: {
+      testId: resolvedTestId,
+      testTitle: title,
+      startedAt,
+      completedAt: now,
+      status: 'completed',
+      score: input.scorePercent,
+      percentageScore: input.scorePercent,
+      totalScore: input.rawNetScore,
+      answers: input.answers as Prisma.InputJsonValue,
+      timeTaken: elapsedForPersist,
+      proctorMetadata,
+    },
+    select: { id: true, timeTaken: true },
+  });
+
+  if (isElevateXTestId(input.testId)) {
+    void prisma.testAttempt
+      .updateMany({
+        where: {
+          userId: input.userId,
+          id: { not: updated.id },
+          status: { in: [...OPEN_ATTEMPT_STATUSES] },
+          ...elevateXTitleWhere(),
+        },
+        data: { status: 'abandoned', completedAt: now },
+      })
+      .catch(() => undefined);
+  }
+
+  return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedForPersist };
+}
+
+export async function finalizeTestAttemptPrisma(
+  input: FinalizeAttemptInput,
+): Promise<{ id: string; elapsedSec: number }> {
+  void ensureAttemptConstraintsPrisma().catch(() => undefined);
   const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const title = input.testName?.trim() || 'Practice test';
   const now = new Date(input.submittedAtIso);
   const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
+  const proctorMetadata = buildProctorMetadata(input);
 
-  const proctorMetadata =
-    input.proctorSessionId != null ||
-    input.proctorViolations != null ||
-    input.proctorAutoSubmit != null
-      ? {
-          proctor_session_id: input.proctorSessionId ?? null,
-          proctor_violations: input.proctorViolations ?? 0,
-          proctor_auto_submit: input.proctorAutoSubmit ?? false,
-        }
-      : undefined;
+  if (input.attemptId?.trim()) {
+    try {
+      const fast = await withPrismaRetry(
+        () => finalizeOpenAttemptDirectPrisma(input, resolvedTestId),
+        3,
+      );
+      if (fast) return fast;
+    } catch (error) {
+      if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
+        throw error;
+      }
+    }
+  }
 
   const lockKey = `${input.userId}:${resolvedTestId || input.testId}`;
   const runFinalize = async () =>
@@ -390,32 +531,12 @@ export async function finalizeTestAttemptPrisma(input: {
       }
 
       const startedAt = candidate?.startedAt ?? now;
-      const startedMs = startedAt.getTime();
-      const serverElapsedSec = Math.max(0, Math.floor((now.getTime() - startedMs) / 1000));
-      const clientElapsedSec =
-        input.clientElapsedSec != null && Number.isFinite(input.clientElapsedSec)
-          ? Math.max(0, Math.floor(input.clientElapsedSec))
-          : null;
-      // Prefer browser timer on final submit (startedAt may be stale after reschedule or failed autosave).
-      let elapsedForPersist =
-        clientElapsedSec != null && clientElapsedSec > 0 ? clientElapsedSec : serverElapsedSec;
-      const submitGraceSec = 10 * 60;
-      if (durationSec > 0) {
-        const deadlineLimit = durationSec + submitGraceSec;
-        if (elapsedForPersist > deadlineLimit) {
-          if (
-            clientElapsedSec != null &&
-            clientElapsedSec > 0 &&
-            clientElapsedSec <= deadlineLimit
-          ) {
-            elapsedForPersist = clientElapsedSec;
-          } else if (clientElapsedSec != null && clientElapsedSec > 0) {
-            elapsedForPersist = Math.min(elapsedForPersist, deadlineLimit);
-          } else {
-            throw new AttemptDeadlineError();
-          }
-        }
-      }
+      const elapsedForPersist = resolveElapsedForFinalize({
+        clientElapsedSec: input.clientElapsedSec,
+        durationSec,
+        startedAt,
+        now,
+      });
 
       if (candidate) {
         const updated = await tx.testAttempt.update({
@@ -431,7 +552,7 @@ export async function finalizeTestAttemptPrisma(input: {
             totalScore: input.rawNetScore,
             answers: input.answers as Prisma.InputJsonValue,
             timeTaken: elapsedForPersist,
-            proctorMetadata: proctorMetadata as Prisma.InputJsonValue | undefined,
+            proctorMetadata,
           },
           select: { id: true, timeTaken: true },
         });
@@ -454,7 +575,7 @@ export async function finalizeTestAttemptPrisma(input: {
           totalScore: input.rawNetScore,
           answers: input.answers as Prisma.InputJsonValue,
           timeTaken: elapsedForPersist,
-          proctorMetadata: proctorMetadata as Prisma.InputJsonValue | undefined,
+          proctorMetadata,
         },
         select: { id: true, timeTaken: true },
       });
@@ -463,11 +584,11 @@ export async function finalizeTestAttemptPrisma(input: {
       }
       return { id: created.id, elapsedSec: created.timeTaken ?? elapsedForPersist };
     },
-      { maxWait: 15_000, timeout: 45_000 },
+      { maxWait: 10_000, timeout: 25_000 },
     );
 
   try {
-    return await withPrismaRetry(runFinalize, 2);
+    return await withPrismaRetry(runFinalize, 3);
   } catch (error) {
     if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
       throw error;
