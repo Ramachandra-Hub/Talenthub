@@ -33,6 +33,8 @@ import { assignQuestionsToSections } from '@/lib/exam-v2/load-sections';
 import { scoreBySections, scoreMcqWithNegativeMarking } from '@/lib/exam-v2/scoring';
 import { computeSectionProgress, type TestSectionConfig } from '@/lib/exam-v2/section-timer';
 import { EXAM_SERVER_PROGRESS_INTERVAL_MS } from '@/lib/exam-v2/progress-intervals';
+import { slimAnswersForSubmit } from '@/lib/exam-v2/sanitize-answers';
+import { fetchSubmitWithRetry } from '@/lib/submit-with-retry';
 import {
   LOCAL_ATTEMPT_GUEST_USER_ID,
   removeLocalTestAttempt,
@@ -261,21 +263,19 @@ export default function TestInterface({
 
         const snap = progressSnapshotRef.current;
         let scorePercent = 0;
-        if (test.id.startsWith('fallback-')) {
-          if (snap.sectionMode && snap.examSections.length) {
-            scorePercent = roundScorePercent(
-              scoreBySections(snap.examSections, snap.questionsBySection, snap.answers)
-                .overallPercent,
-            );
-          } else {
-            const { netScore, maxScore } = scoreMcqWithNegativeMarking(
-              snap.questions,
-              snap.answers,
-              0,
-            );
-            scorePercent =
-              maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
-          }
+        if (snap.sectionMode && snap.examSections.length) {
+          scorePercent = roundScorePercent(
+            scoreBySections(snap.examSections, snap.questionsBySection, snap.answers)
+              .overallPercent,
+          );
+        } else {
+          const { netScore, maxScore } = scoreMcqWithNegativeMarking(
+            snap.questions,
+            snap.answers,
+            0,
+          );
+          scorePercent =
+            maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
         }
 
         const startedAtIso =
@@ -289,7 +289,14 @@ export default function TestInterface({
             testId: test.id,
             testName: dashboardDisplayNameForTest(test),
             scorePercent,
-            answers: snap.answers,
+            answers: {
+              __exam_progress: {
+                answeredCount: Object.keys(snap.answers).filter((k) => !k.startsWith('__'))
+                  .length,
+                timeRemaining: snap.timeRemaining,
+                partialScorePercent: scorePercent,
+              },
+            },
             elapsedSec: Math.max(0, test.duration * 60 - snap.timeRemaining),
             attemptId: liveAttemptIdRef.current,
             startedAtIso,
@@ -518,12 +525,14 @@ export default function TestInterface({
           ? 'competitive'
           : 'practice';
 
-      const answersPayload = proctorSummary
-        ? {
-            ...answers,
-            __proctor: proctorSummary,
-          }
-        : answers;
+      const answersPayload = slimAnswersForSubmit(
+        proctorSummary
+          ? {
+              ...answers,
+              __proctor: proctorSummary,
+            }
+          : answers,
+      );
 
       const buildLocalPayload = (id: string, savedScore: number) => ({
         attempt: {
@@ -561,27 +570,29 @@ export default function TestInterface({
 
       let attemptId = localAttemptId;
 
-      const apiRes = await fetchWithAuth('/api/student/test-attempts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          testId: test.id,
-          testName: dashboardTestName,
-          scorePercent,
-          rawNetScore,
-          elapsedSec,
-          startedAtIso,
-          completedAtIso: nowIso,
-          attemptId: liveAttemptIdRef.current,
-          examKind,
-          totalQuestions: questions.length,
-          answers: answersPayload,
-          proctorSessionId: proctorSummary?.sessionId,
-          proctorViolations: proctorSummary?.violationCount ?? 0,
-          proctorAutoSubmit: proctorSummary?.autoSubmitted ?? false,
-          submitReason,
+      const apiRes = await fetchSubmitWithRetry(() =>
+        fetchWithAuth('/api/student/test-attempts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            testId: test.id,
+            testName: dashboardTestName,
+            scorePercent,
+            rawNetScore,
+            elapsedSec,
+            startedAtIso,
+            completedAtIso: nowIso,
+            attemptId: liveAttemptIdRef.current,
+            examKind,
+            totalQuestions: questions.length,
+            answers: answersPayload,
+            proctorSessionId: proctorSummary?.sessionId,
+            proctorViolations: proctorSummary?.violationCount ?? 0,
+            proctorAutoSubmit: proctorSummary?.autoSubmitted ?? false,
+            submitReason,
+          }),
         }),
-      });
+      );
 
       if (apiRes.status === 409) {
         const json = (await apiRes.json().catch(() => ({}))) as {
