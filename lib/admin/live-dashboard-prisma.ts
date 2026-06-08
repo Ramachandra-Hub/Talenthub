@@ -222,12 +222,25 @@ function scheduleAttemptMatchWhere(schedule: ExamScheduleRow): Prisma.TestAttemp
       ],
     };
   }
-  if (testId && !isElevateXTestId(testId)) {
-    return { testId };
-  }
   const title = schedule.title?.trim();
+  if (testId && !isElevateXTestId(testId)) {
+    return {
+      OR: [
+        { testId },
+        ...(title && title.length > 2
+          ? [{ testTitle: { contains: title.slice(0, 48), mode: 'insensitive' as const } }]
+          : []),
+        { testTitle: { contains: 'Department', mode: 'insensitive' as const } },
+      ],
+    };
+  }
   if (title && title.length > 2) {
-    return { testTitle: { contains: title.slice(0, 48), mode: 'insensitive' } };
+    return {
+      OR: [
+        { testTitle: { contains: title.slice(0, 48), mode: 'insensitive' } },
+        { testTitle: { contains: 'Department', mode: 'insensitive' } },
+      ],
+    };
   }
   return null;
 }
@@ -272,8 +285,10 @@ function mapFreshAttemptRow(
     Boolean(completed_at) || isCompletedAttemptStatus(row.status, completed_at);
   const inProgress =
     !submitted && partial > 0 && isInProgressStatus(row.status);
+  const writingLive =
+    !submitted && isInProgressStatus(row.status) && inSession;
 
-  if (!inSession && !inProgress && !submitted) return null;
+  if (!inSession && !inProgress && !writingLive && !submitted) return null;
 
   if (submitted && completed_at && !inSession) {
     const completedMs = new Date(completed_at).getTime();

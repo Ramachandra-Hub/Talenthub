@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server-auth';
 import {
-  ensureStudentUserRowPrisma,
+  createOpenProgressLeanPrisma,
   findCompletedAttemptForTestPrisma,
   patchOpenAttemptProgressPrisma,
   resolveStudentProfilePrisma,
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     if ('response' in auth) return auth.response;
 
     const userId = auth.ctx.user.id;
-    await ensureStudentUserRowPrisma({ id: userId, email: auth.ctx.user.email });
+    const studentEmail = auth.ctx.user.email;
 
     let body: Record<string, unknown>;
     try {
@@ -138,6 +138,38 @@ export async function POST(request: Request) {
           scorePercent,
           saved: true,
         });
+      }
+    }
+
+    if (!attemptId && elapsedSec > 0) {
+      try {
+        const lean = await withPrismaRetry(() =>
+          createOpenProgressLeanPrisma({
+            userId,
+            studentEmail,
+            testId,
+            testName,
+            scorePercent,
+            elapsedSec,
+            answers,
+            startedAtIso,
+          }),
+        );
+        recordExamProgressWrite({
+          userId,
+          testId,
+          attemptId: lean.id,
+          startedAtIso: lean.startedAtIso,
+          scorePercent,
+        });
+        return NextResponse.json({
+          id: lean.id,
+          startedAtIso: lean.startedAtIso,
+          scorePercent,
+          saved: true,
+        });
+      } catch (err) {
+        console.warn('[test-attempts/progress] lean create skipped:', err);
       }
     }
 

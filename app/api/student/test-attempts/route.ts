@@ -9,7 +9,6 @@ import {
 import {
   AttemptConflictError,
   AttemptDeadlineError,
-  ensureStudentUserRowPrisma,
   fetchAttemptsForUserPrisma,
   submitTestAttemptLeanPrisma,
   linkProctorViolationsPrisma,
@@ -133,11 +132,6 @@ export async function POST(request: Request) {
           ? rollNumberFromUser(auth.ctx.user.email)
           : undefined;
 
-    await ensureStudentUserRowPrisma({
-      id: userId,
-      email: auth.ctx.user.email,
-    });
-
     // Skip RDS access check when the client already has an in-flight attempt (progress heartbeat).
     const skipAccessDb = Boolean(attemptId?.trim()) || clientElapsedSec > 0;
     if (testId && !skipAccessDb) {
@@ -172,6 +166,7 @@ export async function POST(request: Request) {
 
     const finalized = await submitTestAttemptLeanPrisma({
       userId,
+      studentEmail: auth.ctx.user.email,
       testId,
       testName,
       scorePercent,
@@ -188,29 +183,30 @@ export async function POST(request: Request) {
 
     const id = finalized.id;
     const totalQuestions = Number(body.totalQuestions) || 0;
+    const statEntry = buildStatEntryPrisma({
+      id,
+      userId,
+      testId,
+      testName,
+      scorePercent,
+      elapsedSec: finalized.elapsedSec,
+      completedAtIso: nowIso,
+      totalQuestions: totalQuestions || undefined,
+    });
+
+    try {
+      await appendStudentDashboardStatPrisma(userId, statEntry);
+    } catch (err) {
+      console.warn('[test-attempts/submit] dashboard stat append skipped:', err);
+    }
 
     void (async () => {
-      const statEntry = buildStatEntryPrisma({
-        id,
-        userId,
-        testId,
-        testName,
-        scorePercent,
-        elapsedSec: finalized.elapsedSec,
-        completedAtIso: nowIso,
-        totalQuestions: totalQuestions || undefined,
-      });
       if (proctorSessionId) {
         try {
           await linkProctorViolationsPrisma(userId, id, testId || null, proctorSessionId);
         } catch (err) {
           console.warn('[test-attempts/submit] proctor link skipped:', err);
         }
-      }
-      try {
-        await appendStudentDashboardStatPrisma(userId, statEntry);
-      } catch (err) {
-        console.warn('[test-attempts/submit] dashboard stat append skipped:', err);
       }
       try {
         await releaseStudentSessionPrisma(userId);
