@@ -415,7 +415,7 @@ export default function PlacementTakePage() {
           return;
         }
 
-        if (!submitRes?.attemptId || !submitRes.savedToServer) {
+        if (!submitRes?.attemptId) {
           restoreSubmitAfterFailure(
             submitRes?.error ??
               'Could not save your ElevateX attempt. Check your internet connection and try Submit again.',
@@ -424,6 +424,15 @@ export default function PlacementTakePage() {
         }
 
         const attemptId = submitRes.attemptId;
+        if (!submitRes.savedToServer) {
+          saveScorecardForAttempt(attemptId, { ...scorecard, attemptId });
+          markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);
+          clearPlacementDrafts(scorecard.candidate.hallTicket);
+          clearPlacementProctorSessionId();
+          setShowSubmitConfirm(false);
+          router.replace(`/placement/result/${attemptId}?pending=1`);
+          return;
+        }
         saveScorecardForAttempt(attemptId, { ...scorecard, attemptId });
         markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);
         clearPlacementDrafts(scorecard.candidate.hallTicket);

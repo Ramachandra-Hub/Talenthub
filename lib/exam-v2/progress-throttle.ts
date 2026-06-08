@@ -1,7 +1,7 @@
 import { isElevateXTestId } from '@/lib/elevatex';
 
-const ELEVATEX_MIN_WRITE_MS = 18_000;
-const DEFAULT_MIN_WRITE_MS = 22_000;
+const ELEVATEX_MIN_WRITE_MS = 8_000;
+const DEFAULT_MIN_WRITE_MS = 10_000;
 
 type WriteRecord = {
   lastWriteMs: number;

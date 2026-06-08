@@ -282,6 +282,80 @@ export default function TestInterface({
     return () => window.clearInterval(interval);
   }, [fullAccess, isSubmitted, test.id, test.duration]);
 
+  // Push score to server soon after each answer change (leaderboard + submit attempt id).
+  useEffect(() => {
+    if (!fullAccess || isSubmitted || test.id.startsWith('fallback-')) return;
+    const keys = Object.keys(answers).filter((k) => !k.startsWith('__'));
+    if (!keys.length) return;
+    const timer = window.setTimeout(() => {
+      const post = async () => {
+        if (progressInFlightRef.current) return;
+        progressInFlightRef.current = true;
+        try {
+          const user = await getClientUser();
+          if (!user) return;
+          const snap = progressSnapshotRef.current;
+          let scorePercent = 0;
+          if (snap.sectionMode && snap.examSections.length) {
+            scorePercent = roundScorePercent(
+              scoreBySections(snap.examSections, snap.questionsBySection, snap.answers)
+                .overallPercent,
+            );
+          } else {
+            const { netScore, maxScore } = scoreMcqWithNegativeMarking(
+              snap.questions,
+              snap.answers,
+              0,
+            );
+            scorePercent =
+              maxScore > 0 ? roundScorePercent((netScore / maxScore) * 100) : 0;
+          }
+          const res = await fetchWithAuth('/api/student/test-attempts/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              testId: test.id,
+              testName: dashboardDisplayNameForTest(test),
+              scorePercent,
+              answers: {
+                __exam_progress: {
+                  answeredCount: Object.keys(snap.answers).filter((k) => !k.startsWith('__'))
+                    .length,
+                  timeRemaining: snap.timeRemaining,
+                  partialScorePercent: scorePercent,
+                },
+              },
+              elapsedSec: Math.max(0, test.duration * 60 - snap.timeRemaining),
+              attemptId: liveAttemptIdRef.current,
+              startedAtIso:
+                snap.startedAtMs && snap.startedAtMs > 0
+                  ? new Date(snap.startedAtMs).toISOString()
+                  : new Date().toISOString(),
+            }),
+          });
+          if (!res.ok) return;
+          const json = (await res.json()) as {
+            id?: string;
+            scorePercent?: number;
+            throttled?: boolean;
+          };
+          if (json.throttled) return;
+          if (json.id) {
+            liveAttemptIdRef.current = String(json.id);
+            setLiveAttemptId(String(json.id));
+          }
+          if (json.scorePercent != null && Number.isFinite(json.scorePercent)) {
+            setLiveScorePercent(json.scorePercent);
+          }
+        } finally {
+          progressInFlightRef.current = false;
+        }
+      };
+      void post();
+    }, 4_000);
+    return () => window.clearTimeout(timer);
+  }, [answers, fullAccess, isSubmitted, test]);
+
   const submitRefEarly = useRef<() => Promise<void>>(async () => {});
 
   const { sectionIndex, currentSection, sectionTimeLeft } = useSectionExam({

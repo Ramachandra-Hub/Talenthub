@@ -9,6 +9,7 @@ import {
 import {
   AttemptConflictError,
   AttemptDeadlineError,
+  ensureStudentUserRowPrisma,
   fetchAttemptsForUserPrisma,
   submitTestAttemptLeanPrisma,
   linkProctorViolationsPrisma,
@@ -131,6 +132,11 @@ export async function POST(request: Request) {
         : auth.ctx.user.email
           ? rollNumberFromUser(auth.ctx.user.email)
           : undefined;
+
+    await ensureStudentUserRowPrisma({
+      id: userId,
+      email: auth.ctx.user.email,
+    });
 
     // Skip RDS access check when the client already has an in-flight attempt (progress heartbeat).
     const skipAccessDb = Boolean(attemptId?.trim()) || clientElapsedSec > 0;

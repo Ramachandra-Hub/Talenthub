@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     if ('response' in auth) return auth.response;
 
     const userId = auth.ctx.user.id;
+    await ensureStudentUserRowPrisma({ id: userId, email: auth.ctx.user.email });
 
     let body: Record<string, unknown>;
     try {
@@ -140,7 +141,6 @@ export async function POST(request: Request) {
       }
     }
 
-    await ensureStudentUserRowPrisma({ id: userId, email: auth.ctx.user.email });
     const profile = await resolveStudentProfilePrisma(userId);
     const accessBranch =
       typeof body.accessBranch === 'string' && body.accessBranch.trim()

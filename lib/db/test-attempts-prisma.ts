@@ -1188,7 +1188,7 @@ export async function upsertExamProgressPrisma(input: {
     }
   }
 
-  const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
+  const resolvedTestId = resolveTestIdForInsertSync(input.testId);
   const now = new Date();
   const proctorMeta =
     input.proctorSessionId || input.proctorViolationCount
