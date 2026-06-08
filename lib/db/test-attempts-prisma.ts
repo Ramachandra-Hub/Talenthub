@@ -178,16 +178,153 @@ export async function ensureStudentUserRowPrisma(user: {
   email?: string | null;
   fullName?: string | null;
 }): Promise<void> {
-  const existing = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true } });
-  if (existing) return;
-  await prisma.user.create({
-    data: {
+  const email = user.email?.trim().toLowerCase() || `${user.id}@student.local`;
+  await prisma.user.upsert({
+    where: { id: user.id },
+    create: {
       id: user.id,
-      email: user.email?.trim().toLowerCase() || `${user.id}@student.local`,
+      email,
       fullName: user.fullName ?? '',
       subscriptionStatus: 'free',
     },
+    update: {},
   });
+}
+
+const resolvedTestIdCache = new Map<string, string | null>();
+
+async function resolveTestIdCached(testId: string): Promise<string | null> {
+  const key = testId.trim();
+  if (resolvedTestIdCache.has(key)) return resolvedTestIdCache.get(key) ?? null;
+  const resolved = await resolveTestIdForInsertPrisma(key);
+  resolvedTestIdCache.set(key, resolved);
+  return resolved;
+}
+
+function isPrismaUniqueViolation(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2002') {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return msg.includes('Unique constraint') || msg.includes('test_attempts_one_completed');
+}
+
+/**
+ * Lean submit — at most 2–3 RDS round-trips (no transaction, no advisory lock).
+ * Used on Vercel + RDS where long submit paths routinely time out.
+ */
+export async function submitTestAttemptLeanPrisma(
+  input: FinalizeAttemptInput,
+): Promise<{ id: string; elapsedSec: number }> {
+  const resolvedTestId = await resolveTestIdCached(input.testId);
+  const title = input.testName?.trim() || 'Practice test';
+  const now = new Date(input.submittedAtIso);
+  const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
+  const scorePercent = clampScorePercent(input.scorePercent);
+  const rawNetScore = clampRawNetScore(input.rawNetScore);
+  const minimalAnswers = {
+    __lean_submit: true,
+    scorePercent,
+    at: input.submittedAtIso,
+  } as Record<string, unknown>;
+  const proctorMetadata = buildProctorMetadata(input);
+
+  const elapsedFromClient = Math.max(0, Math.floor(Number(input.clientElapsedSec) || 0));
+  const elapsedForPersist =
+    elapsedFromClient > 0
+      ? elapsedFromClient
+      : durationSec > 0
+        ? durationSec
+        : 0;
+
+  const completeData = {
+    testId: resolvedTestId,
+    testTitle: title,
+    completedAt: now,
+    status: 'completed' as const,
+    score: scorePercent,
+    percentageScore: scorePercent,
+    totalScore: rawNetScore,
+    answers: minimalAnswers as Prisma.InputJsonValue,
+    timeTaken: elapsedForPersist,
+    proctorMetadata,
+  };
+
+  const attemptId = input.attemptId?.trim();
+  if (attemptId) {
+    const byId = await prisma.testAttempt.updateMany({
+      where: { id: attemptId, userId: input.userId },
+      data: completeData,
+    });
+    if (byId.count > 0) {
+      return { id: attemptId, elapsedSec: elapsedForPersist };
+    }
+  }
+
+  const open = await findOpenCandidateForFinalize(
+    input.userId,
+    input.testId,
+    resolvedTestId,
+    input.attemptId,
+  );
+  if (open) {
+    const startedAt = open.startedAt ?? now;
+    let elapsedForPersistOpen = elapsedForPersist;
+    try {
+      elapsedForPersistOpen = resolveElapsedForFinalize({
+        clientElapsedSec: input.clientElapsedSec,
+        durationSec,
+        startedAt,
+        now,
+      });
+    } catch (error) {
+      if (error instanceof AttemptDeadlineError) {
+        elapsedForPersistOpen = elapsedForPersist;
+      } else {
+        throw error;
+      }
+    }
+    const updated = await prisma.testAttempt.update({
+      where: { id: open.id },
+      data: {
+        ...completeData,
+        startedAt,
+        timeTaken: elapsedForPersistOpen,
+      },
+      select: { id: true, timeTaken: true },
+    });
+    return { id: updated.id, elapsedSec: updated.timeTaken ?? elapsedForPersistOpen };
+  }
+
+  try {
+    const created = await prisma.testAttempt.create({
+      data: {
+        userId: input.userId,
+        ...completeData,
+        startedAt: now,
+      },
+      select: { id: true, timeTaken: true },
+    });
+    return { id: created.id, elapsedSec: created.timeTaken ?? elapsedForPersist };
+  } catch (err) {
+    if (!isPrismaUniqueViolation(err)) throw err;
+    const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
+      ? { userId: input.userId, status: { in: ['completed', 'submitted'] }, ...elevateXTitleWhere() }
+      : resolvedTestId
+        ? {
+            userId: input.userId,
+            testId: resolvedTestId,
+            status: { in: ['completed', 'submitted'] },
+          }
+        : { userId: input.userId, status: { in: ['completed', 'submitted'] } };
+    const prior = await prisma.testAttempt.findFirst({
+      where: priorWhere,
+      orderBy: { completedAt: 'desc' },
+      select: { id: true },
+    });
+    if (prior) throw new AttemptConflictError(prior.id);
+    throw err;
+  }
 }
 
 /** Persist roll on the student profile when known from ElevateX / roster login. */
@@ -619,6 +756,15 @@ async function finalizeEmergencySubmitPrisma(
 export async function finalizeTestAttemptPrisma(
   input: FinalizeAttemptInput,
 ): Promise<{ id: string; elapsedSec: number }> {
+  try {
+    return await withPrismaRetry(() => submitTestAttemptLeanPrisma(input), 2);
+  } catch (error) {
+    if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
+      throw error;
+    }
+    console.warn('[finalizeTestAttempt] lean submit failed, trying legacy path:', error);
+  }
+
   void ensureAttemptConstraintsPrisma().catch(() => undefined);
   const resolvedTestId = await resolveTestIdForInsertPrisma(input.testId);
   const title = input.testName?.trim() || 'Practice test';

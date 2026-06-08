@@ -526,6 +526,7 @@ export default function TestInterface({
             scorePercent,
             rawNetScore,
             elapsedSec,
+            durationSec: test.duration * 60,
             startedAtIso,
             completedAtIso: nowIso,
             attemptId: liveAttemptIdRef.current,

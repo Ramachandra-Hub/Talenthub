@@ -187,6 +187,8 @@ export function withServerlessDbParams(url: string): string {
   const onVercel = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
   if (onVercel) {
     out = appendQueryParam(out, 'connection_limit=1');
+    out = appendQueryParam(out, 'connect_timeout=10');
+    out = appendQueryParam(out, 'pool_timeout=10');
   }
   return out;
 }
