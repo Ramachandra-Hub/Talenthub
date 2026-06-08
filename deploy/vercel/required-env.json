@@ -1,33 +1,28 @@
 {
-  "description": "Environment variables for Vercel + AWS RDS. Set in Vercel Dashboard → Settings → Environment Variables. Do not commit real secrets.",
-  "required": [
-    {
-      "name": "USE_AWS_STACK",
-      "value": "true",
-      "note": "Also set in vercel.json env defaults"
-    },
-    {
-      "name": "USE_PRISMA_AUTH",
-      "value": "true"
-    },
-    {
-      "name": "NEXT_PUBLIC_USE_AWS_STACK",
-      "value": "true"
-    },
-    {
-      "name": "AUTO_RDS_SCHEMA",
-      "value": "true",
-      "note": "Auto-create tables on first request"
-    },
+  "description": "Talenthub — Vercel + AWS RDS. Master template: .env.vercel-rds.example. Set in Vercel Dashboard → Settings → Environment Variables → Production, then Redeploy.",
+  "production_url": "https://talenthub-x.vercel.app",
+  "master_template": ".env.vercel-rds.example",
+  "already_in_vercel_json": [
+    "USE_AWS_STACK",
+    "USE_PRISMA_AUTH",
+    "NEXT_PUBLIC_USE_AWS_STACK",
+    "AUTO_RDS_SCHEMA",
+    "AUTH_TRUST_HOST",
+    "PREPINDIA_ADMIN_EMAIL",
+    "NEXT_PUBLIC_SIGNUP_DISABLED"
+  ],
+  "required_in_dashboard": [
     {
       "name": "DATABASE_URL",
-      "example": "postgresql://prepindia_admin:PASSWORD@host.rds.amazonaws.com:5432/prepindia?sslmode=require&connection_limit=1",
-      "secret": true
+      "example": "postgresql://prepindia_admin:PASSWORD@prepindia-db.cxms2kg60760.ap-south-1.rds.amazonaws.com:5432/postgres?sslmode=require",
+      "secret": true,
+      "note": "No quotes. Use sslmode=require for AWS RDS."
     },
     {
       "name": "DIRECT_URL",
-      "example": "postgresql://prepindia_admin:PASSWORD@host.rds.amazonaws.com:5432/prepindia?sslmode=require",
-      "secret": true
+      "example": "postgresql://prepindia_admin:PASSWORD@prepindia-db.cxms2kg60760.ap-south-1.rds.amazonaws.com:5432/postgres?sslmode=require",
+      "secret": true,
+      "note": "Same host/user/password as DATABASE_URL."
     },
     {
       "name": "AUTH_SECRET",
@@ -36,29 +31,18 @@
     },
     {
       "name": "AUTH_URL",
-      "example": "https://your-project.vercel.app"
-    },
-    {
-      "name": "AUTH_TRUST_HOST",
-      "value": "true"
+      "example": "https://talenthub-x.vercel.app"
     },
     {
       "name": "NEXT_PUBLIC_APP_URL",
-      "example": "https://your-project.vercel.app"
+      "example": "https://talenthub-x.vercel.app"
     }
   ],
-  "recommended": [
-    {
-      "name": "PREPINDIA_ADMIN_EMAIL",
-      "example": "admin@rce.ac.in"
-    },
+  "recommended_in_dashboard": [
     {
       "name": "PREPINDIA_ADMIN_PASSWORD",
+      "example": "RCE_T&P",
       "secret": true
-    },
-    {
-      "name": "NEXT_PUBLIC_SIGNUP_DISABLED",
-      "value": "true"
     },
     {
       "name": "RDS_SETUP_SECRET",
@@ -74,9 +58,9 @@
   "post_deploy_urls": [
     "/api/health",
     "/setup",
-    "/api/setup/rds",
     "/auth/login/admin",
     "/auth/login/student",
-    "/exams"
+    "/exams",
+    "/placement/assessment"
   ]
 }

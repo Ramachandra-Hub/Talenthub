@@ -304,7 +304,8 @@ export async function finalizeTestAttemptPrisma(input: {
 
   const lockKey = `${input.userId}:${resolvedTestId || input.testId}`;
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(
+      async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
       const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
@@ -414,7 +415,9 @@ export async function finalizeTestAttemptPrisma(input: {
         await abandonOtherElevateXInProgress(tx, input.userId, created.id, now);
       }
       return { id: created.id, elapsedSec: created.timeTaken ?? elapsedSec };
-    });
+    },
+      { maxWait: 10_000, timeout: 30_000 },
+    );
   } catch (error) {
     if (error instanceof AttemptConflictError || error instanceof AttemptDeadlineError) {
       throw error;

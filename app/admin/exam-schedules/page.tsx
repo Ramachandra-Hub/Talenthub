@@ -93,9 +93,23 @@ export default function AdminExamSchedulesPage() {
   }, [load]);
 
   useEffect(() => {
+    if (activeScheduleId) return;
     const picked = approvedExams.find((e) => e.id === facultyExamRequestId);
-    if (picked && !title) setTitle(picked.title);
-  }, [facultyExamRequestId, approvedExams, title]);
+    if (picked) setTitle(picked.title);
+  }, [facultyExamRequestId, approvedExams, activeScheduleId]);
+
+  useEffect(() => {
+    if (!activeScheduleId) return;
+    const selected = schedules.find((s) => s.id === activeScheduleId);
+    if (!selected) return;
+    setTitle(selected.title);
+    setNotice(selected.notice ?? '');
+    setStartsAt(toLocalInputValue(selected.starts_at));
+    setEndsAt(toLocalInputValue(selected.ends_at));
+    if (selected.faculty_exam_request_id) {
+      setFacultyExamRequestId(selected.faculty_exam_request_id);
+    }
+  }, [activeScheduleId, schedules]);
 
   const activeSchedule = useMemo(
     () => schedules.find((s) => s.id === activeScheduleId) ?? null,
@@ -216,13 +230,59 @@ export default function AdminExamSchedulesPage() {
     }
   };
 
-  const saveDraftSchedule = async () => {
-    if (!facultyExamRequestId) {
+  const clearScheduleForm = () => {
+    setActiveScheduleId(null);
+    setNotice('');
+    setStartsAt('');
+    setEndsAt('');
+    const picked = approvedExams.find((e) => e.id === facultyExamRequestId);
+    setTitle(picked?.title ?? '');
+  };
+
+  const saveSchedule = async (): Promise<boolean> => {
+    if (!facultyExamRequestId && !activeScheduleId) {
       alert('Select an approved faculty exam');
-      return;
+      return false;
     }
+    const startsAtIso = fromLocalInputValue(startsAt);
+    if (!startsAtIso) {
+      alert('Set a valid start date and time (IST).');
+      return false;
+    }
+    const endsAtIso = endsAt ? fromLocalInputValue(endsAt) : null;
+    if (endsAt && !endsAtIso) {
+      alert('End time is invalid. Clear it or pick a valid IST datetime.');
+      return false;
+    }
+    if (endsAtIso && new Date(endsAtIso).getTime() <= new Date(startsAtIso).getTime()) {
+      alert('End time must be after start time.');
+      return false;
+    }
+
     setSavingDraft(true);
     try {
+      if (activeScheduleId) {
+        const res = await fetch(`/api/admin/exam-schedules/${encodeURIComponent(activeScheduleId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            action: 'update',
+            title: title.trim() || undefined,
+            notice: notice.trim() || undefined,
+            startsAt: startsAtIso,
+            endsAt: endsAtIso,
+          }),
+        });
+        const json = (await res.json()) as { error?: string; schedule?: ExamScheduleRow };
+        if (!res.ok) {
+          alert(json.error ?? 'Could not reschedule exam');
+          return false;
+        }
+        await load();
+        return true;
+      }
+
       const res = await fetch('/api/admin/exam-schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -231,23 +291,43 @@ export default function AdminExamSchedulesPage() {
           facultyExamRequestId,
           title: title.trim() || undefined,
           notice: notice.trim() || undefined,
-          startsAt: fromLocalInputValue(startsAt) ?? new Date().toISOString(),
-          endsAt: fromLocalInputValue(endsAt),
+          startsAt: startsAtIso,
+          endsAt: endsAtIso,
           goLiveNow: false,
         }),
       });
-      const json = (await res.json()) as { error?: string; schedule?: ExamScheduleRow };
+      const json = (await res.json()) as {
+        error?: string;
+        schedule?: ExamScheduleRow;
+        message?: string;
+        alreadyScheduled?: boolean;
+      };
       if (!res.ok) {
         alert(json.error ?? 'Could not save draft');
-        return;
+        return false;
+      }
+      if (json.alreadyScheduled && json.message) {
+        alert(json.message);
       }
       if (json.schedule?.id) {
         setActiveScheduleId(json.schedule.id);
       }
       await load();
+      return true;
     } finally {
       setSavingDraft(false);
     }
+  };
+
+  const rescheduleAndGoLive = async () => {
+    if (!activeScheduleId) {
+      alert('Select a schedule from the table first.');
+      return;
+    }
+    const scheduleId = activeScheduleId;
+    const saved = await saveSchedule();
+    if (!saved) return;
+    await act(scheduleId, 'go_live');
   };
 
   if (loading) {
@@ -268,7 +348,9 @@ export default function AdminExamSchedulesPage() {
       ) : null}
 
       <Card className="p-6">
-        <h3 className="font-semibold text-[#0c2340] mb-4">Schedule new exam</h3>
+        <h3 className="font-semibold text-[#0c2340] mb-4">
+          {activeScheduleId ? 'Reschedule selected exam' : 'Schedule new exam'}
+        </h3>
         {approvedExams.length === 0 ? (
           <p className="text-sm text-slate-600">
             No published exams yet.{' '}
@@ -340,34 +422,55 @@ export default function AdminExamSchedulesPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 pt-2">
-              <Button disabled={savingDraft} onClick={() => void saveDraftSchedule()}>
-                {savingDraft ? 'Saving…' : 'Save as scheduled'}
+              <Button disabled={savingDraft} onClick={() => void saveSchedule()}>
+                {savingDraft
+                  ? 'Saving…'
+                  : activeScheduleId
+                    ? 'Save reschedule'
+                    : 'Save as scheduled'}
               </Button>
+              {activeScheduleId ? (
+                <Button variant="outline" disabled={savingDraft} onClick={clearScheduleForm}>
+                  New schedule
+                </Button>
+              ) : null}
               {activeScheduleId &&
               activeSchedule &&
               !isScheduleWindowOpen(activeSchedule) ? (
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={acting === activeScheduleId}
-                  onClick={() => void act(activeScheduleId, 'go_live')}
-                >
-                  {acting === activeScheduleId
-                    ? 'Going live…'
-                    : activeResolved?.display === 'window_ended' ||
-                        activeSchedule?.status === 'ended'
-                      ? 'Reopen exam'
-                      : 'Go live now'}
-                </Button>
+                <>
+                  <Button
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={acting === activeScheduleId || savingDraft}
+                    onClick={() => void act(activeScheduleId, 'go_live')}
+                  >
+                    {acting === activeScheduleId
+                      ? 'Going live…'
+                      : activeResolved?.display === 'window_ended' ||
+                          activeSchedule?.status === 'ended'
+                        ? 'Reopen exam'
+                        : 'Go live now'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-800"
+                    disabled={acting === activeScheduleId || savingDraft}
+                    onClick={() => void rescheduleAndGoLive()}
+                  >
+                    Save & reopen
+                  </Button>
+                </>
               ) : null}
             </div>
             {activeSchedule && activeResolved ? (
               <p className="text-xs text-slate-500">
-                Selected draft: <strong>{activeSchedule.title}</strong> · {activeResolved.label}
+                Editing: <strong>{activeSchedule.title}</strong> · {activeResolved.label}. Change IST
+                times above, click <strong>Save reschedule</strong>, then <strong>Reopen exam</strong> (or{' '}
+                <strong>Save & reopen</strong>).
               </p>
             ) : (
               <p className="text-xs text-slate-500">
-                Save as <strong>scheduled</strong>, then use <strong>Go live</strong> here or from the
-                table below.
+                Save as <strong>scheduled</strong>, then use <strong>Go live</strong>. To reschedule an
+                existing row, click <strong>Select</strong> in the table below first.
               </p>
             )}
           </div>
@@ -421,9 +524,12 @@ export default function AdminExamSchedulesPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setActiveScheduleId(s.id)}
+                            onClick={() => {
+                              setActiveScheduleId(s.id);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
                           >
-                            Select
+                            {s.id === activeScheduleId ? 'Editing' : 'Reschedule'}
                           </Button>
                           {goLiveAllowed ? (
                             <Button

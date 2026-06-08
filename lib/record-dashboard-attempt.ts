@@ -32,6 +32,7 @@ export type RecordDashboardAttemptResult = {
   attemptId: string;
   savedToServer: boolean;
   alreadyCompleted?: boolean;
+  error?: string;
 };
 
 function minimalTest(input: RecordDashboardAttemptInput): Test {
@@ -190,11 +191,19 @@ export async function recordDashboardAttempt(
       );
     } else {
       const json = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(json.error ?? `Server rejected submission (${res.status}).`);
+      const message =
+        json.error ??
+        (res.status >= 500
+          ? `The server could not save your submission (${res.status}). Wait a few seconds and try Submit again.`
+          : `Submission was rejected (${res.status}).`);
+      return { attemptId, savedToServer: false, error: message };
     }
   } catch (err) {
-    if (err instanceof Error) throw err;
-    throw new Error('Could not reach the server. Check your connection and try again.');
+    const message =
+      err instanceof Error
+        ? err.message
+        : 'Could not reach the server. Check your connection and try again.';
+    return { attemptId, savedToServer: false, error: message };
   }
 
   return { attemptId, savedToServer };

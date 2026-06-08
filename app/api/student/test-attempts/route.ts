@@ -29,6 +29,7 @@ import { prisma } from '@/lib/prisma';
 import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 import { computeProgrammingExamScorePercent } from '@/lib/exam-v2/grade-programming-exam';
 import { computeServerScorePercent } from '@/lib/exam-v2/server-score';
+import { sanitizeAnswersForPersist } from '@/lib/exam-v2/sanitize-answers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -223,13 +224,15 @@ export async function POST(request: Request) {
       }
     }
 
+    const answersForDb = sanitizeAnswersForPersist(answersIn);
+
     const finalized = await finalizeTestAttemptPrisma({
       userId,
       testId,
       testName,
       scorePercent,
       rawNetScore,
-      answers: answersIn,
+      answers: answersForDb,
       submittedAtIso: nowIso,
       attemptId,
       durationSec,
@@ -247,7 +250,6 @@ export async function POST(request: Request) {
       elapsedSec: finalized.elapsedSec,
       completedAtIso: nowIso,
       totalQuestions: totalQuestions || undefined,
-      answers: Object.keys(answersIn).length > 0 ? answersIn : undefined,
     });
 
     if (proctorSessionId) {

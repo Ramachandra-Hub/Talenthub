@@ -16,6 +16,7 @@ import {
   recordExamProgressWrite,
   shouldPersistExamProgress,
 } from '@/lib/exam-v2/progress-throttle';
+import { sanitizeAnswersForPersist } from '@/lib/exam-v2/sanitize-answers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -153,7 +154,7 @@ export async function POST(request: Request) {
       testName,
       scorePercent,
       elapsedSec,
-      answers,
+      answers: sanitizeAnswersForPersist(answers),
       attemptId: attemptId || undefined,
       startedAtIso,
       proctorSessionId: proctorSessionId || undefined,

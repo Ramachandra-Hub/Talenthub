@@ -339,6 +339,18 @@ export default function PlacementTakePage() {
     return PLACEMENT_SECTIONS[session.currentSectionIndex] ?? null;
   }, [session]);
 
+  const restoreSubmitAfterFailure = useCallback((message: string) => {
+    submitGuardRef.current = false;
+    setSubmitting(false);
+    setSession((prev) => {
+      if (!prev) return prev;
+      const restored = { ...prev, submitted: false };
+      sessionRef.current = restored;
+      return restored;
+    });
+    setSubmitError(message);
+  }, []);
+
   const handleSubmit = useCallback(
     async (reason: 'manual' | 'timeout') => {
       if (!session || submitGuardRef.current) return;
@@ -409,9 +421,11 @@ export default function PlacementTakePage() {
         }
 
         if (!submitRes?.attemptId || !submitRes.savedToServer) {
-          throw new Error(
-            'Could not save your ElevateX attempt. Check your internet connection and try Submit again.',
+          restoreSubmitAfterFailure(
+            submitRes?.error ??
+              'Could not save your ElevateX attempt. Check your internet connection and try Submit again.',
           );
+          return;
         }
 
         const attemptId = submitRes.attemptId;
@@ -427,20 +441,20 @@ export default function PlacementTakePage() {
         setShowSubmitConfirm(false);
         router.replace(`/placement/result/${attemptId}`);
       } catch (err) {
-        submitGuardRef.current = false;
-        setSubmitting(false);
-        setSession((prev) => {
-          if (!prev) return prev;
-          const restored = { ...prev, submitted: false };
-          sessionRef.current = restored;
-          return restored;
-        });
-        setSubmitError(
+        restoreSubmitAfterFailure(
           err instanceof Error ? err.message : 'Submit failed. Please try again.',
         );
       }
     },
-    [session, router, proctorActive, proctorSessionId, violationCount, elevateXTestId],
+    [
+      session,
+      router,
+      proctorActive,
+      proctorSessionId,
+      violationCount,
+      elevateXTestId,
+      restoreSubmitAfterFailure,
+    ],
   );
 
   useEffect(() => {
@@ -449,7 +463,7 @@ export default function PlacementTakePage() {
 
   useEffect(() => {
     if (!submitOnLoad || !session) return;
-    void handleSubmit('timeout');
+    void handleSubmit('timeout').catch(() => undefined);
     setSubmitOnLoad(false);
   }, [submitOnLoad, session, handleSubmit]);
 
@@ -462,7 +476,10 @@ export default function PlacementTakePage() {
         const nextGlobal = deriveGlobalTimeLeftSec(prev);
 
         if (nextGlobal <= 0 && !submitGuardRef.current) {
-          window.setTimeout(() => void handleSubmitRef.current('timeout'), 0);
+          window.setTimeout(
+            () => void handleSubmitRef.current('timeout').catch(() => undefined),
+            0,
+          );
         }
 
         const next = { ...prev, globalTimeLeftSec: nextGlobal };

@@ -29,6 +29,7 @@ function loadEnvFile(name) {
 }
 
 loadEnvFile('.env.local');
+loadEnvFile('.env.vercel-rds.example');
 loadEnvFile('.env');
 
 const REQUIRED = [
