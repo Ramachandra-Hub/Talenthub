@@ -194,6 +194,67 @@ export async function recordDashboardAttempt(
         }),
       );
     } else if (res.status >= 500) {
+      const syncRes = await fetchSubmitWithRetry(
+        () =>
+          fetchWithSession('/api/student/test-attempts/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              testId: input.testId,
+              testName: input.testName,
+              attemptId: input.attemptId,
+              scorePercent: input.scorePercent,
+              elapsedSec,
+              totalQuestions: input.test?.total_questions,
+            }),
+          }),
+        { attempts: 3, baseDelayMs: 800 },
+      );
+      if (syncRes.ok) {
+        const syncJson = (await syncRes.json()) as {
+          id?: string;
+          attempt?: DashboardAttemptView;
+          attempts?: DashboardAttemptView[];
+        };
+        const serverId = String(syncJson.id ?? '').trim();
+        if (serverId && !serverId.startsWith('local-') && !serverId.startsWith('pending-')) {
+          savedToServer = true;
+          attemptId = serverId;
+          if (syncJson.attempts?.length) {
+            cacheApiAttempts(user.id, syncJson.attempts);
+          } else if (syncJson.attempt) {
+            cacheApiAttempts(user.id, [syncJson.attempt]);
+          }
+          saveLocalTestAttempt(user.id, serverId, {
+            attempt: {
+              id: serverId,
+              user_id: user.id,
+              test_id: input.testId,
+              started_at: nowIso,
+              completed_at: nowIso,
+              score: input.scorePercent,
+              answers: null,
+              time_taken: elapsedSec,
+              status: 'completed' as const,
+              created_at: nowIso,
+            },
+            test,
+          });
+          pushDashboardFeedEntry(
+            user.id,
+            buildFeedEntry({
+              id: serverId,
+              userId: user.id,
+              testId: input.testId,
+              testName: input.testName,
+              scorePercent: input.scorePercent,
+              elapsedSec,
+              completedAtIso: nowIso,
+            }),
+          );
+          return { attemptId, savedToServer: true };
+        }
+      }
       saveLocalTestAttempt(user.id, attemptId, {
         attempt: {
           id: attemptId,

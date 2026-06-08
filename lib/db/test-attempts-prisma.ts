@@ -14,9 +14,14 @@ import {
 } from '@/lib/test-attempts';
 import { roundScorePercent } from '@/lib/format-score';
 import {
+  isUuidAttemptId,
   resolveTestIdForInsertPrisma,
   resolveTestIdForInsertSync,
 } from '@/lib/db/resolve-test-id-for-insert';
+import {
+  appendStudentDashboardStatPrisma,
+  buildStatEntry as buildDashboardStatEntryPrisma,
+} from '@/lib/db/student-dashboard-stats-prisma';
 import { ELEVATEX_EXAM_NAME, isElevateXTestId } from '@/lib/elevatex';
 import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
@@ -210,21 +215,60 @@ function isPrismaForeignKeyViolation(err: unknown): boolean {
   return msg.includes('Foreign key') || msg.includes('violates foreign key');
 }
 
-async function ensureUserRowRaw(userId: string, email?: string | null): Promise<void> {
-  const em = email?.trim().toLowerCase() || `${userId}@student.local`;
-  await prisma.$executeRaw`
-    INSERT INTO users (id, email, full_name, subscription_status, user_role, created_at, updated_at)
-    VALUES (
-      ${userId}::uuid,
-      ${em},
-      '',
-      'free',
-      'student',
-      NOW(),
-      NOW()
-    )
-    ON CONFLICT (id) DO NOTHING
+/** Fastest submit — score + status only (no answers / test_id changes). */
+async function completeTestAttemptMinimalPrisma(input: {
+  userId: string;
+  attemptId: string;
+  scorePercent: number;
+  elapsedSec: number;
+  completedAt: Date;
+}): Promise<{ id: string; elapsedSec: number } | null> {
+  if (!isUuidAttemptId(input.attemptId)) return null;
+  const updated = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+    UPDATE test_attempts
+    SET
+      completed_at = ${input.completedAt},
+      status = 'completed',
+      score = ${input.scorePercent},
+      percentage_score = ${input.scorePercent},
+      time_taken = ${input.elapsedSec}
+    WHERE id = ${input.attemptId.trim()}::uuid
+      AND user_id = ${input.userId}::uuid
+    RETURNING id::text AS id, time_taken
   `;
+  const row = updated[0];
+  if (!row?.id) return null;
+  return { id: row.id, elapsedSec: row.time_taken ?? input.elapsedSec };
+}
+
+async function completeLatestOpenMinimalPrisma(input: {
+  userId: string;
+  scorePercent: number;
+  elapsedSec: number;
+  completedAt: Date;
+}): Promise<{ id: string; elapsedSec: number } | null> {
+  const updated = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+    UPDATE test_attempts AS t
+    SET
+      completed_at = ${input.completedAt},
+      status = 'completed',
+      score = ${input.scorePercent},
+      percentage_score = ${input.scorePercent},
+      time_taken = ${input.elapsedSec}
+    WHERE t.id = (
+      SELECT id
+      FROM test_attempts
+      WHERE user_id = ${input.userId}::uuid
+        AND completed_at IS NULL
+        AND status IN ('in_progress', 'started', 'active')
+      ORDER BY created_at DESC
+      LIMIT 1
+    )
+    RETURNING t.id::text AS id, t.time_taken
+  `;
+  const row = updated[0];
+  if (!row?.id) return null;
+  return { id: row.id, elapsedSec: row.time_taken ?? input.elapsedSec };
 }
 
 async function rawCompleteLatestOpenAttempt(input: {
@@ -279,7 +323,7 @@ async function rawCompleteAttemptRow(input: {
   answersJson: string;
 }): Promise<{ id: string; elapsedSec: number } | null> {
   const attemptId = input.attemptId?.trim();
-  if (attemptId) {
+  if (attemptId && isUuidAttemptId(attemptId)) {
     const updated = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
       UPDATE test_attempts
       SET
@@ -361,7 +405,24 @@ async function submitTestAttemptOneShotPrisma(
   const elapsedForPersist =
     elapsedFromClient > 0 ? elapsedFromClient : durationSec > 0 ? durationSec : 0;
 
-  await ensureUserRowRaw(input.userId, input.studentEmail);
+  if (input.attemptId && isUuidAttemptId(input.attemptId)) {
+    const minimal = await completeTestAttemptMinimalPrisma({
+      userId: input.userId,
+      attemptId: input.attemptId,
+      scorePercent,
+      elapsedSec: elapsedForPersist,
+      completedAt: now,
+    });
+    if (minimal) return minimal;
+  }
+
+  const openMinimal = await completeLatestOpenMinimalPrisma({
+    userId: input.userId,
+    scorePercent,
+    elapsedSec: elapsedForPersist,
+    completedAt: now,
+  });
+  if (openMinimal) return openMinimal;
 
   const answersJson = JSON.stringify({
     __submit: true,
@@ -455,6 +516,81 @@ export async function submitTestAttemptLeanPrisma(
   input: FinalizeAttemptInput,
 ): Promise<{ id: string; elapsedSec: number }> {
   return withPrismaRetry(() => submitTestAttemptOneShotPrisma(input), 3);
+}
+
+export type SyncTestAttemptReportInput = {
+  userId: string;
+  testId: string;
+  testName: string;
+  scorePercent: number;
+  elapsedSec: number;
+  completedAtIso: string;
+  attemptId?: string;
+  totalQuestions?: number;
+};
+
+/** Last-resort persist — minimal UPDATE + dashboard stat (admin reports / live board). */
+export async function syncTestAttemptReportPrisma(
+  input: SyncTestAttemptReportInput,
+): Promise<{ id: string; elapsedSec: number }> {
+  const scorePercent = clampScorePercent(input.scorePercent);
+  const elapsedSec = Math.max(0, Math.floor(input.elapsedSec) || 0);
+  const completedAt = new Date(input.completedAtIso);
+  const attemptId = input.attemptId?.trim();
+
+  if (attemptId && isUuidAttemptId(attemptId)) {
+    const byId = await completeTestAttemptMinimalPrisma({
+      userId: input.userId,
+      attemptId,
+      scorePercent,
+      elapsedSec,
+      completedAt,
+    });
+    if (byId) {
+      await persistDashboardStatForSubmit(input, byId.id, byId.elapsedSec);
+      return byId;
+    }
+  }
+
+  const byOpen = await completeLatestOpenMinimalPrisma({
+    userId: input.userId,
+    scorePercent,
+    elapsedSec,
+    completedAt,
+  });
+  if (byOpen) {
+    await persistDashboardStatForSubmit(input, byOpen.id, byOpen.elapsedSec);
+    return byOpen;
+  }
+
+  const statId =
+    attemptId && isUuidAttemptId(attemptId) ? attemptId : crypto.randomUUID();
+  await persistDashboardStatForSubmit(input, statId, elapsedSec);
+  return { id: statId, elapsedSec };
+}
+
+async function persistDashboardStatForSubmit(
+  input: SyncTestAttemptReportInput,
+  id: string,
+  elapsedSec: number,
+): Promise<void> {
+  try {
+    await appendStudentDashboardStatPrisma(
+      input.userId,
+      buildDashboardStatEntryPrisma({
+        id,
+        userId: input.userId,
+        testId: input.testId,
+        testName: input.testName,
+        scorePercent: clampScorePercent(input.scorePercent),
+        elapsedSec,
+        completedAtIso: input.completedAtIso,
+        totalQuestions: input.totalQuestions,
+      }),
+    );
+  } catch (err) {
+    console.warn('[syncTestAttemptReport] dashboard stat skipped:', err);
+  }
 }
 
 /** Persist roll on the student profile when known from ElevateX / roster login. */
@@ -1069,7 +1205,6 @@ export async function createOpenProgressLeanPrisma(input: {
   answers: Record<string, unknown>;
   startedAtIso: string;
 }): Promise<{ id: string; startedAtIso: string }> {
-  await ensureUserRowRaw(input.userId, input.studentEmail);
   const resolvedTestId = resolveTestIdForInsertSync(input.testId);
   const startedAt = new Date(input.startedAtIso);
   const answersJson = JSON.stringify(input.answers);

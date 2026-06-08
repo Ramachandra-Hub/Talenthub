@@ -640,16 +640,36 @@ export default function TestInterface({
         return;
       }
 
-      if (!apiRes.ok) {
-        const json = (await apiRes.json().catch(() => ({}))) as {
+      let finalRes = apiRes;
+      if (!apiRes.ok && apiRes.status >= 500) {
+        const syncRes = await fetchSubmitWithRetry(
+          () =>
+            fetchWithAuth('/api/student/test-attempts/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                testId: test.id,
+                testName: dashboardTestName,
+                scorePercent,
+                elapsedSec,
+                attemptId: liveAttemptIdRef.current,
+                totalQuestions: questions.length,
+              }),
+            }),
+          { attempts: 3, baseDelayMs: 800 },
+        );
+        if (syncRes.ok) finalRes = syncRes;
+      }
+
+      if (!finalRes.ok) {
+        const json = (await finalRes.json().catch(() => ({}))) as {
           error?: string;
           code?: string;
         };
-        if (apiRes.status === 403) {
+        if (finalRes.status === 403) {
           setSubmitError(json.error ?? 'You are not allowed to submit this test.');
           return;
         }
-        // Server unreachable or RDS slow — save locally so the student still sees results + dashboard.
         writeFeed(localAttemptId, scorePercent);
         saveLocalTestAttempt(user.id, localAttemptId, buildLocalPayload(localAttemptId, scorePercent));
         clearExamDraft(test.id);
@@ -661,7 +681,7 @@ export default function TestInterface({
         return;
       }
 
-      const json = (await apiRes.json()) as {
+      const json = (await finalRes.json()) as {
         id?: string;
         attempt?: DashboardAttemptView;
         attempts?: DashboardAttemptView[];

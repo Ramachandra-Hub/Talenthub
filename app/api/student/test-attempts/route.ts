@@ -11,6 +11,7 @@ import {
   AttemptDeadlineError,
   fetchAttemptsForUserPrisma,
   submitTestAttemptLeanPrisma,
+  syncTestAttemptReportPrisma,
   linkProctorViolationsPrisma,
 } from '@/lib/db/test-attempts-prisma';
 import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
@@ -77,6 +78,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   let submittedTestId = '';
+  let recoverCtx: {
+    userId: string;
+    testId: string;
+    testName: string;
+    scorePercent: number;
+    elapsedSec: number;
+    attemptId?: string;
+    totalQuestions?: number;
+  } | null = null;
   try {
     const auth = await requireAuth(['student'], request);
     if ('response' in auth) return auth.response;
@@ -159,6 +169,17 @@ export async function POST(request: Request) {
       }
     }
 
+    const totalQuestions = Number(body.totalQuestions) || 0;
+    recoverCtx = {
+      userId,
+      testId,
+      testName,
+      scorePercent,
+      elapsedSec: clientElapsedSec,
+      attemptId,
+      totalQuestions: totalQuestions || undefined,
+    };
+
     const answersIn =
       body.answers != null && typeof body.answers === 'object'
         ? slimAnswersForSubmit(body.answers as Record<string, unknown>)
@@ -182,7 +203,6 @@ export async function POST(request: Request) {
     });
 
     const id = finalized.id;
-    const totalQuestions = Number(body.totalQuestions) || 0;
     const statEntry = buildStatEntryPrisma({
       id,
       userId,
@@ -248,6 +268,58 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ id, attempt, attempts: [attempt] });
   } catch (error) {
+    if (
+      recoverCtx &&
+      !(error instanceof AttemptConflictError) &&
+      !(error instanceof AttemptDeadlineError)
+    ) {
+      try {
+        const nowIso = new Date().toISOString();
+        const recovered = await syncTestAttemptReportPrisma({
+          ...recoverCtx,
+          completedAtIso: nowIso,
+        });
+        const attempt: TestAttempt & { test: { name: string } } = {
+          ...normalizeAttemptRow({
+            id: recovered.id,
+            user_id: recoverCtx.userId,
+            test_id: recoverCtx.testId,
+            score: recoverCtx.scorePercent,
+            percentage_score: recoverCtx.scorePercent,
+            status: 'completed',
+            created_at: nowIso,
+            completed_at: nowIso,
+            started_at: nowIso,
+            time_taken: recovered.elapsedSec,
+            test_title: recoverCtx.testName,
+          }),
+          test: {
+            ...fallbackTestForAttempt({
+              id: recovered.id,
+              user_id: recoverCtx.userId,
+              test_id: recoverCtx.testId,
+              started_at: nowIso,
+              completed_at: nowIso,
+              score: recoverCtx.scorePercent,
+              answers: null,
+              time_taken: recovered.elapsedSec,
+              status: 'completed',
+              created_at: nowIso,
+            }),
+            name: recoverCtx.testName || 'Practice test',
+          },
+        };
+        void releaseStudentSessionPrisma(recoverCtx.userId).catch(() => undefined);
+        return NextResponse.json({
+          id: recovered.id,
+          attempt,
+          attempts: [attempt],
+          recovered: true,
+        });
+      } catch (recoverErr) {
+        console.warn('[test-attempts/submit] sync recovery failed:', recoverErr);
+      }
+    }
     return submitErrorResponse(error, submittedTestId);
   }
 }

@@ -8,6 +8,14 @@ export function isUuidTestId(value: string): boolean {
   return UUID_RE.test(value.trim());
 }
 
+/** True for server attempt row ids (progress / submit). */
+export function isUuidAttemptId(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const t = value.trim();
+  if (t.startsWith('local-') || t.startsWith('pending-')) return false;
+  return UUID_RE.test(t);
+}
+
 /** Sync resolve — no RDS round-trip (submit hot path). FK errors fall back to null test_id. */
 export function resolveTestIdForInsertSync(testId: string): string | null {
   const t = testId.trim();
