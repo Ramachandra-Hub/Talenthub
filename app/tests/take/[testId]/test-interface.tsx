@@ -567,11 +567,23 @@ export default function TestInterface({
       }
 
       if (!apiRes.ok) {
-        const json = (await apiRes.json().catch(() => ({}))) as { error?: string };
-        setSubmitError(
-          json.error ??
-            `Could not save your attempt (server ${apiRes.status}). Check your connection and try Submit again.`,
-        );
+        const json = (await apiRes.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+        };
+        if (apiRes.status === 403) {
+          setSubmitError(json.error ?? 'You are not allowed to submit this test.');
+          return;
+        }
+        // Server unreachable or RDS slow — save locally so the student still sees results + dashboard.
+        writeFeed(localAttemptId, scorePercent);
+        saveLocalTestAttempt(user.id, localAttemptId, buildLocalPayload(localAttemptId, scorePercent));
+        clearExamDraft(test.id);
+        clearTestProctorSessionId(test.id);
+        window.sessionStorage.removeItem(`exam:start:${test.id}`);
+        window.sessionStorage.removeItem(`exam:serverStart:${test.id}`);
+        setIsSubmitted(true);
+        router.push(`/tests/result/${localAttemptId}?pending=1`);
         return;
       }
 

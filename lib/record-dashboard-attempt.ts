@@ -193,13 +193,39 @@ export async function recordDashboardAttempt(
           completedAtIso: nowIso,
         }),
       );
+    } else if (res.status >= 500) {
+      saveLocalTestAttempt(user.id, attemptId, {
+        attempt: {
+          id: attemptId,
+          user_id: user.id,
+          test_id: input.testId,
+          started_at: nowIso,
+          completed_at: nowIso,
+          score: input.scorePercent,
+          answers: input.answers ?? null,
+          time_taken: elapsedSec,
+          status: 'completed' as const,
+          created_at: nowIso,
+        },
+        test,
+      });
+      pushDashboardFeedEntry(
+        user.id,
+        buildFeedEntry({
+          id: attemptId,
+          userId: user.id,
+          testId: input.testId,
+          testName: input.testName,
+          scorePercent: input.scorePercent,
+          elapsedSec,
+          completedAtIso: nowIso,
+        }),
+      );
+      return { attemptId, savedToServer: false };
     } else {
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       const message =
-        json.error ??
-        (res.status >= 500
-          ? `The server could not save your submission (${res.status}). Wait a few seconds and try Submit again.`
-          : `Submission was rejected (${res.status}).`);
+        json.error ?? `Submission was rejected (${res.status}).`;
       return { attemptId, savedToServer: false, error: message };
     }
   } catch (err) {

@@ -186,9 +186,10 @@ export function withServerlessDbParams(url: string): string {
   let out = withAwsRdsSsl(url);
   const onVercel = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
   if (onVercel) {
-    out = appendQueryParam(out, 'connection_limit=1');
-    out = appendQueryParam(out, 'connect_timeout=10');
-    out = appendQueryParam(out, 'pool_timeout=10');
+    // 3 connections per lambda — enough for one submit without exhausting RDS.
+    out = appendQueryParam(out, 'connection_limit=3');
+    out = appendQueryParam(out, 'connect_timeout=15');
+    out = appendQueryParam(out, 'pool_timeout=15');
   }
   return out;
 }

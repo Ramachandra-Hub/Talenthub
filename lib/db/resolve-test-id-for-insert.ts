@@ -8,6 +8,15 @@ export function isUuidTestId(value: string): boolean {
   return UUID_RE.test(value.trim());
 }
 
+/** Sync resolve — no RDS round-trip (submit hot path). FK errors fall back to null test_id. */
+export function resolveTestIdForInsertSync(testId: string): string | null {
+  const t = testId.trim();
+  if (!t || t.startsWith('fallback-') || t === 'programming-assessment-v1' || isElevateXTestId(t)) {
+    return null;
+  }
+  return isUuidTestId(t) ? t : null;
+}
+
 /**
  * test_attempts.test_id is a UUID FK — ElevateX uses `placement_full` (store null + test_title).
  */

@@ -13,7 +13,10 @@ import {
   type PersistAttemptInput,
 } from '@/lib/test-attempts';
 import { roundScorePercent } from '@/lib/format-score';
-import { resolveTestIdForInsertPrisma } from '@/lib/db/resolve-test-id-for-insert';
+import {
+  resolveTestIdForInsertPrisma,
+  resolveTestIdForInsertSync,
+} from '@/lib/db/resolve-test-id-for-insert';
 import { ELEVATEX_EXAM_NAME, isElevateXTestId } from '@/lib/elevatex';
 import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
@@ -191,16 +194,6 @@ export async function ensureStudentUserRowPrisma(user: {
   });
 }
 
-const resolvedTestIdCache = new Map<string, string | null>();
-
-async function resolveTestIdCached(testId: string): Promise<string | null> {
-  const key = testId.trim();
-  if (resolvedTestIdCache.has(key)) return resolvedTestIdCache.get(key) ?? null;
-  const resolved = await resolveTestIdForInsertPrisma(key);
-  resolvedTestIdCache.set(key, resolved);
-  return resolved;
-}
-
 function isPrismaUniqueViolation(err: unknown): boolean {
   if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2002') {
     return true;
@@ -209,24 +202,124 @@ function isPrismaUniqueViolation(err: unknown): boolean {
   return msg.includes('Unique constraint') || msg.includes('test_attempts_one_completed');
 }
 
+function isPrismaForeignKeyViolation(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2003') {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return msg.includes('Foreign key') || msg.includes('violates foreign key');
+}
+
+async function rawCompleteAttemptRow(input: {
+  userId: string;
+  attemptId?: string;
+  resolvedTestId: string | null;
+  title: string;
+  now: Date;
+  scorePercent: number;
+  rawNetScore: number;
+  elapsedForPersist: number;
+  answersJson: string;
+  proctorJson: string | null;
+}): Promise<{ id: string; elapsedSec: number } | null> {
+  const attemptId = input.attemptId?.trim();
+  if (attemptId) {
+    const updated = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+      UPDATE test_attempts
+      SET
+        test_id = ${input.resolvedTestId},
+        test_title = ${input.title},
+        completed_at = ${input.now},
+        status = 'completed',
+        score = ${input.scorePercent},
+        percentage_score = ${input.scorePercent},
+        total_score = ${input.rawNetScore},
+        answers = ${input.answersJson}::jsonb,
+        time_taken = ${input.elapsedForPersist},
+        proctor_metadata = CASE
+          WHEN ${input.proctorJson}::text IS NULL THEN proctor_metadata
+          ELSE ${input.proctorJson}::jsonb
+        END
+      WHERE id = ${attemptId}::uuid AND user_id = ${input.userId}::uuid
+      RETURNING id::text AS id, time_taken
+    `;
+    if (updated[0]?.id) {
+      return {
+        id: updated[0].id,
+        elapsedSec: updated[0].time_taken ?? input.elapsedForPersist,
+      };
+    }
+  }
+  return null;
+}
+
+async function rawInsertCompletedAttempt(input: {
+  userId: string;
+  resolvedTestId: string | null;
+  title: string;
+  now: Date;
+  scorePercent: number;
+  rawNetScore: number;
+  elapsedForPersist: number;
+  answersJson: string;
+  proctorJson: string | null;
+}): Promise<{ id: string; elapsedSec: number }> {
+  const inserted = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+    INSERT INTO test_attempts (
+      user_id,
+      test_id,
+      test_title,
+      started_at,
+      completed_at,
+      status,
+      score,
+      percentage_score,
+      total_score,
+      answers,
+      time_taken,
+      proctor_metadata
+    ) VALUES (
+      ${input.userId}::uuid,
+      ${input.resolvedTestId},
+      ${input.title},
+      ${input.now},
+      ${input.now},
+      'completed',
+      ${input.scorePercent},
+      ${input.scorePercent},
+      ${input.rawNetScore},
+      ${input.answersJson}::jsonb,
+      ${input.elapsedForPersist},
+      ${input.proctorJson}::jsonb
+    )
+    RETURNING id::text AS id, time_taken
+  `;
+  const row = inserted[0];
+  if (!row?.id) throw new Error('Insert returned no id');
+  return { id: row.id, elapsedSec: row.time_taken ?? input.elapsedForPersist };
+}
+
 /**
- * Lean submit — at most 2–3 RDS round-trips (no transaction, no advisory lock).
+ * Lean submit — 1–2 RDS round-trips (no transaction, no advisory lock).
  * Used on Vercel + RDS where long submit paths routinely time out.
  */
 export async function submitTestAttemptLeanPrisma(
   input: FinalizeAttemptInput,
 ): Promise<{ id: string; elapsedSec: number }> {
-  const resolvedTestId = await resolveTestIdCached(input.testId);
+  let resolvedTestId = resolveTestIdForInsertSync(input.testId);
   const title = input.testName?.trim() || 'Practice test';
   const now = new Date(input.submittedAtIso);
   const durationSec = Number.isFinite(input.durationSec) ? Math.max(0, Number(input.durationSec)) : 0;
   const scorePercent = clampScorePercent(input.scorePercent);
   const rawNetScore = clampRawNetScore(input.rawNetScore);
-  const minimalAnswers = {
-    __lean_submit: true,
-    scorePercent,
-    at: input.submittedAtIso,
-  } as Record<string, unknown>;
+  const answersForPersist =
+    input.answers && Object.keys(input.answers).length > 0
+      ? input.answers
+      : ({
+          __lean_submit: true,
+          scorePercent,
+          at: input.submittedAtIso,
+        } as Record<string, unknown>);
   const proctorMetadata = buildProctorMetadata(input);
 
   const elapsedFromClient = Math.max(0, Math.floor(Number(input.clientElapsedSec) || 0));
@@ -237,6 +330,67 @@ export async function submitTestAttemptLeanPrisma(
         ? durationSec
         : 0;
 
+  const answersJson = JSON.stringify(answersForPersist);
+  const proctorJson =
+    proctorMetadata != null ? JSON.stringify(proctorMetadata) : null;
+
+  try {
+    const rawUpdated = await rawCompleteAttemptRow({
+      userId: input.userId,
+      attemptId: input.attemptId,
+      resolvedTestId,
+      title,
+      now,
+      scorePercent,
+      rawNetScore,
+      elapsedForPersist,
+      answersJson,
+      proctorJson,
+    });
+    if (rawUpdated) return rawUpdated;
+
+    return await rawInsertCompletedAttempt({
+      userId: input.userId,
+      resolvedTestId,
+      title,
+      now,
+      scorePercent,
+      rawNetScore,
+      elapsedForPersist,
+      answersJson,
+      proctorJson,
+    });
+  } catch (err) {
+    if (isPrismaForeignKeyViolation(err) && resolvedTestId) {
+      resolvedTestId = null;
+      const rawUpdated = await rawCompleteAttemptRow({
+        userId: input.userId,
+        attemptId: input.attemptId,
+        resolvedTestId: null,
+        title,
+        now,
+        scorePercent,
+        rawNetScore,
+        elapsedForPersist,
+        answersJson,
+        proctorJson,
+      });
+      if (rawUpdated) return rawUpdated;
+      return rawInsertCompletedAttempt({
+        userId: input.userId,
+        resolvedTestId: null,
+        title,
+        now,
+        scorePercent,
+        rawNetScore,
+        elapsedForPersist,
+        answersJson,
+        proctorJson,
+      });
+    }
+    if (!isPrismaUniqueViolation(err)) throw err;
+  }
+
   const completeData = {
     testId: resolvedTestId,
     testTitle: title,
@@ -245,7 +399,7 @@ export async function submitTestAttemptLeanPrisma(
     score: scorePercent,
     percentageScore: scorePercent,
     totalScore: rawNetScore,
-    answers: minimalAnswers as Prisma.InputJsonValue,
+    answers: answersForPersist as Prisma.InputJsonValue,
     timeTaken: elapsedForPersist,
     proctorMetadata,
   };
