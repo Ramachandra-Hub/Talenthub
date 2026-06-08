@@ -6,6 +6,7 @@ import {
   withPrismaRetry,
 } from '@/lib/db/test-attempts-prisma';
 import { releaseStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
+import { slimAnswersForSubmit } from '@/lib/exam-v2/sanitize-answers';
 import type { TestAttempt } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,10 @@ export async function POST(request: Request) {
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
     const elapsedSec = Number(body.elapsedSec) || 0;
     const totalQuestions = Number(body.totalQuestions) || 0;
+    const answersIn =
+      body.answers != null && typeof body.answers === 'object'
+        ? slimAnswersForSubmit(body.answers as Record<string, unknown>)
+        : undefined;
 
     const finalized = await withPrismaRetry(
       () =>
@@ -48,6 +53,7 @@ export async function POST(request: Request) {
           completedAtIso: nowIso,
           attemptId,
           totalQuestions: totalQuestions || undefined,
+          answers: answersIn,
         }),
       2,
     );

@@ -114,6 +114,37 @@ export async function findElevateXScorecardByRoll(rollNumber: string): Promise<S
   return null;
 }
 
+/** Attach scorecard payload from client submit onto an attempt row. */
+export async function attachElevateXScorecardToAttemptPrisma(
+  userId: string,
+  attemptId: string,
+  answers: Record<string, unknown>,
+): Promise<boolean> {
+  if (isPlaceholderAttemptId(attemptId)) return false;
+  const scorecard = parseElevateXScorecardFromAnswers(answers);
+  if (!scorecard) return false;
+
+  const encoded = encodeElevateXScorecardAnswers(
+    scorecard,
+    answers.__proctor && typeof answers.__proctor === 'object'
+      ? { __proctor: answers.__proctor as Record<string, unknown> }
+      : undefined,
+  );
+  const pct = scorecard.percentage;
+
+  const updated = await prisma.testAttempt.updateMany({
+    where: { id: attemptId, userId },
+    data: {
+      answers: encoded as Prisma.InputJsonValue,
+      status: 'completed',
+      completedAt: new Date(),
+      percentageScore: pct,
+      score: pct,
+    },
+  });
+  return updated.count > 0;
+}
+
 /** Copy scorecard JSON onto a specific attempt row (admin repair). */
 export async function backfillElevateXScorecardToAttemptPrisma(
   targetAttemptId: string,

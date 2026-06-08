@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import {
+  backfillElevateXScorecardToAttemptPrisma,
   findElevateXScorecardByRoll,
   findElevateXScorecardForUserId,
 } from '@/lib/placement/elevatex-scorecard-recovery';
@@ -116,9 +117,34 @@ export async function fetchElevateXScorecardForAttemptPrisma(
     }
   }
 
+  if (!isPlaceholderAttemptId(attemptId)) {
+    const backfill = await backfillElevateXScorecardToAttemptPrisma(attemptId);
+    if (backfill.ok) {
+      const row = await prisma.testAttempt.findUnique({
+        where: { id: attemptId },
+        select: {
+          id: true,
+          userId: true,
+          testId: true,
+          testTitle: true,
+          answers: true,
+        },
+      });
+      const scorecard = row ? parseElevateXScorecardFromAnswers(row.answers) : null;
+      if (scorecard && row) {
+        return {
+          scorecard,
+          attemptId: row.id,
+          userId: row.userId,
+          source: `auto_backfill:${backfill.source}`,
+        };
+      }
+    }
+  }
+
   return {
     error:
-      'ElevateX scorecard is not stored for this attempt. Use Admin → recover by roll, run scripts/recover-elevatex-scorecard.ts, or POST /api/admin/elevatex/backfill-scorecard with the attempt id after the student submits online.',
+      'ElevateX section report is not available yet. Ask the student to submit again while online, or use Admin → recover by roll number.',
     status: 404,
   };
 }

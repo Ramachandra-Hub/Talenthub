@@ -23,6 +23,10 @@ import {
   buildStatEntry as buildDashboardStatEntryPrisma,
 } from '@/lib/db/student-dashboard-stats-prisma';
 import { ELEVATEX_EXAM_NAME, isElevateXTestId } from '@/lib/elevatex';
+import {
+  encodeElevateXScorecardAnswers,
+  parseElevateXScorecardFromAnswers,
+} from '@/lib/placement/scorecard-payload';
 import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
 import type { Prisma as PrismaTypes } from '@prisma/client';
@@ -215,27 +219,76 @@ function isPrismaForeignKeyViolation(err: unknown): boolean {
   return msg.includes('Foreign key') || msg.includes('violates foreign key');
 }
 
-/** Fastest submit — score + status only (no answers / test_id changes). */
+function resolveAnswersForSubmitPersist(input: FinalizeAttemptInput): Record<string, unknown> {
+  const scorecard = parseElevateXScorecardFromAnswers(input.answers);
+  if (scorecard) {
+    const proctor = input.answers?.__proctor;
+    return encodeElevateXScorecardAnswers(
+      scorecard,
+      proctor && typeof proctor === 'object'
+        ? { __proctor: proctor as Record<string, unknown> }
+        : undefined,
+    );
+  }
+  if (input.answers && Object.keys(input.answers).length > 0) {
+    return input.answers;
+  }
+  return {
+    __submit: true,
+    scorePercent: clampScorePercent(input.scorePercent),
+    at: input.submittedAtIso,
+  };
+}
+
+async function patchAttemptAnswersJsonPrisma(
+  userId: string,
+  attemptId: string,
+  answersJson: string,
+): Promise<void> {
+  if (!isUuidAttemptId(attemptId)) return;
+  await prisma.$executeRaw`
+    UPDATE test_attempts
+    SET answers = ${answersJson}::jsonb
+    WHERE id = ${attemptId.trim()}::uuid AND user_id = ${userId}::uuid
+  `;
+}
+
+/** Fastest submit — score + status; optional answers (ElevateX scorecard). */
 async function completeTestAttemptMinimalPrisma(input: {
   userId: string;
   attemptId: string;
   scorePercent: number;
   elapsedSec: number;
   completedAt: Date;
+  answersJson?: string;
 }): Promise<{ id: string; elapsedSec: number } | null> {
   if (!isUuidAttemptId(input.attemptId)) return null;
-  const updated = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
-    UPDATE test_attempts
-    SET
-      completed_at = ${input.completedAt},
-      status = 'completed',
-      score = ${input.scorePercent},
-      percentage_score = ${input.scorePercent},
-      time_taken = ${input.elapsedSec}
-    WHERE id = ${input.attemptId.trim()}::uuid
-      AND user_id = ${input.userId}::uuid
-    RETURNING id::text AS id, time_taken
-  `;
+  const updated = input.answersJson
+    ? await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+        UPDATE test_attempts
+        SET
+          completed_at = ${input.completedAt},
+          status = 'completed',
+          score = ${input.scorePercent},
+          percentage_score = ${input.scorePercent},
+          time_taken = ${input.elapsedSec},
+          answers = ${input.answersJson}::jsonb
+        WHERE id = ${input.attemptId.trim()}::uuid
+          AND user_id = ${input.userId}::uuid
+        RETURNING id::text AS id, time_taken
+      `
+    : await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+        UPDATE test_attempts
+        SET
+          completed_at = ${input.completedAt},
+          status = 'completed',
+          score = ${input.scorePercent},
+          percentage_score = ${input.scorePercent},
+          time_taken = ${input.elapsedSec}
+        WHERE id = ${input.attemptId.trim()}::uuid
+          AND user_id = ${input.userId}::uuid
+        RETURNING id::text AS id, time_taken
+      `;
   const row = updated[0];
   if (!row?.id) return null;
   return { id: row.id, elapsedSec: row.time_taken ?? input.elapsedSec };
@@ -246,16 +299,38 @@ async function completeLatestOpenMinimalPrisma(input: {
   scorePercent: number;
   elapsedSec: number;
   completedAt: Date;
+  answersJson?: string;
 }): Promise<{ id: string; elapsedSec: number } | null> {
-  const updated = await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
-    UPDATE test_attempts AS t
-    SET
-      completed_at = ${input.completedAt},
-      status = 'completed',
-      score = ${input.scorePercent},
-      percentage_score = ${input.scorePercent},
-      time_taken = ${input.elapsedSec}
-    WHERE t.id = (
+  const updated = input.answersJson
+    ? await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+        UPDATE test_attempts AS t
+        SET
+          completed_at = ${input.completedAt},
+          status = 'completed',
+          score = ${input.scorePercent},
+          percentage_score = ${input.scorePercent},
+          time_taken = ${input.elapsedSec},
+          answers = ${input.answersJson}::jsonb
+        WHERE t.id = (
+          SELECT id
+          FROM test_attempts
+          WHERE user_id = ${input.userId}::uuid
+            AND completed_at IS NULL
+            AND status IN ('in_progress', 'started', 'active')
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+        RETURNING t.id::text AS id, t.time_taken
+      `
+    : await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
+        UPDATE test_attempts AS t
+        SET
+          completed_at = ${input.completedAt},
+          status = 'completed',
+          score = ${input.scorePercent},
+          percentage_score = ${input.scorePercent},
+          time_taken = ${input.elapsedSec}
+        WHERE t.id = (
       SELECT id
       FROM test_attempts
       WHERE user_id = ${input.userId}::uuid
@@ -405,6 +480,11 @@ async function submitTestAttemptOneShotPrisma(
   const elapsedForPersist =
     elapsedFromClient > 0 ? elapsedFromClient : durationSec > 0 ? durationSec : 0;
 
+  const answersForPersist = resolveAnswersForSubmitPersist(input);
+  const answersJson = JSON.stringify(answersForPersist);
+  const hasScorecard = parseElevateXScorecardFromAnswers(answersForPersist) != null;
+  const answersArg = hasScorecard ? answersJson : undefined;
+
   if (input.attemptId && isUuidAttemptId(input.attemptId)) {
     const minimal = await completeTestAttemptMinimalPrisma({
       userId: input.userId,
@@ -412,6 +492,7 @@ async function submitTestAttemptOneShotPrisma(
       scorePercent,
       elapsedSec: elapsedForPersist,
       completedAt: now,
+      answersJson: answersArg,
     });
     if (minimal) return minimal;
   }
@@ -421,14 +502,9 @@ async function submitTestAttemptOneShotPrisma(
     scorePercent,
     elapsedSec: elapsedForPersist,
     completedAt: now,
+    answersJson: answersArg,
   });
   if (openMinimal) return openMinimal;
-
-  const answersJson = JSON.stringify({
-    __submit: true,
-    scorePercent,
-    at: input.submittedAtIso,
-  });
 
   const completeArgs = {
     userId: input.userId,
@@ -527,6 +603,7 @@ export type SyncTestAttemptReportInput = {
   completedAtIso: string;
   attemptId?: string;
   totalQuestions?: number;
+  answers?: Record<string, unknown>;
 };
 
 /** Last-resort persist — minimal UPDATE + dashboard stat (admin reports / live board). */
@@ -537,6 +614,21 @@ export async function syncTestAttemptReportPrisma(
   const elapsedSec = Math.max(0, Math.floor(input.elapsedSec) || 0);
   const completedAt = new Date(input.completedAtIso);
   const attemptId = input.attemptId?.trim();
+  const answersForPersist = input.answers
+    ? resolveAnswersForSubmitPersist({
+        userId: input.userId,
+        testId: input.testId,
+        testName: input.testName,
+        scorePercent: input.scorePercent,
+        rawNetScore: input.scorePercent,
+        answers: input.answers,
+        submittedAtIso: input.completedAtIso,
+      })
+    : null;
+  const answersJson = answersForPersist ? JSON.stringify(answersForPersist) : undefined;
+  const hasScorecard =
+    answersForPersist != null && parseElevateXScorecardFromAnswers(answersForPersist) != null;
+  const answersArg = hasScorecard ? answersJson : undefined;
 
   if (attemptId && isUuidAttemptId(attemptId)) {
     const byId = await completeTestAttemptMinimalPrisma({
@@ -545,9 +637,10 @@ export async function syncTestAttemptReportPrisma(
       scorePercent,
       elapsedSec,
       completedAt,
+      answersJson: answersArg,
     });
     if (byId) {
-      await persistDashboardStatForSubmit(input, byId.id, byId.elapsedSec);
+      await persistDashboardStatForSubmit(input, byId.id, byId.elapsedSec, answersForPersist);
       return byId;
     }
   }
@@ -557,15 +650,16 @@ export async function syncTestAttemptReportPrisma(
     scorePercent,
     elapsedSec,
     completedAt,
+    answersJson: answersArg,
   });
   if (byOpen) {
-    await persistDashboardStatForSubmit(input, byOpen.id, byOpen.elapsedSec);
+    await persistDashboardStatForSubmit(input, byOpen.id, byOpen.elapsedSec, answersForPersist);
     return byOpen;
   }
 
   const statId =
     attemptId && isUuidAttemptId(attemptId) ? attemptId : crypto.randomUUID();
-  await persistDashboardStatForSubmit(input, statId, elapsedSec);
+  await persistDashboardStatForSubmit(input, statId, elapsedSec, answersForPersist);
   return { id: statId, elapsedSec };
 }
 
@@ -573,6 +667,7 @@ async function persistDashboardStatForSubmit(
   input: SyncTestAttemptReportInput,
   id: string,
   elapsedSec: number,
+  answersForPersist?: Record<string, unknown> | null,
 ): Promise<void> {
   try {
     await appendStudentDashboardStatPrisma(
@@ -586,6 +681,7 @@ async function persistDashboardStatForSubmit(
         elapsedSec,
         completedAtIso: input.completedAtIso,
         totalQuestions: input.totalQuestions,
+        answers: answersForPersist ?? input.answers,
       }),
     );
   } catch (err) {

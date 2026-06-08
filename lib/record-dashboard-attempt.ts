@@ -206,6 +206,7 @@ export async function recordDashboardAttempt(
               scorePercent: input.scorePercent,
               elapsedSec,
               totalQuestions: input.test?.total_questions,
+              answers: input.answers ? slimAnswersForSubmit(input.answers) : undefined,
             }),
           }),
         { attempts: 3, baseDelayMs: 800 },

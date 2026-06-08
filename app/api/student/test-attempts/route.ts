@@ -86,6 +86,7 @@ export async function POST(request: Request) {
     elapsedSec: number;
     attemptId?: string;
     totalQuestions?: number;
+    answers?: Record<string, unknown>;
   } | null = null;
   try {
     const auth = await requireAuth(['student'], request);
@@ -169,6 +170,11 @@ export async function POST(request: Request) {
       }
     }
 
+    const answersIn =
+      body.answers != null && typeof body.answers === 'object'
+        ? slimAnswersForSubmit(body.answers as Record<string, unknown>)
+        : {};
+
     const totalQuestions = Number(body.totalQuestions) || 0;
     recoverCtx = {
       userId,
@@ -178,12 +184,8 @@ export async function POST(request: Request) {
       elapsedSec: clientElapsedSec,
       attemptId,
       totalQuestions: totalQuestions || undefined,
+      answers: Object.keys(answersIn).length > 0 ? answersIn : undefined,
     };
-
-    const answersIn =
-      body.answers != null && typeof body.answers === 'object'
-        ? slimAnswersForSubmit(body.answers as Record<string, unknown>)
-        : {};
 
     const finalized = await submitTestAttemptLeanPrisma({
       userId,

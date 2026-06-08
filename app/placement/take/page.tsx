@@ -424,6 +424,21 @@ export default function PlacementTakePage() {
         }
 
         const attemptId = submitRes.attemptId;
+        const scorecardAnswers = encodeElevateXScorecardAnswers(
+          scorecard,
+          proctorSummary ? { __proctor: proctorSummary as Record<string, unknown> } : undefined,
+        );
+        const persistScorecardOnServer = (id: string) => {
+          if (!id || id.startsWith('local-')) return;
+          void fetchWithSession(`/api/student/elevatex/scorecard/${encodeURIComponent(id)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answers: scorecardAnswers }),
+            keepalive: true,
+          }).catch(() => undefined);
+        };
+        persistScorecardOnServer(attemptId);
+
         if (!submitRes.savedToServer) {
           saveScorecardForAttempt(attemptId, { ...scorecard, attemptId });
           markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);
