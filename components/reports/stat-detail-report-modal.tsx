@@ -97,7 +97,7 @@ export function StatDetailReportModal({
         />
 
         {/* Header */}
-        <header className="stat-report-modal-header relative shrink-0 overflow-hidden px-5 sm:px-8 pt-7 pb-6 text-white">
+        <header className="admin-modal-dark-header stat-report-modal-header relative shrink-0 overflow-hidden px-5 sm:px-8 pt-7 pb-6 text-white">
           <div
             className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#0c2340] via-[#1e3a5f] to-[#254d73]"
             aria-hidden

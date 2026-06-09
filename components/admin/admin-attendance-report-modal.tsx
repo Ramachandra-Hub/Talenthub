@@ -222,7 +222,7 @@ export function AdminAttendanceReportModal({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Poster header */}
-          <header className="relative shrink-0 overflow-hidden px-6 sm:px-8 pt-8 pb-10 text-white">
+          <header className="admin-modal-dark-header relative shrink-0 overflow-hidden px-6 sm:px-8 pt-8 pb-10 text-white">
             <div
               className="absolute inset-0 bg-gradient-to-br from-[#0c2340] via-[#1e3a5f] to-[#0f4c5c]"
               aria-hidden
@@ -242,7 +242,10 @@ export function AdminAttendanceReportModal({
                 <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#e8d5a8]/90">
                   {COLLEGE.rce} · {COLLEGE.departmentTitle}
                 </p>
-                <h2 id="attendance-dashboard-title" className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">
+                <h2
+                  id="attendance-dashboard-title"
+                  className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-white"
+                >
                   Student Attendance
                 </h2>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/80">

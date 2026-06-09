@@ -389,6 +389,17 @@
     z-index: 15;
   }
 
+  /* Admin report popups — base layer sets h1–h4 to navy; dark headers need explicit white */
+  .admin-modal-dark-header,
+  .stat-report-modal-header {
+    color: #ffffff;
+  }
+
+  .admin-modal-dark-header :is(h1, h2, h3, h4),
+  .stat-report-modal-header :is(h1, h2, h3, h4) {
+    color: #ffffff;
+  }
+
   /* Page chrome */
   .app-page {
     @apply min-h-screen bg-background;

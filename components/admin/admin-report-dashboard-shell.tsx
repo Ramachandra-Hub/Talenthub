@@ -107,7 +107,7 @@ export function AdminReportDashboardShell({
           className="relative z-[1] my-auto w-full max-w-[min(96vw,56rem)] max-h-[min(calc(100dvh-1.5rem),900px)] flex flex-col overflow-hidden rounded-[1.5rem] border border-[#c4a052]/30 bg-[#f8fafc] shadow-[0_32px_80px_-12px_rgba(12,35,64,0.45)] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300"
           onClick={(e) => e.stopPropagation()}
         >
-          <header className="relative shrink-0 overflow-hidden px-6 sm:px-8 pt-8 pb-10 text-white">
+          <header className="admin-modal-dark-header relative shrink-0 overflow-hidden px-6 sm:px-8 pt-8 pb-10 text-white">
             <div
               className="absolute inset-0 bg-gradient-to-br from-[#0c2340] via-[#1e3a5f] to-[#0f4c5c]"
               aria-hidden
@@ -127,10 +127,13 @@ export function AdminReportDashboardShell({
                 <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-[#e8d5a8]/90">
                   {COLLEGE.rce} · {COLLEGE.departmentTitle}
                 </p>
-                <h2 id="admin-report-dashboard-title" className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">
+                <h2
+                  id="admin-report-dashboard-title"
+                  className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-white"
+                >
                   {title}
                 </h2>
-                <p className="mt-1 text-sm text-white/80 max-w-xl">{subtitle}</p>
+                <p className="mt-1 text-sm text-white/90 max-w-xl">{subtitle}</p>
               </div>
 
               <div className="flex flex-col items-start lg:items-end gap-3 shrink-0">
