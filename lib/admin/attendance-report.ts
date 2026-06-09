@@ -115,6 +115,118 @@ export function summarizeAttendanceDay(
   };
 }
 
+export type AttendanceBranchStat = {
+  branch: string;
+  total: number;
+  attended: number;
+  absent: number;
+  rate: number;
+};
+
+export type AttendanceYearStat = {
+  year: string;
+  total: number;
+  attended: number;
+  absent: number;
+  rate: number;
+};
+
+export type AttendanceAnalytics = {
+  summary: AttendanceDaySummary;
+  rows: AttendanceDayStudentRow[];
+  byBranch: AttendanceBranchStat[];
+  byYear: AttendanceYearStat[];
+};
+
+function scopeAttendanceStudents(
+  students: AdminDashboardStudent[],
+  attempts: AdminDashboardAttempt[],
+  options?: { branch?: string; year?: string },
+): {
+  students: AdminDashboardStudent[];
+  attempts: AdminDashboardAttempt[];
+} {
+  const branchFilter = options?.branch?.trim();
+  const yearFilter = options?.year?.trim();
+  const scopedStudents = students.filter((s) => {
+    if (branchFilter && branchFilter !== 'all' && (s.branch || '—') !== branchFilter) return false;
+    if (yearFilter && yearFilter !== 'all' && (s.academic_year || '—') !== yearFilter) return false;
+    return true;
+  });
+  const scopedIds = new Set(scopedStudents.map((s) => s.id));
+  const scopedAttempts = attempts.filter((a) => scopedIds.has(String(a.user_id ?? '')));
+  return { students: scopedStudents, attempts: scopedAttempts };
+}
+
+export function buildAttendanceAnalytics(
+  dateKey: string,
+  students: AdminDashboardStudent[],
+  attempts: AdminDashboardAttempt[],
+  options?: { branch?: string; year?: string },
+): AttendanceAnalytics {
+  const { students: scopedStudents, attempts: scopedAttempts } = scopeAttendanceStudents(
+    students,
+    attempts,
+    options,
+  );
+  const summary = summarizeAttendanceDay(dateKey, scopedStudents, scopedAttempts);
+  const rows = buildAttendanceDayRows(dateKey, scopedStudents, scopedAttempts).sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'Attended' ? -1 : 1;
+    if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
+    if (a.year !== b.year) return a.year.localeCompare(b.year);
+    return a.name.localeCompare(b.name);
+  });
+
+  const branchMap = new Map<string, AttendanceBranchStat>();
+  const yearMap = new Map<string, AttendanceYearStat>();
+
+  for (const row of rows) {
+    const branchKey = row.branch || 'Unassigned';
+    const yearKey = row.year || '—';
+    const attended = row.status === 'Attended';
+
+    const b = branchMap.get(branchKey) ?? {
+      branch: branchKey,
+      total: 0,
+      attended: 0,
+      absent: 0,
+      rate: 0,
+    };
+    b.total += 1;
+    if (attended) b.attended += 1;
+    else b.absent += 1;
+    branchMap.set(branchKey, b);
+
+    const y = yearMap.get(yearKey) ?? {
+      year: yearKey,
+      total: 0,
+      attended: 0,
+      absent: 0,
+      rate: 0,
+    };
+    y.total += 1;
+    if (attended) y.attended += 1;
+    else y.absent += 1;
+    yearMap.set(yearKey, y);
+  }
+
+  const byBranch = Array.from(branchMap.values())
+    .map((b) => ({
+      ...b,
+      rate: b.total > 0 ? roundRatePercent((b.attended / b.total) * 100) : 0,
+    }))
+    .sort((a, b) => b.rate - a.rate || b.total - a.total);
+
+  const byYear = Array.from(yearMap.values())
+    .map((y) => ({
+      ...y,
+      rate: y.total > 0 ? roundRatePercent((y.attended / y.total) * 100) : 0,
+    }))
+    .sort((a, b) => a.year.localeCompare(b.year));
+
+  return { summary, rows, byBranch, byYear };
+}
+
 export function attendanceBranchYearSummaryLines(
   dateKey: string,
   students: AdminDashboardStudent[],
@@ -147,24 +259,15 @@ export function buildAttendanceReportPayload(
   attempts: AdminDashboardAttempt[],
   options?: { branch?: string; year?: string },
 ): TableReportPayload {
+  const analytics = buildAttendanceAnalytics(dateKey, students, attempts, options);
+  const { summary, rows } = analytics;
   const branchFilter = options?.branch?.trim();
   const yearFilter = options?.year?.trim();
-  const scopedStudents = students.filter((s) => {
-    if (branchFilter && branchFilter !== 'all' && (s.branch || '—') !== branchFilter) return false;
-    if (yearFilter && yearFilter !== 'all' && (s.academic_year || '—') !== yearFilter) return false;
-    return true;
-  });
-  const scopedIds = new Set(scopedStudents.map((s) => s.id));
-  const scopedAttempts = attempts.filter((a) => scopedIds.has(String(a.user_id ?? '')));
-
-  const summary = summarizeAttendanceDay(dateKey, scopedStudents, scopedAttempts);
-  const rows = buildAttendanceDayRows(dateKey, scopedStudents, scopedAttempts).sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'Attended' ? -1 : 1;
-    if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
-    if (a.year !== b.year) return a.year.localeCompare(b.year);
-    return a.name.localeCompare(b.name);
-  });
-
+  const { students: scopedStudents, attempts: scopedAttempts } = scopeAttendanceStudents(
+    students,
+    attempts,
+    options,
+  );
   const branchSummary = attendanceBranchYearSummaryLines(dateKey, scopedStudents, scopedAttempts);
 
   return {
