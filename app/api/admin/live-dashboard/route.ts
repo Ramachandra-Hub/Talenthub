@@ -11,6 +11,7 @@ import {
   mergeInProgressIntoLiveBoards,
   mergeInProgressIntoWritingNow,
   mergeSessionSubmittedIntoLiveBoards,
+  sortLiveBoardEntries,
 } from '@/lib/admin/live-dashboard-prisma';
 import { loadAdminStudentsPrisma } from '@/lib/admin/attempts-rollup-prisma';
 import { liveSessionSinceWithGrace } from '@/lib/admin/live-exam-session';
@@ -73,20 +74,44 @@ export async function GET(request: Request) {
     sessionSubmittedEntries,
     elevatexSchedule,
   );
-  const boards = mergeInProgressIntoLiveBoards(
+  const boardsMerged = mergeInProgressIntoLiveBoards(
     boardsWithSubmitted,
     elevatexInProgress,
     submittedUserIds,
     elevatexSchedule,
   );
+  const partialByUser = new Map(
+    elevatexInProgress.map((r) => [r.user_id, r.partial_score] as const),
+  );
+  const boards = boardsMerged.map((board) => {
+    const entries = sortLiveBoardEntries(
+      board.entries.map((e) => ({
+        ...e,
+        score: Math.max(e.score, partialByUser.get(e.user_id) ?? 0),
+      })),
+    );
+    const submitted = entries.filter((e) => e.submitted_at);
+    const top = entries[0] ?? null;
+    return {
+      ...board,
+      entries,
+      submitted_count: submitted.length,
+      in_progress_count: entries.length - submitted.length,
+      highest_score: entries.length ? Math.max(...entries.map((e) => e.score)) : 0,
+      top_scorer: top
+        ? {
+            student_name: top.student_name,
+            roll_number: top.roll_number,
+            score: top.score,
+          }
+        : null,
+    };
+  });
   const writing_now = mergeInProgressIntoWritingNow(
     writingRaw,
     elevatexInProgress,
     liveSchedules,
     submittedUserIds,
-  );
-  const partialByUser = new Map(
-    elevatexInProgress.map((r) => [r.user_id, r.partial_score] as const),
   );
   const writingFiltered = writing_now
     .filter((r) => !submittedUserIds.has(r.user_id))

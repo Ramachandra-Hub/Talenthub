@@ -86,7 +86,7 @@ export function StatDetailReportModal({
       <div className="flex min-h-full items-start sm:items-center justify-center p-3 sm:p-8">
       {/* Panel */}
       <div
-        className="stat-report-modal-panel relative z-[1] my-auto flex w-full max-w-6xl max-h-[min(calc(100dvh-1.5rem),920px)] flex-col overflow-hidden rounded-[1.35rem] border border-[#c4a052]/25 bg-white animate-in zoom-in-95 slide-in-from-bottom-4 fade-in-0 duration-300"
+        className="stat-report-modal-panel relative z-[1] my-auto flex w-full max-w-[min(96vw,72rem)] max-h-[min(calc(100dvh-1.5rem),920px)] flex-col overflow-hidden rounded-[1.35rem] border border-[#c4a052]/25 bg-white animate-in zoom-in-95 slide-in-from-bottom-4 fade-in-0 duration-300"
         style={{ boxShadow: 'var(--shadow-lux-lg), 0 0 0 1px rgba(196,160,82,0.12)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -207,10 +207,10 @@ export function StatDetailReportModal({
         {/* Table body */}
         <div className="relative flex-1 min-h-0 overflow-hidden flex flex-col bg-gradient-to-b from-slate-50/80 to-white">
           <div className="lux-grid pointer-events-none absolute inset-0 opacity-40" aria-hidden />
-          <div className="relative flex-1 overflow-auto min-h-0 px-5 sm:px-8 py-5">
+          <div className="relative flex-1 overflow-auto min-h-0 px-5 sm:px-8 py-5 overscroll-contain">
             {hasRows ? (
-              <div className="rounded-2xl border border-slate-200/90 bg-white/95 overflow-hidden shadow-[var(--shadow-lux)] backdrop-blur-sm">
-                <table className="app-table w-full min-w-[640px] text-sm">
+              <div className="rounded-2xl border border-slate-200/90 bg-white/95 overflow-x-auto overflow-y-visible shadow-[var(--shadow-lux)] backdrop-blur-sm">
+                <table className="app-table w-full min-w-[720px] text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr>
                       {displayReport.columns.map((col) => (
@@ -278,10 +278,10 @@ export function StatDetailReportModal({
                   <span className="font-semibold text-[#1e3a5f] tabular-nums">
                     {displayReport.rows.length}
                   </span>{' '}
-                  row{displayReport.rows.length === 1 ? '' : 's'}. Use{' '}
+                  row{displayReport.rows.length === 1 ? '' : 's'}. Scroll vertically and
+                  horizontally if needed. Use{' '}
                   <span className="font-medium text-slate-600">Excel</span> or{' '}
-                  <span className="font-medium text-slate-600">PDF</span> for a formatted export
-                  with full styling.
+                  <span className="font-medium text-slate-600">PDF</span> for a formatted export.
                 </>
               ) : (
                 'Exports unlock once records are available.'

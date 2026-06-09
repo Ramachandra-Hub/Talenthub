@@ -207,30 +207,48 @@ export function buildTestReportsCardReport(
       );
 
     case 'avg_score': {
+      const scored = rows.filter((r) => r.score > 0);
       const done = completedRows(rows);
+      const avgFrom =
+        done.length > 0
+          ? done
+          : scored.length > 0
+            ? scored
+            : rows;
+      const avg =
+        avgFrom.length > 0
+          ? avgFrom.reduce((s, r) => s + r.score, 0) / avgFrom.length
+          : summary.avg_score;
       return base(
-        'Average score (completed)',
-        'Scores from completed attempts only',
+        'Average score',
+        done.length > 0
+          ? 'Completed attempts only'
+          : 'Includes live in-progress scores during the exam',
         [
-          `Average: ${formatScorePercentLabel(summary.avg_score)}`,
-          `Based on ${done.length} completed attempt${done.length === 1 ? '' : 's'}`,
+          `Average: ${formatScorePercentLabel(avg)}`,
+          `Based on ${avgFrom.length} attempt${avgFrom.length === 1 ? '' : 's'}`,
         ],
         ATTEMPT_COLUMNS,
-        done.map(attemptTableRow),
+        avgFrom.map(attemptTableRow),
       );
     }
 
     case 'highest_score': {
+      const ranked = [...rows].filter((r) => r.score > 0).sort((a, b) => b.score - a.score);
       const done = completedRows(rows).sort((a, b) => b.score - a.score);
+      const tableRows = (ranked.length > 0 ? ranked : done).map(attemptTableRow);
+      const top = ranked[0]?.score ?? done[0]?.score ?? summary.highest_score;
       return base(
         'Highest scores',
-        'Completed attempts ranked by score',
+        ranked.some((r) => isInProgressStatus(r.status) && !r.completed_at)
+          ? 'Live and completed attempts ranked by score'
+          : 'Attempts ranked by score',
         [
-          `Highest: ${formatScorePercentLabel(summary.highest_score)}`,
-          `Showing ${done.length} completed attempt${done.length === 1 ? '' : 's'}`,
+          `Highest: ${formatScorePercentLabel(top)}`,
+          `Showing ${tableRows.length} attempt${tableRows.length === 1 ? '' : 's'}`,
         ],
         ATTEMPT_COLUMNS,
-        done.map(attemptTableRow),
+        tableRows,
       );
     }
 

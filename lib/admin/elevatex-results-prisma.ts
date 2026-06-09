@@ -20,7 +20,7 @@ import {
 import type { PlacementSectionId, PlacementScorecard } from '@/lib/placement/types';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
 import { isInProgressStatus } from '@/lib/attempt-status';
-import { elevateXPartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
+import { livePartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
 import { resolveStoredPercent } from '@/lib/test-attempts';
 
 export type ElevateXSectionMarks = {
@@ -453,7 +453,7 @@ export async function loadElevateXInProgressPrisma(options?: {
     const user = isStudentUser(row.user, adminIds) ? row.user : null;
     if (!user) continue;
     if (!isInProgressStatus(row.status) || row.completedAt) continue;
-    const partial = elevateXPartialScoreFromAttemptRow({
+    const partial = livePartialScoreFromAttemptRow({
       answers: row.answers,
       percentageScore: row.percentageScore != null ? Number(row.percentageScore) : null,
       score: row.score != null ? Number(row.score) : null,

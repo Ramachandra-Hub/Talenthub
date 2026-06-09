@@ -115,26 +115,68 @@ export function summarizeAttendanceDay(
   };
 }
 
+export function attendanceBranchYearSummaryLines(
+  dateKey: string,
+  students: AdminDashboardStudent[],
+  attempts: AdminDashboardAttempt[],
+): string[] {
+  const rows = buildAttendanceDayRows(dateKey, students, attempts);
+  const groups = new Map<string, { total: number; attended: number }>();
+  for (const row of rows) {
+    const student = students.find((s) => s.id === row.studentId);
+    const branch = student?.branch?.trim() || row.branch || 'Unassigned';
+    const year = student?.academic_year?.trim() || row.year || '—';
+    const key = `${branch} · Year ${year}`;
+    const g = groups.get(key) ?? { total: 0, attended: 0 };
+    g.total += 1;
+    if (row.status === 'Attended') g.attended += 1;
+    groups.set(key, g);
+  }
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([label, g]) => {
+      const rate =
+        g.total > 0 ? roundRatePercent((g.attended / g.total) * 100) : 0;
+      return `${label}: ${g.attended}/${g.total} present (${formatScorePercentLabel(rate)})`;
+    });
+}
+
 export function buildAttendanceReportPayload(
   dateKey: string,
   students: AdminDashboardStudent[],
   attempts: AdminDashboardAttempt[],
+  options?: { branch?: string; year?: string },
 ): TableReportPayload {
-  const summary = summarizeAttendanceDay(dateKey, students, attempts);
-  const rows = buildAttendanceDayRows(dateKey, students, attempts).sort((a, b) => {
+  const branchFilter = options?.branch?.trim();
+  const yearFilter = options?.year?.trim();
+  const scopedStudents = students.filter((s) => {
+    if (branchFilter && branchFilter !== 'all' && (s.branch || '—') !== branchFilter) return false;
+    if (yearFilter && yearFilter !== 'all' && (s.academic_year || '—') !== yearFilter) return false;
+    return true;
+  });
+  const scopedIds = new Set(scopedStudents.map((s) => s.id));
+  const scopedAttempts = attempts.filter((a) => scopedIds.has(String(a.user_id ?? '')));
+
+  const summary = summarizeAttendanceDay(dateKey, scopedStudents, scopedAttempts);
+  const rows = buildAttendanceDayRows(dateKey, scopedStudents, scopedAttempts).sort((a, b) => {
     if (a.status !== b.status) return a.status === 'Attended' ? -1 : 1;
+    if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
+    if (a.year !== b.year) return a.year.localeCompare(b.year);
     return a.name.localeCompare(b.name);
   });
 
+  const branchSummary = attendanceBranchYearSummaryLines(dateKey, scopedStudents, scopedAttempts);
+
   return {
     title: 'Student attendance report',
-    subtitle: `${summary.dateLabel} (IST)`,
+    subtitle: `${summary.dateLabel} (IST)${branchFilter && branchFilter !== 'all' ? ` · ${branchFilter}` : ''}${yearFilter && yearFilter !== 'all' ? ` · Year ${yearFilter}` : ''}`,
     generatedAt: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
     summaryLines: [
       `Attendance rate: ${formatScorePercentLabel(summary.attendanceRate)}`,
       `Present: ${summary.attendedCount} of ${summary.totalStudents} students`,
       `Absent: ${summary.absentCount}`,
       `Test attempts on this date: ${summary.attemptsOnDate}`,
+      ...branchSummary,
     ],
     columns: [
       { key: 'status', header: 'Status' },

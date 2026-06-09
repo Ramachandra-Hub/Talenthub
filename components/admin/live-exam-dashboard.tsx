@@ -390,7 +390,14 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
     );
   }
 
-  const entries = board?.entries ?? [];
+  const entries = useMemo(() => {
+    const list = board?.entries ?? [];
+    return [...list].sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true }),
+    );
+  }, [board?.entries]);
   const multiLive = showingLive && schedules.length > 1;
   const multiEnded = !showingLive && endedSchedules.length > 1;
   const submittedEntries = entries
@@ -611,7 +618,9 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
                 </div>
                 {entries.length === 0 ? (
                   <p className="px-4 py-12 text-center text-violet-200/70 text-sm">
-                    {showingLive ? 'Waiting for the first submission…' : 'No attempts recorded for this slot.'}
+                    {showingLive
+                      ? 'Waiting for students to join the exam — live scores appear as they answer.'
+                      : 'No attempts recorded for this slot.'}
                   </p>
                 ) : (
                   <ul className="max-h-[min(380px,45vh)] overflow-y-auto divide-y divide-white/5">
@@ -668,6 +677,11 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
                               )}
                             >
                               {formatScorePercentLabel(entry.score)}
+                              {!entry.submitted_at && showingLive && entry.score > 0 ? (
+                                <span className="block text-[9px] font-semibold uppercase tracking-wider text-cyan-200/80">
+                                  Live
+                                </span>
+                              ) : null}
                             </span>
                             <span className="text-xs text-violet-200/80 block sm:text-right mt-0.5 sm:mt-0">
                               {entry.submitted_at ? (

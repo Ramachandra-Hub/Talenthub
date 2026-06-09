@@ -217,7 +217,11 @@ export function TestReportsDashboard() {
   const detailReport =
     payload && detailCard
       ? buildTestReportsCardReport(detailCard, {
-          payload,
+          payload: {
+            ...payload,
+            rows: filteredRows,
+            summary: displaySummary ?? payload.summary,
+          },
           examLabel: meta.label,
           testFilterLabel: selectedTestId !== 'all' ? selectedTestName : undefined,
         })

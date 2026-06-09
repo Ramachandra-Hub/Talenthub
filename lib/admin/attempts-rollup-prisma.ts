@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
-import { isElevateXAttemptMeta, parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
+import { livePartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
+import { isElevateXAttemptMeta } from '@/lib/placement/scorecard-payload';
 import {
   resolveStoredPercent,
   testIdsMatch,
@@ -25,17 +26,12 @@ function resolveAttemptTitle(row: AttemptRow, testName: string): string {
 }
 
 function rowScore(row: AttemptRow, testName: string): number {
-  if (isElevateXAttemptMeta(String(row.test_id ?? ''), resolveAttemptTitle(row, testName))) {
-    const scorecard = parseElevateXScorecardFromAnswers(row.answers);
-    if (scorecard && typeof scorecard.percentage === 'number') {
-      return resolveStoredPercent(scorecard.percentage, null, null);
-    }
-  }
-  return resolveStoredPercent(
-    row.percentage_score != null ? Number(row.percentage_score) : null,
-    row.score != null ? Number(row.score) : null,
-    row.total_score != null ? Number(row.total_score) : null,
-  );
+  return livePartialScoreFromAttemptRow({
+    answers: row.answers,
+    percentageScore: row.percentage_score != null ? Number(row.percentage_score) : null,
+    score: row.score != null ? Number(row.score) : null,
+    totalScore: row.total_score != null ? Number(row.total_score) : null,
+  });
 }
 
 function inferAttemptStatus(row: AttemptRow): string {

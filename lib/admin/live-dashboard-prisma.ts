@@ -24,7 +24,7 @@ import {
   liveSessionSinceWithGrace,
   SESSION_END_GRACE_MS,
 } from '@/lib/admin/live-exam-session';
-import { elevateXPartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
+import { livePartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
 import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
 import { syncExpiredLiveExamSchedulesPrisma } from '@/lib/exam-schedule-sync';
@@ -269,18 +269,12 @@ function mapFreshAttemptRow(
   const completed_at = row.completedAt?.toISOString() ?? null;
   const inSession = attemptInLiveExamSession({ created_at, completed_at }, schedule);
   const elevateX = isElevateXSchedule(schedule);
-  const partial = elevateX
-    ? elevateXPartialScoreFromAttemptRow({
-        answers: row.answers,
-        percentageScore: num(row.percentageScore),
-        score: num(row.score),
-        totalScore: num(row.totalScore),
-      })
-    : resolveStoredPercent(
-        num(row.percentageScore),
-        num(row.score),
-        num(row.totalScore),
-      );
+  const partial = livePartialScoreFromAttemptRow({
+    answers: row.answers,
+    percentageScore: num(row.percentageScore),
+    score: num(row.score),
+    totalScore: num(row.totalScore),
+  });
   const submitted =
     Boolean(completed_at) || isCompletedAttemptStatus(row.status, completed_at);
   const inProgress =
@@ -370,6 +364,37 @@ function attemptMatchesSchedule(attempt: RollupAttempt, schedule: ExamScheduleRo
   return false;
 }
 
+/** Rank live board by current score (partial or final) — not submit order. */
+export function sortLiveBoardEntries(entries: LiveBoardEntry[]): LiveBoardEntry[] {
+  const sorted = [...entries].sort(
+    (a, b) =>
+      b.score - a.score ||
+      a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true }) ||
+      a.student_name.localeCompare(b.student_name),
+  );
+  sorted.forEach((e, i) => {
+    e.rank = i + 1;
+  });
+  return sorted;
+}
+
+function liveBoardStats(entries: LiveBoardEntry[]) {
+  const submitted = entries.filter((e) => e.submitted_at);
+  const top = entries[0] ?? null;
+  return {
+    submitted_count: submitted.length,
+    in_progress_count: entries.length - submitted.length,
+    highest_score: entries.length ? Math.max(...entries.map((e) => e.score)) : 0,
+    top_scorer: top
+      ? {
+          student_name: top.student_name,
+          roll_number: top.roll_number,
+          score: top.score,
+        }
+      : null,
+  };
+}
+
 function toBoardEntry(
   attempt: RollupAttempt,
   student: { roll_number: string; full_name: string | null; email: string },
@@ -443,34 +468,22 @@ export async function buildLiveExamBoardPrisma(
     latestByUser.set(a.user_id, prev ? pickBetterAttempt(prev, a) : a);
   }
 
-  const sorted = Array.from(latestByUser.values()).sort((a, b) => {
-    const aDone = isCompletedAttemptStatus(a.status, a.completed_at);
-    const bDone = isCompletedAttemptStatus(b.status, b.completed_at);
-    if (aDone !== bDone) return aDone ? -1 : 1;
-    return b.score - a.score;
-  });
-  const entries: LiveBoardEntry[] = sorted.map((a, i) => {
+  const entries: LiveBoardEntry[] = Array.from(latestByUser.values()).map((a) => {
     const student = studentById.get(a.user_id) ?? {
       roll_number: rollNumberFromUser(''),
       full_name: null,
       email: 'Student',
     };
-    return toBoardEntry(a, student, i + 1);
+    return toBoardEntry(a, student, 0);
   });
-
-  const submitted = entries.filter((e) => e.submitted_at);
-  const top = submitted[0] ?? null;
+  const ranked = sortLiveBoardEntries(entries);
+  const stats = liveBoardStats(ranked);
 
   return {
     schedule,
     test_title: schedule.title,
-    entries,
-    submitted_count: submitted.length,
-    in_progress_count: entries.length - submitted.length,
-    highest_score: top?.score ?? 0,
-    top_scorer: top
-      ? { student_name: top.student_name, roll_number: top.roll_number, score: top.score }
-      : null,
+    entries: ranked,
+    ...stats,
   };
 }
 
@@ -766,32 +779,13 @@ export function mergeInProgressIntoLiveBoards(
       byUser.set(row.user_id, entry);
     }
 
-    entries.sort((a, b) => {
-      if (Boolean(a.submitted_at) !== Boolean(b.submitted_at)) {
-        return a.submitted_at ? -1 : 1;
-      }
-      return b.score - a.score || a.roll_number.localeCompare(b.roll_number);
-    });
-    entries.forEach((e, i) => {
-      e.rank = i + 1;
-    });
-
-    const submitted = entries.filter((e) => e.submitted_at);
-    const top = submitted[0] ?? entries.find((e) => !e.submitted_at) ?? null;
+    const ranked = sortLiveBoardEntries(entries);
+    const stats = liveBoardStats(ranked);
 
     return {
       ...board,
-      entries,
-      submitted_count: submitted.length,
-      in_progress_count: entries.length - submitted.length,
-      highest_score: entries.length ? Math.max(...entries.map((e) => e.score)) : 0,
-      top_scorer: top
-        ? {
-            student_name: top.student_name,
-            roll_number: top.roll_number,
-            score: top.score,
-          }
-        : null,
+      entries: ranked,
+      ...stats,
     };
   });
 }

@@ -295,39 +295,84 @@ export function buildAdminDashboardCardReport(
         attemptRows(ctx, (_, slug) => slug === 'psychometric'),
       );
 
-    case 'attendance_rate':
+    case 'attendance_rate': {
+      const branchGroups = new Map<string, { total: number; attended: number }>();
+      for (const s of ctx.students) {
+        const branch = s.branch?.trim() || 'Unassigned branch';
+        const year = s.academic_year?.trim() || '—';
+        const key = `${branch} · Year ${year}`;
+        const row = branchGroups.get(key) ?? { total: 0, attended: 0 };
+        row.total += 1;
+        if (s.attempts > 0) row.attended += 1;
+        branchGroups.set(key, row);
+      }
+      const branchLines = Array.from(branchGroups.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(
+          ([label, g]) =>
+            `${label}: ${g.attended}/${g.total} attended (${g.total > 0 ? Math.round((g.attended / g.total) * 100) : 0}%)`,
+        );
       return {
         title: 'Attendance overview',
-        subtitle: 'Students with at least one test attempt',
+        subtitle: 'Present = at least one test attempt (filtered view)',
         generatedAt: generated,
         summaryLines: [
           `Attendance rate: ${formatScorePercentLabel(ctx.attendanceRate)}`,
           `${ctx.stats.totalStudentsAttended} of ${ctx.stats.totalRegisteredUsers} students`,
+          ...branchLines,
         ],
         columns: [
           { key: 'status', header: 'Status' },
           { key: 'name', header: 'Name' },
           { key: 'roll', header: 'Roll no.' },
+          { key: 'branch', header: 'Branch' },
+          { key: 'year', header: 'Year' },
           { key: 'email', header: 'Email' },
           { key: 'attempts', header: 'Attempts', align: 'right' },
         ],
         rows: studentRows(ctx.students, (s) => ({
-          status: s.attempts > 0 ? 'Attended' : 'Not started',
+          status: s.attempts > 0 ? 'Attended' : 'Absent',
           name: s.full_name || '—',
           roll: s.roll_number || '—',
+          branch: s.branch || '—',
+          year: s.academic_year || '—',
           email: s.email,
           attempts: s.attempts,
         })),
       };
+    }
 
     case 'overall_average':
-      return basePayload(
-        'Score detail — overall average',
-        `Mean score across ${ctx.attempts.length} attempts`,
-        [`Overall average: ${formatScorePercentLabel(ctx.overallAverageScore)}`],
-        ATTEMPT_COLUMNS,
-        attemptRows(ctx, () => true),
-      );
+      return {
+        title: 'Overall average score',
+        subtitle: 'Per-student averages in the current filter',
+        generatedAt: generated,
+        summaryLines: [
+          `Overall average: ${formatScorePercentLabel(ctx.overallAverageScore)}`,
+          `Across ${ctx.attempts.length} attempts`,
+        ],
+        columns: [
+          { key: 'name', header: 'Student' },
+          { key: 'roll', header: 'Roll no.' },
+          { key: 'branch', header: 'Branch' },
+          { key: 'year', header: 'Year' },
+          { key: 'attempts', header: 'Attempts', align: 'right' },
+          { key: 'avg', header: 'Avg score %', align: 'right' },
+          { key: 'highest', header: 'Highest %', align: 'right' },
+        ],
+        rows: studentRows(
+          ctx.students.filter((s) => s.attempts > 0),
+          (s) => ({
+            name: s.full_name || '—',
+            roll: s.roll_number || '—',
+            branch: s.branch || '—',
+            year: s.academic_year || '—',
+            attempts: s.attempts,
+            avg: formatScorePercentLabel(s.avgScore),
+            highest: formatScorePercentLabel(s.highestScore),
+          }),
+        ),
+      };
 
     case 'pass_rate':
       return basePayload(

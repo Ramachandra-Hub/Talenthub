@@ -272,25 +272,51 @@ export function AdminDashboard() {
       categorySlugByTestId.set(testId, cat?.slug ?? '');
       categoryNameByTestId.set(testId, cat?.name ?? '');
     }
-    const inactiveCount = allStudents.filter((s) => s.attempts === 0).length;
+
+    const students = filteredStudentsForModal;
+    const filteredStudentIds = new Set(students.map((s) => s.id));
+    const selectedCategoryId =
+      selectedCategory === 'all'
+        ? null
+        : categories.find((c) => c.slug === selectedCategory)?.id ?? null;
+    const modalAttempts = allAttempts.filter((attempt) => {
+      const userId = String(attempt.user_id ?? '');
+      if (!filteredStudentIds.has(userId)) return false;
+      const testId = String(attempt.test_id ?? '');
+      if (selectedTest !== 'all' && selectedTest !== testId) return false;
+      if (selectedCategoryId) {
+        const test = testsMap.get(testId);
+        if (!test || test.category_id !== selectedCategoryId) return false;
+      }
+      return true;
+    });
+
+    const inactiveCount = students.filter((s) => s.attempts === 0).length;
+    const studentsWithAttempts = students.filter((s) => s.attempts > 0).length;
     const attendanceRate =
-      stats.totalRegisteredUsers > 0
-        ? roundRatePercent((stats.totalStudentsAttended / stats.totalRegisteredUsers) * 100)
+      students.length > 0
+        ? roundRatePercent((studentsWithAttempts / students.length) * 100)
         : 0;
-    const passedCount = allAttempts.filter((a) => Number(a.score ?? 0) >= 40).length;
+    const passedCount = modalAttempts.filter((a) => Number(a.score ?? 0) >= 40).length;
     const passRate =
-      allAttempts.length > 0
-        ? roundRatePercent((passedCount / allAttempts.length) * 100)
+      modalAttempts.length > 0
+        ? roundRatePercent((passedCount / modalAttempts.length) * 100)
         : 0;
     const overallAverageScore =
-      allAttempts.length > 0
-        ? averageScorePercent(allAttempts.map((a) => Number(a.score ?? 0)))
+      modalAttempts.length > 0
+        ? averageScorePercent(modalAttempts.map((a) => Number(a.score ?? 0)))
         : 0;
 
     return {
-      stats,
-      students: allStudents,
-      attempts: allAttempts,
+      stats: {
+        ...stats,
+        totalRegisteredUsers: students.length,
+        totalStudentsAttended: studentsWithAttempts,
+        totalTestsSubmitted: modalAttempts.length,
+        lowPerformers: students.filter((s) => s.attempts > 0 && s.avgScore < 40).length,
+      },
+      students,
+      attempts: modalAttempts,
       categories,
       categorySlugByTestId,
       categoryNameByTestId,
@@ -301,7 +327,15 @@ export function AdminDashboard() {
       passedCount,
       inactiveCount,
     };
-  }, [stats, allStudents, allAttempts, categories, testsMap]);
+  }, [
+    stats,
+    filteredStudentsForModal,
+    allAttempts,
+    categories,
+    testsMap,
+    selectedCategory,
+    selectedTest,
+  ]);
 
   const detailReportForModal = useMemo(
     () =>

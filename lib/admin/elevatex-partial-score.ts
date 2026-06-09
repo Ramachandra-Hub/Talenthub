@@ -1,8 +1,20 @@
 import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent } from '@/lib/test-attempts';
 
-/** Best-effort live % from DB columns, scorecard JSON, or placement progress autosave. */
-export function elevateXPartialScoreFromAttemptRow(row: {
+function partialFromAnswersPayload(answers: unknown): number {
+  if (!answers || typeof answers !== 'object') return 0;
+  const o = answers as Record<string, unknown>;
+  for (const key of ['__placement', '__exam_progress'] as const) {
+    const block = o[key];
+    if (!block || typeof block !== 'object') continue;
+    const pct = (block as { partialScorePercent?: unknown }).partialScorePercent;
+    if (typeof pct === 'number' && Number.isFinite(pct) && pct >= 0) return pct;
+  }
+  return 0;
+}
+
+/** Best-effort live % from DB columns, scorecard JSON, or progress autosave payload. */
+export function livePartialScoreFromAttemptRow(row: {
   answers?: unknown;
   percentageScore?: number | null;
   score?: number | null;
@@ -20,13 +32,15 @@ export function elevateXPartialScoreFromAttemptRow(row: {
   );
   if (fromColumns > 0) return fromColumns;
 
-  if (row.answers && typeof row.answers === 'object') {
-    const placement = (row.answers as Record<string, unknown>).__placement;
-    if (placement && typeof placement === 'object') {
-      const pct = (placement as { partialScorePercent?: unknown }).partialScorePercent;
-      if (typeof pct === 'number' && Number.isFinite(pct)) return pct;
-    }
-  }
+  return partialFromAnswersPayload(row.answers);
+}
 
-  return 0;
+/** @deprecated Use livePartialScoreFromAttemptRow */
+export function elevateXPartialScoreFromAttemptRow(row: {
+  answers?: unknown;
+  percentageScore?: number | null;
+  score?: number | null;
+  totalScore?: number | null;
+}): number {
+  return livePartialScoreFromAttemptRow(row);
 }
