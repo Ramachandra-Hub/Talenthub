@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
-import { StatDetailReportModal } from '@/components/reports/stat-detail-report-modal';
+import { AdminCardDashboardModal } from '@/components/admin/admin-card-dashboard-modal';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import { fetchWithAuth } from '@/lib/fetch-with-auth';
@@ -26,10 +26,8 @@ import {
 } from '@/lib/admin/export-test-report-csv';
 import { downloadTestReportPdf } from '@/lib/admin/export-test-report-pdf';
 import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
-import {
-  buildTestReportsCardReport,
-  type TestReportsCardKey,
-} from '@/lib/admin/test-reports-card-reports';
+import { buildTestReportsCardDashboardView } from '@/lib/admin/test-reports-analytics';
+import type { TestReportsCardKey } from '@/lib/admin/test-reports-card-reports';
 import {
   attemptStatusBadgeClass,
   formatAttemptStatus,
@@ -214,27 +212,38 @@ export function TestReportsDashboard() {
     });
   };
 
-  const detailReport =
-    payload && detailCard
-      ? buildTestReportsCardReport(detailCard, {
-          payload: {
-            ...payload,
-            rows: filteredRows,
-            summary: displaySummary ?? payload.summary,
-          },
-          examLabel: meta.label,
-          testFilterLabel: selectedTestId !== 'all' ? selectedTestName : undefined,
-        })
-      : null;
+  const testReportsContext = useMemo(
+    () =>
+      payload
+        ? {
+            payload: {
+              ...payload,
+              rows: filteredRows,
+              summary: displaySummary ?? payload.summary,
+            },
+            examLabel: meta.label,
+            testFilterLabel: selectedTestId !== 'all' ? selectedTestName : undefined,
+          }
+        : null,
+    [payload, filteredRows, displaySummary, meta.label, selectedTestId, selectedTestName],
+  );
+
+  const detailDashboardView = useMemo(
+    () =>
+      detailCard && testReportsContext
+        ? buildTestReportsCardDashboardView(detailCard, testReportsContext)
+        : null,
+    [detailCard, testReportsContext],
+  );
 
   const openCard = (key: TestReportsCardKey) => setDetailCard(key);
 
   return (
     <>
-      <StatDetailReportModal
+      <AdminCardDashboardModal
         open={detailCard != null}
         onClose={() => setDetailCard(null)}
-        report={detailReport}
+        view={detailDashboardView}
         fileBase={detailCard ? `test-reports-${examType}-${detailCard}` : undefined}
       />
       <AdminPageHeader

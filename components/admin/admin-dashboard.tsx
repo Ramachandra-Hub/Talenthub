@@ -17,15 +17,15 @@ import { StatCard } from '@/components/ui/stat-card';
 import { LiveExamDashboard } from '@/components/admin/live-exam-dashboard';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { LoadingScreen } from '@/components/ui/loading-screen';
-import { StatDetailReportModal } from '@/components/reports/stat-detail-report-modal';
+import { AdminCardDashboardModal } from '@/components/admin/admin-card-dashboard-modal';
 import { AdminAttendanceReportModal } from '@/components/admin/admin-attendance-report-modal';
 import { AdminTestDetailModal } from '@/components/admin/admin-test-detail-modal';
 import {
   buildAttendanceDayRows,
   summarizeAttendanceDay,
 } from '@/lib/admin/attendance-report';
+import { buildAdminCardDashboardView } from '@/lib/admin/dashboard-card-analytics';
 import {
-  buildAdminDashboardCardReport,
   type AdminDashboardCardKey,
   type AdminDashboardReportContext,
 } from '@/lib/admin/dashboard-card-reports';
@@ -337,18 +337,20 @@ export function AdminDashboard() {
     selectedTest,
   ]);
 
-  const detailReportForModal = useMemo(
+  const detailDashboardView = useMemo(
     () =>
-      detailCard ? buildAdminDashboardCardReport(detailCard, reportContextForModal) : null,
+      detailCard && detailCard !== 'attendance_rate'
+        ? buildAdminCardDashboardView(detailCard, reportContextForModal)
+        : null,
     [detailCard, reportContextForModal],
   );
 
   const dashboardModals = isAdmin ? (
     <>
-      <StatDetailReportModal
-        open={detailCard != null}
+      <AdminCardDashboardModal
+        open={detailCard != null && detailCard !== 'attendance_rate'}
         onClose={() => setDetailCard(null)}
-        report={detailReportForModal}
+        view={detailDashboardView}
         fileBase={detailCard ? `admin-${detailCard}` : undefined}
       />
       <AdminTestDetailModal
