@@ -24,12 +24,20 @@ import {
   buildAttendanceDayRows,
   summarizeAttendanceDay,
 } from '@/lib/admin/attendance-report';
-import { buildAdminCardDashboardView } from '@/lib/admin/dashboard-card-analytics';
+import {
+  buildAdminCardDashboardView,
+  buildScoreBandDashboardView,
+} from '@/lib/admin/dashboard-card-analytics';
+import { STUDENT_SCORE_BANDS, type ScoreBandKey } from '@/lib/admin/score-band';
 import {
   type AdminDashboardCardKey,
   type AdminDashboardReportContext,
 } from '@/lib/admin/dashboard-card-reports';
-import { buildDashboardTestOverviewItem } from '@/lib/admin/dashboard-test-report';
+import {
+  buildDashboardTestOverviewItem,
+  buildDashboardTestReportPayload,
+} from '@/lib/admin/dashboard-test-report';
+import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
 import { readJsonResponse } from '@/lib/fetch-json';
 import { getTodayDateKeyInIST, formatDateKeyLabel } from '@/lib/admin/report-date-filter';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
@@ -95,6 +103,8 @@ export function AdminDashboard() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [scoreBandKey, setScoreBandKey] = useState<ScoreBandKey | null>(null);
+  const [prefetchedTestReport, setPrefetchedTestReport] = useState<TestReportsPayload | null>(null);
 
   const applyDashboardPayload = (payload: {
     stats: typeof stats;
@@ -345,6 +355,12 @@ export function AdminDashboard() {
     [detailCard, reportContextForModal],
   );
 
+  const scoreBandDashboardView = useMemo(
+    () =>
+      scoreBandKey ? buildScoreBandDashboardView(scoreBandKey, reportContextForModal) : null,
+    [scoreBandKey, reportContextForModal],
+  );
+
   const dashboardModals = isAdmin ? (
     <>
       <AdminCardDashboardModal
@@ -353,11 +369,21 @@ export function AdminDashboard() {
         view={detailDashboardView}
         fileBase={detailCard ? `admin-${detailCard}` : undefined}
       />
+      <AdminCardDashboardModal
+        open={scoreBandKey != null}
+        onClose={() => setScoreBandKey(null)}
+        view={scoreBandDashboardView}
+        fileBase={scoreBandKey ? `admin-score-band-${scoreBandKey}` : undefined}
+      />
       <AdminTestDetailModal
         test={selectedTestDetail}
         open={testDetailModalOpen}
-        onOpenChange={setTestDetailModalOpen}
+        onOpenChange={(open) => {
+          setTestDetailModalOpen(open);
+          if (!open) setPrefetchedTestReport(null);
+        }}
         scopeUserIds={testDetailScopeUserIds}
+        prefetchedReport={prefetchedTestReport}
       />
       <AdminAttendanceReportModal
         open={attendanceModalOpen}
@@ -459,28 +485,12 @@ export function AdminDashboard() {
       ? roundRatePercent((passedCount / filteredAttempts.length) * 100)
       : 0;
 
-  const scoreBands = [
-    {
-      label: '90 - 100 (Excellent)',
-      count: studentsWithAttempts.filter((s) => s.avgScore >= 90).length,
-      tone: 'text-emerald-700',
-    },
-    {
-      label: '75 - 89 (Strong)',
-      count: studentsWithAttempts.filter((s) => s.avgScore >= 75 && s.avgScore < 90).length,
-      tone: 'text-green-700',
-    },
-    {
-      label: '40 - 74 (Average)',
-      count: studentsWithAttempts.filter((s) => s.avgScore >= 40 && s.avgScore < 75).length,
-      tone: 'text-amber-700',
-    },
-    {
-      label: '0 - 39 (Needs support)',
-      count: studentsWithAttempts.filter((s) => s.avgScore < 40).length,
-      tone: 'text-red-700',
-    },
-  ];
+  const scoreBands = STUDENT_SCORE_BANDS.map((band) => ({
+    ...band,
+    count: studentsWithAttempts.filter(
+      (s) => s.avgScore >= band.min && s.avgScore < band.max,
+    ).length,
+  }));
 
   const testWisePerformance = Array.from(
     filteredAttempts.reduce((acc, attempt) => {
@@ -567,13 +577,23 @@ export function AdminDashboard() {
 
   const openTestWiseDetails = (row: (typeof testWisePerformance)[0]) => {
     const categorySlug = categorySlugByTestId.get(row.testId) ?? '';
+    const testAttempts = filteredAttempts.filter(
+      (a) => String(a.test_id ?? '') === row.testId,
+    );
     const scopeUserIds = [
       ...new Set(
-        filteredAttempts
-          .filter((a) => String(a.test_id ?? '') === row.testId && a.user_id)
-          .map((a) => String(a.user_id)),
+        testAttempts.filter((a) => a.user_id).map((a) => String(a.user_id)),
       ),
     ];
+    setPrefetchedTestReport(
+      buildDashboardTestReportPayload({
+        testId: row.testId,
+        testName: row.testName,
+        categorySlug,
+        attempts: testAttempts,
+        students: filteredStudents,
+      }),
+    );
     setSelectedTestDetail(
       buildDashboardTestOverviewItem({
         testId: row.testId,
@@ -878,7 +898,8 @@ export function AdminDashboard() {
 
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           <Card className="p-6">
-            <h2 className="text-xl font-bold text-[#0c2340] mb-4">Score distribution (by student average)</h2>
+            <h2 className="text-xl font-bold text-[#0c2340] mb-1">Score distribution (by student average)</h2>
+            <p className="text-xs text-slate-500 mb-4">Click a bar to open the student list for that band</p>
             <div className="space-y-3">
               {scoreBands.map((band) => {
                 const percent =
@@ -886,7 +907,16 @@ export function AdminDashboard() {
                     ? Math.round((band.count / studentsWithAttempts.length) * 100)
                     : 0;
                 return (
-                  <div key={band.label}>
+                  <button
+                    key={band.key}
+                    type="button"
+                    disabled={band.count === 0}
+                    onClick={() => setScoreBandKey(band.key)}
+                    className={cn(
+                      'w-full text-left rounded-lg px-2 py-1.5 -mx-2 transition-colors',
+                      band.count > 0 ? 'hover:bg-slate-50 cursor-pointer' : 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
                     <div className="flex items-center justify-between mb-1">
                       <p className={`text-sm font-medium ${band.tone}`}>{band.label}</p>
                       <p className="text-sm text-slate-700">
@@ -896,10 +926,10 @@ export function AdminDashboard() {
                     <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-[#1e3a5f] to-[#3b6ea8]"
-                        style={{ width: `${Math.max(percent, 2)}%` }}
+                        style={{ width: `${band.count > 0 ? Math.max(percent, 2) : 0}%` }}
                       />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>

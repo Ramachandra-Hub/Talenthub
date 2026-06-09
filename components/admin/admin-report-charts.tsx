@@ -10,6 +10,7 @@ export type BarRow = {
   value: number;
   secondary?: number;
   hint?: string;
+  bandKey?: string;
 };
 
 const DEFAULT_PIE = ['#10b981', '#94a3b8', '#f59e0b', '#6366f1', '#0ea5e9'];
@@ -19,11 +20,13 @@ export function ReportDonutCard({
   hint,
   data,
   colors = DEFAULT_PIE,
+  onSliceClick,
 }: {
   title: string;
   hint: string;
   data: PieSlice[];
   colors?: string[];
+  onSliceClick?: (slice: PieSlice) => void;
 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const config = Object.fromEntries(
@@ -50,9 +53,21 @@ export function ReportDonutCard({
                 paddingAngle={2}
                 strokeWidth={2}
                 stroke="#fff"
+                className={onSliceClick ? 'cursor-pointer' : undefined}
               >
-                {data.map((_, i) => (
-                  <Cell key={i} fill={colors[i % colors.length]} />
+                {data.map((slice, i) => (
+                  <Cell
+                    key={i}
+                    fill={colors[i % colors.length]}
+                    className={onSliceClick ? 'cursor-pointer' : undefined}
+                    onClick={
+                      onSliceClick
+                        ? () => {
+                            if (slice.value > 0) onSliceClick(slice);
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
               </Pie>
             </PieChart>
@@ -82,6 +97,7 @@ export function ReportBarCard({
   stacked = false,
   primaryColor = '#1e3a5f',
   secondaryColor = '#e2e8f0',
+  onBarClick,
 }: {
   title: string;
   hint: string;
@@ -90,6 +106,7 @@ export function ReportBarCard({
   stacked?: boolean;
   primaryColor?: string;
   secondaryColor?: string;
+  onBarClick?: (row: BarRow) => void;
 }) {
   const config = {
     value: { label: 'Count', color: primaryColor },
@@ -117,7 +134,21 @@ export function ReportBarCard({
                 />
               }
             />
-            <Bar dataKey="value" fill={primaryColor} radius={[4, 4, 0, 0]} stackId={stacked ? 's' : undefined} />
+            <Bar
+              dataKey="value"
+              fill={primaryColor}
+              radius={[4, 4, 0, 0]}
+              stackId={stacked ? 's' : undefined}
+              className={onBarClick ? 'cursor-pointer' : undefined}
+              onClick={
+                onBarClick
+                  ? (state) => {
+                      const row = state?.payload as BarRow | undefined;
+                      if (row && row.value > 0) onBarClick(row);
+                    }
+                  : undefined
+              }
+            />
             {stacked ? (
               <Bar dataKey="secondary" fill={secondaryColor} radius={[4, 4, 0, 0]} stackId="s" />
             ) : null}
@@ -145,7 +176,21 @@ export function ReportBarCard({
                 />
               }
             />
-            <Bar dataKey="value" fill={primaryColor} radius={[0, 4, 4, 0]} stackId={stacked ? 's' : undefined} />
+            <Bar
+              dataKey="value"
+              fill={primaryColor}
+              radius={[0, 4, 4, 0]}
+              stackId={stacked ? 's' : undefined}
+              className={onBarClick ? 'cursor-pointer' : undefined}
+              onClick={
+                onBarClick
+                  ? (state) => {
+                      const row = state?.payload as BarRow | undefined;
+                      if (row && row.value > 0) onBarClick(row);
+                    }
+                  : undefined
+              }
+            />
             {stacked ? (
               <Bar dataKey="secondary" fill={secondaryColor} radius={[0, 4, 4, 0]} stackId="s" />
             ) : null}

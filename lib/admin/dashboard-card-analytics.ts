@@ -8,6 +8,11 @@ import {
   type AdminDashboardReportContext,
   type AdminDashboardStudent,
 } from '@/lib/admin/dashboard-card-reports';
+import {
+  STUDENT_SCORE_BANDS,
+  studentsInScoreBand,
+  type ScoreBandKey,
+} from '@/lib/admin/score-band';
 
 export type CardDashboardView = {
   title: string;
@@ -35,7 +40,23 @@ export type CardDashboardView = {
   tableColumns: { key: string; header: string; align?: 'left' | 'right' | 'center' }[];
   tableRows: Array<Record<string, string | number>>;
   exportPayload: TableReportPayload;
+  /** Click score-band charts to filter the student table. */
+  enableScoreBandDrilldown?: boolean;
+  scoreBandRolls?: Partial<Record<ScoreBandKey, string[]>>;
 };
+
+function scoreBandRollIndex(students: AdminDashboardStudent[]): Partial<Record<ScoreBandKey, string[]>> {
+  const index: Partial<Record<ScoreBandKey, string[]>> = {};
+  for (const band of STUDENT_SCORE_BANDS) {
+    index[band.key] = studentsInScoreBand(students, band).flatMap((s) => {
+      const keys = [s.roll_number?.trim(), s.id, s.full_name?.trim(), s.email?.trim()].filter(
+        Boolean,
+      ) as string[];
+      return keys;
+    });
+  }
+  return index;
+}
 
 function trunc(s: string, max = 18): string {
   const t = s.trim() || '—';
@@ -74,16 +95,20 @@ function studentsByYear(students: AdminDashboardStudent[]): BarRow[] {
 
 function scoreBandPie(students: AdminDashboardStudent[]): PieSlice[] {
   const active = students.filter((s) => s.attempts > 0);
-  const bands = [
-    { name: 'excellent', label: '90–100%', min: 90, max: 101 },
-    { name: 'strong', label: '75–89%', min: 75, max: 90 },
-    { name: 'average', label: '40–74%', min: 40, max: 75 },
-    { name: 'support', label: 'Below 40%', min: 0, max: 40 },
-  ];
-  return bands.map((b) => ({
-    name: b.name,
-    label: b.label,
+  return STUDENT_SCORE_BANDS.map((b) => ({
+    name: b.key,
+    label: b.shortLabel,
     value: active.filter((s) => s.avgScore >= b.min && s.avgScore < b.max).length,
+  }));
+}
+
+function scoreBandBar(students: AdminDashboardStudent[]): BarRow[] {
+  const active = students.filter((s) => s.attempts > 0);
+  return STUDENT_SCORE_BANDS.map((b) => ({
+    label: b.label,
+    shortLabel: b.shortLabel,
+    value: active.filter((s) => s.avgScore >= b.min && s.avgScore < b.max).length,
+    bandKey: b.key,
   }));
 }
 
@@ -262,11 +287,19 @@ export function buildAdminCardDashboardView(
         ],
         pie: {
           title: 'Score bands',
-          hint: 'Distribution by student average score',
+          hint: 'Click a segment to list students in that band',
           data: scoreBandPie(ctx.students),
           colors: ['#10b981', '#22c55e', '#f59e0b', '#f43f5e'],
         },
         barPrimary: {
+          title: 'Score distribution',
+          hint: 'Click a bar to see matching students',
+          data: scoreBandBar(ctx.students),
+          primaryColor: '#1e3a5f',
+        },
+        enableScoreBandDrilldown: true,
+        scoreBandRolls: scoreBandRollIndex(ctx.students),
+        barSecondary: {
           title: 'Active students by branch',
           hint: 'Count per department',
           data: studentsByBranch(activeStudents),
@@ -512,16 +545,24 @@ export function buildAdminCardDashboardView(
         ],
         pie: {
           title: 'Student score bands',
-          hint: 'Based on each student’s average',
+          hint: 'Click a segment to list students in that band',
           data: scoreBandPie(ctx.students),
           colors: ['#10b981', '#22c55e', '#f59e0b', '#f43f5e'],
         },
         barPrimary: {
+          title: 'Score distribution',
+          hint: 'Click a bar to see matching students',
+          data: scoreBandBar(ctx.students),
+          primaryColor: '#1e3a5f',
+        },
+        barSecondary: {
           title: 'Average by branch',
           hint: 'Mean student score per department',
           data: avgScoreByBranch(ctx.students),
-          primaryColor: '#1e3a5f',
+          primaryColor: '#059669',
         },
+        enableScoreBandDrilldown: true,
+        scoreBandRolls: scoreBandRollIndex(ctx.students),
       };
 
     case 'pass_rate':
@@ -611,4 +652,67 @@ export function buildAdminCardDashboardView(
         kpis: [],
       };
   }
+}
+
+export function buildScoreBandDashboardView(
+  bandKey: ScoreBandKey,
+  ctx: AdminDashboardReportContext,
+): CardDashboardView | null {
+  const band = STUDENT_SCORE_BANDS.find((b) => b.key === bandKey);
+  if (!band) return null;
+
+  const inBand = studentsInScoreBand(ctx.students, band);
+  const exportPayload = buildAdminDashboardCardReport('overall_average', {
+    ...ctx,
+    students: inBand,
+  });
+  if (!exportPayload) return null;
+
+  const avgInBand =
+    inBand.length > 0 ? averageScorePercent(inBand.map((s) => s.avgScore)) : 0;
+
+  return {
+    title: band.label,
+    subtitle: 'Students in this average-score band (current dashboard filters)',
+    heroLabel: 'Students',
+    heroValue: String(inBand.length),
+    heroHint:
+      inBand.length > 0
+        ? `Band avg ${formatScorePercentLabel(avgInBand)}`
+        : 'No students in this band',
+    kpis: [
+      { label: 'In band', value: inBand.length, tone: 'navy' },
+      {
+        label: 'Band avg',
+        value: formatScorePercentLabel(avgInBand),
+        tone: 'emerald',
+      },
+      { label: 'Branches', value: studentsByBranch(inBand).length, tone: 'amber' },
+      {
+        label: 'Of active',
+        value:
+          ctx.students.filter((s) => s.attempts > 0).length > 0
+            ? `${roundRatePercent(
+                (inBand.length / ctx.students.filter((s) => s.attempts > 0).length) * 100,
+              )}%`
+            : '0%',
+        tone: 'cyan',
+      },
+    ],
+    barPrimary: {
+      title: 'By branch',
+      hint: 'Students in this score band per department',
+      data: studentsByBranch(inBand),
+      layout: 'horizontal',
+      primaryColor: '#1e3a5f',
+    },
+    tableColumns: exportPayload.columns,
+    tableRows: exportPayload.rows,
+    exportPayload: {
+      ...exportPayload,
+      title: `${band.label} — student list`,
+      subtitle: 'Filtered by student average score band',
+    },
+    enableScoreBandDrilldown: false,
+  };
 }

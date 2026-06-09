@@ -10,6 +10,8 @@ import {
   ReportDonutCard,
 } from '@/components/admin/admin-report-charts';
 import type { CardDashboardView } from '@/lib/admin/dashboard-card-analytics';
+import { STUDENT_SCORE_BANDS, type ScoreBandKey } from '@/lib/admin/score-band';
+import { Button } from '@/components/ui/button';
 import {
   downloadTableReportExcel,
   downloadTableReportPdf,
@@ -37,22 +39,48 @@ export function AdminCardDashboardModal({
 }: AdminCardDashboardModalProps) {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [search, setSearch] = useState('');
+  const [bandFilter, setBandFilter] = useState<ScoreBandKey | null>(null);
 
   useEffect(() => {
     if (open) {
       setActiveTab('overview');
       setSearch('');
+      setBandFilter(null);
     }
   }, [open, view?.title]);
 
+  const applyBandFilter = (bandKey: ScoreBandKey) => {
+    setBandFilter(bandKey);
+    setActiveTab('details');
+    setSearch('');
+  };
+
+  const bandRolls = bandFilter ? view?.scoreBandRolls?.[bandFilter] : undefined;
+
   const filteredRows = useMemo(() => {
     if (!view) return [];
+    let rows = view.tableRows;
+    if (bandFilter && bandRolls?.length) {
+      const allowed = new Set(bandRolls);
+      rows = rows.filter((row) => {
+        const keys = [
+          String(row.roll ?? row.roll_number ?? ''),
+          String(row.name ?? row.student_name ?? ''),
+          String(row.email ?? ''),
+        ].filter((k) => k && k !== '—');
+        return keys.some((k) => allowed.has(k));
+      });
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return view.tableRows;
-    return view.tableRows.filter((row) =>
+    if (!q) return rows;
+    return rows.filter((row) =>
       Object.values(row).some((v) => String(v).toLowerCase().includes(q)),
     );
-  }, [view, search]);
+  }, [view, search, bandFilter, bandRolls]);
+
+  const activeBandLabel = bandFilter
+    ? STUDENT_SCORE_BANDS.find((b) => b.key === bandFilter)?.label
+    : null;
 
   if (!view) {
     return (
@@ -76,6 +104,8 @@ export function AdminCardDashboardModal({
   const base = fileBase ?? 'dashboard-report';
   const hasRows = view.tableRows.length > 0;
 
+  const drilldown = view.enableScoreBandDrilldown;
+
   const overview = (
     <ReportChartGrid>
       {view.pie ? (
@@ -84,6 +114,14 @@ export function AdminCardDashboardModal({
           hint={view.pie.hint}
           data={view.pie.data}
           colors={view.pie.colors}
+          onSliceClick={
+            drilldown
+              ? (slice) => {
+                  const key = slice.name as ScoreBandKey;
+                  if (STUDENT_SCORE_BANDS.some((b) => b.key === key)) applyBandFilter(key);
+                }
+              : undefined
+          }
         />
       ) : null}
       {view.barPrimary ? (
@@ -94,6 +132,17 @@ export function AdminCardDashboardModal({
           layout={view.barPrimary.layout}
           stacked={view.barPrimary.stacked}
           primaryColor={view.barPrimary.primaryColor}
+          onBarClick={
+            drilldown
+              ? (row) => {
+                  const key = (row.bandKey ?? row.shortLabel) as ScoreBandKey;
+                  const match = STUDENT_SCORE_BANDS.find(
+                    (b) => b.key === key || b.shortLabel === row.shortLabel,
+                  );
+                  if (match) applyBandFilter(match.key);
+                }
+              : undefined
+          }
         />
       ) : null}
       {view.barSecondary ? (
@@ -117,6 +166,22 @@ export function AdminCardDashboardModal({
 
   const details = (
     <div className="space-y-3">
+      {activeBandLabel ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#c4a052]/40 bg-[#f8f4eb] px-3 py-2 text-sm">
+          <span>
+            Showing <strong>{activeBandLabel}</strong> only
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => setBandFilter(null)}
+          >
+            Clear band filter
+          </Button>
+        </div>
+      ) : null}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input

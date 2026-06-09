@@ -45,6 +45,8 @@ type AdminTestDetailModalProps = {
   onDeleted?: () => void;
   /** Limit results to these students (dashboard filters). */
   scopeUserIds?: string[];
+  /** Pre-built report from dashboard filters (skips API when provided). */
+  prefetchedReport?: TestReportsPayload | null;
 };
 
 function computeSummaryFromRows(rows: TestReportRow[]): TestReportsPayload['summary'] {
@@ -101,14 +103,18 @@ function AdminTestDetailModalContent({
   onOpenChange,
   onDeleted,
   scopeUserIds,
+  prefetchedReport,
 }: {
   test: AdminTestOverviewItem;
   onOpenChange: (open: boolean) => void;
   onDeleted?: () => void;
   scopeUserIds?: string[];
+  prefetchedReport?: TestReportsPayload | null;
 }) {
-  const [reportPayload, setReportPayload] = useState<TestReportsPayload | null>(null);
-  const [reportLoading, setReportLoading] = useState(true);
+  const [reportPayload, setReportPayload] = useState<TestReportsPayload | null>(
+    prefetchedReport ?? null,
+  );
+  const [reportLoading, setReportLoading] = useState(!prefetchedReport);
   const [reportError, setReportError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'csv' | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -122,16 +128,25 @@ function AdminTestDetailModalContent({
 
   const displayPayload = useMemo(() => {
     if (!reportPayload) return null;
-    if (!scopeSet) return reportPayload;
-    const rows = reportPayload.rows.filter((r) => scopeSet.has(r.user_id));
+    if (!scopeSet || prefetchedReport) return reportPayload;
+    const rows = reportPayload.rows.filter(
+      (r) => scopeSet.has(r.user_id) || scopeSet.has(String(r.user_id)),
+    );
     return {
       ...reportPayload,
       rows,
       summary: computeSummaryFromRows(rows),
     };
-  }, [reportPayload, scopeSet]);
+  }, [reportPayload, scopeSet, prefetchedReport]);
 
   useEffect(() => {
+    if (prefetchedReport) {
+      setReportPayload(prefetchedReport);
+      setReportError(null);
+      setReportLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setReportPayload(null);
     setReportError(null);
@@ -164,7 +179,7 @@ function AdminTestDetailModalContent({
     return () => {
       cancelled = true;
     };
-  }, [test.id]);
+  }, [test.id, test.test_id, prefetchedReport]);
 
   const stats = displayPayload?.summary;
   const rows = displayPayload?.rows ?? [];
@@ -477,17 +492,19 @@ export function AdminTestDetailModal({
   onOpenChange,
   onDeleted,
   scopeUserIds,
+  prefetchedReport,
 }: AdminTestDetailModalProps) {
   if (!test) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <AdminTestDetailModalContent
-        key={`${test.id}:${scopeUserIds?.join(',') ?? ''}`}
+        key={`${test.id}:${scopeUserIds?.join(',') ?? ''}:${prefetchedReport?.rows.length ?? 'api'}`}
         test={test}
         onOpenChange={onOpenChange}
         onDeleted={onDeleted}
         scopeUserIds={scopeUserIds}
+        prefetchedReport={prefetchedReport}
       />
     </Dialog>
   );

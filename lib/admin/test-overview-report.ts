@@ -21,8 +21,9 @@ export function reportFiltersForTestOverview(test: AdminTestOverviewItem): {
     return { examType: 'all', testId: test.test_id ?? undefined, scheduleId };
   }
 
+  // Scope by test + schedule window only — exam-type buckets can drop rows the overview already counted.
   if (test.kind === 'faculty_schedule' || test.kind === 'faculty_published') {
-    return { examType: 'department', testId: test.test_id ?? undefined, scheduleId };
+    return { examType: 'all', testId: test.test_id ?? undefined, scheduleId };
   }
 
   return { examType: 'all', testId: test.test_id ?? undefined, scheduleId };
