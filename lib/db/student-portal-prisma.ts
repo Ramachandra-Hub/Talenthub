@@ -7,12 +7,14 @@ import {
 } from '@/lib/exam-schedule';
 import { listLiveFacultyExamsForStudent } from '@/lib/live-faculty-exams';
 import { buildStudentPortalPayload } from '@/lib/student-portal';
+import { dedupeFacultyExamSchedules } from '@/lib/student-portal-exams';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
 
 function mapSchedule(row: {
   id: string;
   testId: string | null;
+  facultyExamRequestId?: string | null;
   title: string | null;
   status: string;
   startsAt: Date | null;
@@ -29,7 +31,7 @@ function mapSchedule(row: {
     title: row.title ?? 'Exam',
     description: null,
     notice: null,
-    faculty_exam_request_id: null,
+    faculty_exam_request_id: row.facultyExamRequestId ?? null,
     test_id: row.testId ?? '',
     status: row.status === 'live' || row.status === 'ended' ? row.status : 'scheduled',
     starts_at: row.startsAt?.toISOString() ?? nowIso,
@@ -134,7 +136,20 @@ export async function buildStudentPortalFromPrisma(userId: string, email: string
     }
   }
 
-  const faculty = partitionSchedulesForStudent(schedulesForPartition, department, year, extras);
+  const publishedRequestIds = new Set(approvedRequests.map((r) => r.id));
+  const publishedSchedules = schedules.filter((s) => {
+    const reqId = s.faculty_exam_request_id;
+    return reqId != null && publishedRequestIds.has(String(reqId));
+  });
+
+  const faculty = partitionSchedulesForStudent(
+    schedulesForPartition.filter((s) =>
+      publishedSchedules.some((p) => p.id === s.id),
+    ),
+    department,
+    year,
+    extras,
+  );
 
   const supplementalLive = listLiveFacultyExamsForStudent(
     approvedRequests
@@ -150,24 +165,21 @@ export async function buildStudentPortalFromPrisma(userId: string, email: string
         published_test_id: r.publishedTestId,
         department: r.department ?? '',
       })),
-    schedules,
+    publishedSchedules,
     department,
     year,
     extras,
   );
 
-  const mergedLiveByTest = new Map<string, (typeof faculty.live)[0]>();
-  for (const exam of [...faculty.live, ...supplementalLive]) {
-    mergedLiveByTest.set(String(exam.test_id), exam);
-  }
-  const facultyLive = Array.from(mergedLiveByTest.values());
+  const facultyLive = dedupeFacultyExamSchedules([...faculty.live, ...supplementalLive]);
+  const facultyUpcoming = dedupeFacultyExamSchedules(faculty.upcoming);
 
   return {
     payload: buildStudentPortalPayload({
       evaloraLive: [],
       evaloraUpcoming: [],
       facultyLive,
-      facultyUpcoming: faculty.upcoming,
+      facultyUpcoming,
       slotNotices: [],
       department,
       year,

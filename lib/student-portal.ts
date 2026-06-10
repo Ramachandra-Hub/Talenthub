@@ -1,4 +1,5 @@
 import type { StudentEvaloraModule } from '@/lib/evalora/module-schedule';
+import { isElevateXTestId } from '@/lib/elevatex';
 import { isScheduleWindowOpen, type StudentExamSchedule } from '@/lib/exam-schedule';
 import type { StudentSlotExamPortalNotice } from '@/lib/exam-schedule-slots';
 import { formatSlotWindowLabel } from '@/lib/exam-schedule-slots';
@@ -17,6 +18,7 @@ export type PortalExamItem = {
   badge?: string;
   duration_minutes?: number | null;
   module_key?: string;
+  test_id?: string;
   slot_number?: number | null;
   slot_window_label?: string | null;
   /** False when exam is live in admin but slot window has not opened yet. */
@@ -69,12 +71,51 @@ function fromFaculty(exam: StudentExamSchedule): PortalExamItem {
     icon: '🏫',
     badge: exam.duration_minutes ? `${exam.duration_minutes} min` : undefined,
     duration_minutes: exam.duration_minutes,
+    test_id: String(exam.test_id ?? ''),
     slot_number: slotNumber,
     slot_window_label: slotNumber
       ? formatSlotWindowLabel({ starts_at: exam.starts_at, ends_at: exam.ends_at })
       : null,
     window_open: isScheduleWindowOpen(exam),
   };
+}
+
+function portalExamKey(item: PortalExamItem): string {
+  if (item.module_key) return `mod:${item.module_key}`;
+  if (item.test_id) return `test:${item.test_id}`;
+  return `id:${item.id}`;
+}
+
+function dedupePortalItems(items: PortalExamItem[]): PortalExamItem[] {
+  const byKey = new Map<string, PortalExamItem>();
+  const rank = (item: PortalExamItem) => {
+    if (item.source === 'faculty' && item.kind === 'live' && item.window_open !== false) return 4;
+    if (item.source === 'faculty' && item.kind === 'live') return 3;
+    if (item.kind === 'live') return 2;
+    return 1;
+  };
+
+  for (const item of items) {
+    const key = portalExamKey(item);
+    const prev = byKey.get(key);
+    if (!prev || rank(item) > rank(prev)) {
+      byKey.set(key, item);
+      continue;
+    }
+    if (rank(item) === rank(prev) && item.source === 'faculty' && prev.source === 'evalora') {
+      byKey.set(key, item);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
+function evaloraCoveredByFacultyItem(
+  mod: PortalExamItem,
+  facultyItems: PortalExamItem[],
+): boolean {
+  if (mod.module_key !== 'placement_full') return false;
+  return facultyItems.some((f) => f.test_id && isElevateXTestId(f.test_id));
 }
 
 export function buildStudentPortalPayload(input: {
@@ -87,14 +128,23 @@ export function buildStudentPortalPayload(input: {
   year: string | null;
   message?: string;
 }): StudentPortalPayload {
-  const live = [
-    ...input.facultyLive.map(fromFaculty),
-    ...input.evaloraLive.map(fromEvalora),
-  ];
-  const upcoming = [
-    ...input.facultyUpcoming.map(fromFaculty),
-    ...input.evaloraUpcoming.map(fromEvalora),
-  ].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  const facultyLiveItems = input.facultyLive.map(fromFaculty);
+  const facultyUpcomingItems = input.facultyUpcoming.map(fromFaculty);
+  const allFaculty = [...facultyLiveItems, ...facultyUpcomingItems];
+
+  const evaloraLive = input.evaloraLive
+    .map(fromEvalora)
+    .filter((mod) => !evaloraCoveredByFacultyItem(mod, allFaculty));
+  const evaloraUpcoming = input.evaloraUpcoming
+    .map(fromEvalora)
+    .filter((mod) => !evaloraCoveredByFacultyItem(mod, allFaculty));
+
+  const live = dedupePortalItems([...facultyLiveItems, ...evaloraLive]).sort(
+    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+  );
+  const upcoming = dedupePortalItems([...facultyUpcomingItems, ...evaloraUpcoming]).sort(
+    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+  );
 
   let featured: PortalExamItem | null = null;
   if (live.length > 0) {

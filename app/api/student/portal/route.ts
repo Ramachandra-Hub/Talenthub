@@ -17,6 +17,8 @@ import { prisma } from '@/lib/prisma';
 import { normalizeRoll } from '@/lib/exam-schedule-slots';
 import {
   buildRosterFirstStudentExams,
+  dedupeFacultyExamSchedules,
+  filterEvaloraCoveredByFaculty,
   inferProfileFromRosterAssignments,
   loadStudentSlotAssignmentsByRoll,
   type ApprovedExamRequest,
@@ -140,6 +142,13 @@ export async function GET() {
   }
 
   const approved = (approvedRequests ?? []) as ApprovedExamRequest[];
+  const publishedRequestIds = new Set(approved.map((r) => String(r.id)));
+  schedules = schedules.filter((s) => {
+    const reqId = s.faculty_exam_request_id;
+    if (!reqId) return false;
+    return publishedRequestIds.has(String(reqId));
+  });
+
   const facultyIds = [
     ...new Set(
       schedules
@@ -260,49 +269,31 @@ export async function GET() {
         evaloraUpcoming: [],
       };
 
+  const slotFilter =
+    studentSlotByRequestId.size > 0 ? studentSlotByRequestId : undefined;
+
   const supplementalLive = listLiveFacultyExamsForStudent(
     approved as Parameters<typeof listLiveFacultyExamsForStudent>[0],
     schedules,
     department,
     year,
     extras,
-    studentSlotByRequestId.size > 0 ? studentSlotByRequestId : undefined,
+    slotFilter,
   );
 
-  const mergedLiveByTest = new Map<string, (typeof faculty.live)[0]>();
-  for (const exam of [
-    ...rosterExams.facultyLive,
-    ...faculty.live,
-    ...supplementalLive,
-  ]) {
-    mergedLiveByTest.set(String(exam.test_id), exam);
-  }
-  const facultyLive = Array.from(mergedLiveByTest.values()).sort(
-    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
-  );
+  const facultyLive = dedupeFacultyExamSchedules(
+    [...rosterExams.facultyLive, ...faculty.live, ...supplementalLive],
+    slotFilter,
+  ).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
-  const upcomingById = new Map<string, (typeof faculty.upcoming)[0]>();
-  for (const exam of [...rosterExams.facultyUpcoming, ...faculty.upcoming]) {
-    upcomingById.set(exam.id, exam);
-  }
-  const facultyUpcoming = Array.from(upcomingById.values()).sort(
-    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
-  );
+  const facultyUpcoming = dedupeFacultyExamSchedules(
+    [...rosterExams.facultyUpcoming, ...faculty.upcoming],
+    slotFilter,
+  ).sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
-  const evaloraLiveKeys = new Set(evalora.live.map((m) => m.module_key));
-  for (const mod of rosterExams.evaloraLive) {
-    if (!evaloraLiveKeys.has(mod.module_key)) {
-      evalora.live.push(mod);
-      evaloraLiveKeys.add(mod.module_key);
-    }
-  }
-  const evaloraUpcomingKeys = new Set(evalora.upcoming.map((m) => m.module_key));
-  for (const mod of rosterExams.evaloraUpcoming) {
-    if (!evaloraUpcomingKeys.has(mod.module_key)) {
-      evalora.upcoming.push(mod);
-      evaloraUpcomingKeys.add(mod.module_key);
-    }
-  }
+  const facultyForEvaloraFilter = [...facultyLive, ...facultyUpcoming];
+  evalora.live = filterEvaloraCoveredByFaculty(evalora.live, facultyForEvaloraFilter);
+  evalora.upcoming = filterEvaloraCoveredByFaculty(evalora.upcoming, facultyForEvaloraFilter);
 
   const slotNotices = rollNumber
     ? await buildStudentSlotExamPortalNotices(admin, {

@@ -1,7 +1,6 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { academicYearInList } from '@/lib/academic-year-match';
 import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
-import { getEvaloraModule } from '@/lib/evalora/modules';
 import { isElevateXTestId } from '@/lib/elevatex';
 import type { StudentEvaloraModule } from '@/lib/evalora/module-schedule';
 import {
@@ -127,6 +126,54 @@ export function yearAllowedForRosterStudent(
   return academicYearInList(effectiveYear, years);
 }
 
+/** One published faculty exam per student — prefer their slot and live over upcoming. */
+export function dedupeFacultyExamSchedules(
+  exams: StudentExamSchedule[],
+  studentSlotByRequestId?: Map<string, number>,
+): StudentExamSchedule[] {
+  const byKey = new Map<string, StudentExamSchedule>();
+
+  const rank = (exam: StudentExamSchedule): number => {
+    if (exam.kind === 'live' && isScheduleWindowOpen(exam)) return 4;
+    if (exam.kind === 'live') return 3;
+    if (exam.kind === 'upcoming') return 2;
+    return 1;
+  };
+
+  for (const exam of exams) {
+    const reqId = exam.faculty_exam_request_id;
+    const key = reqId ? `req:${reqId}` : `test:${exam.test_id}`;
+
+    if (reqId && studentSlotByRequestId?.has(reqId)) {
+      const assignedSlot = studentSlotByRequestId.get(reqId)!;
+      const slot = scheduleSlotNumber(exam);
+      const titleMatchesSlot = exam.title.toLowerCase().includes(`slot ${assignedSlot}`);
+      if (slot !== assignedSlot && !titleMatchesSlot) continue;
+    }
+
+    const prev = byKey.get(key);
+    if (!prev || rank(exam) > rank(prev)) {
+      byKey.set(key, exam);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
+/** Hide legacy Evalora module rows when the same exam is already shown via faculty schedule. */
+export function filterEvaloraCoveredByFaculty(
+  evalora: StudentEvaloraModule[],
+  faculty: StudentExamSchedule[],
+): StudentEvaloraModule[] {
+  const facultyTestIds = new Set(faculty.map((f) => String(f.test_id ?? '')));
+  return evalora.filter((mod) => {
+    if (mod.module_key === 'placement_full') {
+      return ![...facultyTestIds].some((id) => isElevateXTestId(id));
+    }
+    return true;
+  });
+}
+
 export function buildStudentExamScheduleCard(
   schedule: ExamScheduleRow,
   request: ApprovedExamRequest,
@@ -141,28 +188,6 @@ export function buildStudentExamScheduleCard(
     duration_minutes: extras?.duration_minutes ?? request.duration_minutes ?? null,
     topic: extras?.topic ?? request.topic ?? null,
     title: request.title?.trim() || schedule.title,
-  };
-}
-
-export function elevatexModuleFromSchedule(
-  schedule: ExamScheduleRow,
-  visibility: PortalScheduleVisibility,
-): StudentEvaloraModule | null {
-  if (!isElevateXTestId(schedule.test_id)) return null;
-  const def = getEvaloraModule('placement_full');
-  if (!def) return null;
-  return {
-    schedule_id: schedule.id,
-    module_key: 'placement_full',
-    kind: visibility === 'live' ? 'live' : 'upcoming',
-    title: def.name,
-    notice: schedule.notice,
-    starts_at: schedule.starts_at,
-    ends_at: schedule.ends_at,
-    href: def.href,
-    icon: def.icon,
-    description: def.description,
-    badge: def.badge,
   };
 }
 
@@ -186,8 +211,6 @@ export async function buildRosterFirstStudentExams(input: {
 
   const facultyLive: StudentExamSchedule[] = [];
   const facultyUpcoming: StudentExamSchedule[] = [];
-  const evaloraLive: StudentEvaloraModule[] = [];
-  const evaloraUpcoming: StudentEvaloraModule[] = [];
   const seenTestLive = new Set<string>();
 
   for (const [requestId, assignment] of assignments) {
@@ -230,25 +253,21 @@ export async function buildRosterFirstStudentExams(input: {
         facultyLive.push(card);
         seenTestLive.add(testKey);
       }
-      const mod = elevatexModuleFromSchedule(mySchedule, 'live');
-      if (mod && !evaloraLive.some((m) => m.module_key === 'placement_full')) {
-        evaloraLive.push(mod);
-      }
     } else {
       facultyUpcoming.push(card);
-      const mod = elevatexModuleFromSchedule(mySchedule, 'upcoming');
-      if (mod && !evaloraUpcoming.some((m) => m.module_key === 'placement_full')) {
-        evaloraUpcoming.push(mod);
-      }
     }
   }
 
-  facultyLive.sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
-  facultyUpcoming.sort(
-    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+  const slotMap = new Map(
+    [...assignments.entries()].map(([reqId, a]) => [reqId, a.slot_number] as const),
   );
 
-  return { facultyLive, facultyUpcoming, evaloraLive, evaloraUpcoming };
+  return {
+    facultyLive: dedupeFacultyExamSchedules(facultyLive, slotMap),
+    facultyUpcoming: dedupeFacultyExamSchedules(facultyUpcoming, slotMap),
+    evaloraLive: [],
+    evaloraUpcoming: [],
+  };
 }
 
 /** Resolve profile year/branch from roster when login profile is incomplete. */
