@@ -357,6 +357,15 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
     };
   }, [refresh, deferPollMs, live, loading]);
 
+  const entries = useMemo(() => {
+    const list = board?.entries ?? [];
+    return [...list].sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true }),
+    );
+  }, [board?.entries]);
+
   if (loading) {
     return (
       <section className="mb-8 rounded-2xl border border-violet-300/30 bg-gradient-to-br from-[#1a0a3e] via-[#2d1b69] to-[#0d2847] p-8 text-center">
@@ -390,14 +399,6 @@ export function LiveExamDashboard({ deferPollMs = 0 }: LiveExamDashboardProps) {
     );
   }
 
-  const entries = useMemo(() => {
-    const list = board?.entries ?? [];
-    return [...list].sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.roll_number.localeCompare(b.roll_number, undefined, { numeric: true }),
-    );
-  }, [board?.entries]);
   const multiLive = showingLive && schedules.length > 1;
   const multiEnded = !showingLive && endedSchedules.length > 1;
   const submittedEntries = entries
