@@ -8,7 +8,7 @@ function escapeCsv(value: unknown): string {
 
 export function downloadTestReportCsv(
   payload: TestReportsPayload,
-  options?: { testId?: string; testName?: string; scheduleLabel?: string },
+  options?: { testId?: string; testName?: string },
 ): void {
   const typeLabel = ADMIN_EXAM_TYPE_META[payload.exam_type].label;
   const lines: string[] = [];
@@ -21,12 +21,6 @@ export function downloadTestReportCsv(
   }
   if (options?.testName) {
     lines.push(`Filtered Test,${escapeCsv(options.testName)}`);
-  }
-  if (options?.scheduleLabel) {
-    lines.push(`Time slot,${escapeCsv(options.scheduleLabel)}`);
-  }
-  if (payload.schedule?.slot_number != null) {
-    lines.push(`Slot number,${payload.schedule.slot_number}`);
   }
   lines.push(`Total Attempts,${payload.summary.total_attempts}`);
   lines.push(`Unique Students,${payload.summary.unique_students}`);
@@ -61,14 +55,12 @@ export function downloadTestReportCsv(
 
   const slug = payload.exam_type === 'all' ? 'all-tests' : payload.exam_type;
   const testPart = options?.testId && options.testId !== 'all' ? `-${options.testId.slice(0, 8)}` : '';
-  const datePart = payload.report_date ? `-${payload.report_date}` : '';
-  const slotPart =
-    payload.schedule?.slot_number != null ? `-slot-${payload.schedule.slot_number}` : '';
+  const datePart = payload.report_date ? `-today-${payload.report_date}` : '';
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `test-report-${slug}${testPart}${slotPart}${datePart}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `test-report-${slug}${testPart}${datePart}-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -19,13 +19,7 @@ import {
 } from '@/lib/admin/load-schedule-for-report';
 import { loadElevateXTodayReportFast } from '@/lib/admin/elevatex-today-report';
 import { isInstantOnDateKey, parseReportDateFilter } from '@/lib/admin/report-date-filter';
-import {
-  loadReportScheduleOptions,
-  type ReportScheduleOption,
-} from '@/lib/admin/report-schedule-options';
 import { testIdsMatch } from '@/lib/test-attempts';
-
-export type { ReportScheduleOption };
 
 export type TestReportRow = {
   attempt_id: string;
@@ -81,8 +75,6 @@ export type TestReportsPayload = {
   };
   tests: TestOption[];
   rows: TestReportRow[];
-  /** All exam / module schedules — use for date + slot filters in the reports UI. */
-  schedule_options: ReportScheduleOption[];
 };
 
 export async function loadTestReportsPayload(
@@ -106,14 +98,12 @@ export async function loadTestReportsPayload(
     return loadElevateXTodayReportFast(admin, reportDateKey, reportDateLabel);
   }
 
-  const [students, { attempts, testsById }, categoriesRes, testsRes, scheduleOptions] =
-    await Promise.all([
-      loadAdminStudents(admin),
-      loadAllAttemptsRollup(admin),
-      admin.from('test_categories').select('id, name, slug'),
-      admin.from('tests').select('id, title, name, category_id'),
-      loadReportScheduleOptions(admin),
-    ]);
+  const [students, { attempts, testsById }, categoriesRes, testsRes] = await Promise.all([
+    loadAdminStudents(admin),
+    loadAllAttemptsRollup(admin),
+    admin.from('test_categories').select('id, name, slug'),
+    admin.from('tests').select('id, title, name, category_id'),
+  ]);
 
   const categories = categoriesRes.error
     ? []
@@ -276,6 +266,5 @@ export async function loadTestReportsPayload(
     },
     tests,
     rows,
-    schedule_options: scheduleOptions,
   };
 }

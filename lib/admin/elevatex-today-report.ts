@@ -10,7 +10,6 @@ import { ELEVATEX_EXAM_NAME, ELEVATEX_TEST_ID } from '@/lib/elevatex';
 import { isElevateXAttemptMeta } from '@/lib/placement/scorecard-payload';
 import { latestAttemptPerUser, sortTestReportRows } from '@/lib/admin/schedule-report-filter';
 import { getIstDayBoundsIso, isInstantOnDateKey } from '@/lib/admin/report-date-filter';
-import { loadReportScheduleOptions } from '@/lib/admin/report-schedule-options';
 import type { TestReportsPayload, TestReportRow } from '@/lib/admin/test-reports-data';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
 import type { AttemptRow } from '@/lib/test-attempts';
@@ -179,7 +178,6 @@ export async function loadElevateXTodayReportFast(
   dateKey: string,
   reportDateLabel: string,
 ): Promise<TestReportsPayload> {
-  const scheduleOptions = await loadReportScheduleOptions(admin);
   const prismaRows = await loadElevateXResultsForDateKeyPrisma(dateKey);
   if (prismaRows.length > 0) {
     const rows: TestReportRow[] = sortTestReportRows(
@@ -220,7 +218,6 @@ export async function loadElevateXTodayReportFast(
       },
       tests: [{ id: ELEVATEX_TEST_ID, name: ELEVATEX_EXAM_NAME, attempt_count: rows.length }],
       rows,
-      schedule_options: scheduleOptions,
     };
   }
 
@@ -290,6 +287,5 @@ export async function loadElevateXTodayReportFast(
       },
     ],
     rows,
-    schedule_options: scheduleOptions,
   };
 }
