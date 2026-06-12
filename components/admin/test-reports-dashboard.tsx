@@ -12,6 +12,11 @@ import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import { fetchWithAuth } from '@/lib/fetch-with-auth';
 import { getTodayDateKeyInIST } from '@/lib/admin/report-date-filter';
+import {
+  filterReportScheduleOptions,
+  formatScheduleSlotLabel,
+  type ReportScheduleOption,
+} from '@/lib/admin/report-schedule-options';
 import { ElevateXScorecardReportModal } from '@/components/admin/elevatex-scorecard-report-modal';
 import { useElevateXScorecardModal } from '@/hooks/use-elevatex-scorecard-modal';
 import {
@@ -64,15 +69,28 @@ export function TestReportsDashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailCard, setDetailCard] = useState<TestReportsCardKey | null>(null);
+  const [reportDate, setReportDate] = useState(() =>
+    todayOnly ? getTodayDateKeyInIST() : '',
+  );
+  const [selectedScheduleId, setSelectedScheduleId] = useState('all');
+  const [slotDownloadBusy, setSlotDownloadBusy] = useState<string | null>(null);
   const scorecardModal = useElevateXScorecardModal();
 
-  const load = useCallback(async (type: AdminExamType, testId: string, today: boolean) => {
+  const load = useCallback(
+    async (
+      type: AdminExamType,
+      testId: string,
+      filters: { dateKey?: string; scheduleId?: string },
+    ) => {
     setLoading(true);
     setLoadError(null);
     try {
       const q = new URLSearchParams({ examType: type });
       if (testId && testId !== 'all') q.set('testId', testId);
-      if (today) q.set('date', 'today');
+      if (filters.dateKey) q.set('date', filters.dateKey);
+      if (filters.scheduleId && filters.scheduleId !== 'all') {
+        q.set('scheduleId', filters.scheduleId);
+      }
       const res = await fetchWithAuth(`/api/admin/test-reports?${q.toString()}`, {
         cache: 'no-store',
       });
@@ -92,7 +110,9 @@ export function TestReportsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  },
+    [],
+  );
 
   useEffect(() => {
     const testIdFromUrl = searchParams.get('testId')?.trim();
@@ -100,12 +120,50 @@ export function TestReportsDashboard() {
   }, [searchParams]);
 
   useEffect(() => {
-    void load(examType, selectedTestId, todayOnly);
-  }, [examType, selectedTestId, todayOnly, load]);
+    void load(examType, selectedTestId, {
+      dateKey: reportDate || undefined,
+      scheduleId: selectedScheduleId,
+    });
+  }, [examType, selectedTestId, reportDate, selectedScheduleId, load]);
+
+  const scheduleOptions = payload?.schedule_options ?? [];
+
+  const visibleSchedules = useMemo(
+    () =>
+      filterReportScheduleOptions(scheduleOptions, {
+        examType,
+        testId: selectedTestId,
+        dateKey: reportDate || undefined,
+      }),
+    [scheduleOptions, examType, selectedTestId, reportDate],
+  );
+
+  const selectedScheduleOption = useMemo(
+    () =>
+      selectedScheduleId === 'all'
+        ? null
+        : scheduleOptions.find((s) => s.id === selectedScheduleId) ?? null,
+    [scheduleOptions, selectedScheduleId],
+  );
+
+  const activeScheduleLabel = useMemo(() => {
+    if (payload?.schedule) {
+      return formatScheduleSlotLabel({
+        slot_number: payload.schedule.slot_number,
+        title: payload.schedule.title,
+        starts_at: payload.schedule.starts_at,
+        ends_at: payload.schedule.ends_at,
+      });
+    }
+    if (selectedScheduleOption) return formatScheduleSlotLabel(selectedScheduleOption);
+    if (payload?.report_date_label) return `Date (IST): ${payload.report_date_label}`;
+    return undefined;
+  }, [payload, selectedScheduleOption]);
 
   const setExamTypeAndUrl = (type: AdminExamType) => {
     setExamType(type);
     setSelectedTestId('all');
+    setSelectedScheduleId('all');
     const params = new URLSearchParams();
     if (todayOnly) params.set('today', '1');
     if (type !== 'all') params.set('type', type);
@@ -117,6 +175,8 @@ export function TestReportsDashboard() {
     router.replace('/admin/reports?type=elevatex&today=1', { scroll: false });
     setExamType('elevatex');
     setStatusFilter('all');
+    setReportDate(getTodayDateKeyInIST());
+    setSelectedScheduleId('all');
   };
 
   const filteredRows = useMemo(() => {
@@ -160,7 +220,11 @@ export function TestReportsDashboard() {
   const displaySummary = useMemo(() => {
     if (!payload) return null;
     const hasActiveFilter =
-      statusFilter !== 'all' || search.trim().length > 0 || selectedTestId !== 'all';
+      statusFilter !== 'all' ||
+      search.trim().length > 0 ||
+      selectedTestId !== 'all' ||
+      selectedScheduleId !== 'all' ||
+      Boolean(reportDate);
     if (!hasActiveFilter) return payload.summary;
     return (
       filteredSummary ?? {
@@ -174,16 +238,23 @@ export function TestReportsDashboard() {
         highest_score: 0,
       }
     );
-  }, [payload, filteredSummary, statusFilter, search, selectedTestId]);
+  }, [payload, filteredSummary, statusFilter, search, selectedTestId, selectedScheduleId, reportDate]);
+
+  const buildReportDownloadPayload = (rows: TestReportsPayload['rows'], summary: TestReportsPayload['summary']) => ({
+    ...payload!,
+    rows,
+    summary,
+    schedule: payload?.schedule,
+    report_date: payload?.report_date,
+    report_date_label: payload?.report_date_label,
+  });
 
   const downloadPdf = () => {
     if (!payload || filteredRows.length === 0) return;
     downloadTestReportPdf({
       examLabel: meta.label,
       testName: selectedTestId !== 'all' ? selectedTestName : undefined,
-      scheduleLabel: payload.report_date_label
-        ? `Report date (IST): ${payload.report_date_label}`
-        : undefined,
+      scheduleLabel: activeScheduleLabel,
       rows: filteredRows,
       summary: filteredSummary ?? payload.summary,
     });
@@ -192,16 +263,62 @@ export function TestReportsDashboard() {
   const downloadCsv = () => {
     if (!payload) return;
     downloadTestReportCsv(
-      {
-        ...payload,
-        rows: filteredRows,
-        summary: filteredSummary ?? payload.summary,
-      },
+      buildReportDownloadPayload(filteredRows, filteredSummary ?? payload.summary),
       {
         testId: selectedTestId,
         testName: selectedTestName,
+        scheduleLabel: activeScheduleLabel,
       },
     );
+  };
+
+  const fetchSlotReport = async (schedule: ReportScheduleOption) => {
+    const q = new URLSearchParams({ examType, scheduleId: schedule.id });
+    if (selectedTestId !== 'all') q.set('testId', selectedTestId);
+    if (reportDate) q.set('date', reportDate);
+    const res = await fetchWithAuth(`/api/admin/test-reports?${q.toString()}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as TestReportsPayload;
+  };
+
+  const downloadSlotPdf = async (schedule: ReportScheduleOption) => {
+    setSlotDownloadBusy(`${schedule.id}:pdf`);
+    try {
+      const slotPayload = await fetchSlotReport(schedule);
+      if (!slotPayload || slotPayload.rows.length === 0) {
+        alert(`No attempts found for ${formatScheduleSlotLabel(schedule)}.`);
+        return;
+      }
+      downloadTestReportPdf({
+        examLabel: meta.label,
+        testName: schedule.title,
+        scheduleLabel: formatScheduleSlotLabel(schedule),
+        rows: slotPayload.rows,
+        summary: slotPayload.summary,
+      });
+    } finally {
+      setSlotDownloadBusy(null);
+    }
+  };
+
+  const downloadSlotCsv = async (schedule: ReportScheduleOption) => {
+    setSlotDownloadBusy(`${schedule.id}:csv`);
+    try {
+      const slotPayload = await fetchSlotReport(schedule);
+      if (!slotPayload || slotPayload.rows.length === 0) {
+        alert(`No attempts found for ${formatScheduleSlotLabel(schedule)}.`);
+        return;
+      }
+      downloadTestReportCsv(slotPayload, {
+        testId: schedule.test_id ?? undefined,
+        testName: schedule.title,
+        scheduleLabel: formatScheduleSlotLabel(schedule),
+      });
+    } finally {
+      setSlotDownloadBusy(null);
+    }
   };
 
   const openElevateXReport = (row: TestReportsPayload['rows'][0]) => {
@@ -251,7 +368,7 @@ export function TestReportsDashboard() {
         description={
           todayOnly && payload?.report_date_label
             ? `Students who wrote ElevateX on ${payload.report_date_label} (IST). Download PDF or CSV for the examination cell.`
-            : 'Per-exam dashboards with student scores — download overall exam reports as PDF or CSV.'
+            : 'Filter by exam date and time slot (Slot 1 morning, Slot 2 afternoon, etc.) — download separate PDF/CSV per slot.'
         }
         actions={
           payload ? (
@@ -352,6 +469,118 @@ export function TestReportsDashboard() {
         </Card>
       ) : (
         <>
+          <Card className="p-4 mb-6 border-[#c4a052]/30 bg-[#f8f4eb]/50">
+            <p className="text-sm font-semibold text-[#0c2340] mb-3">Date &amp; time slot</p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[180px]">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Exam date (IST)</label>
+                <Input
+                  type="date"
+                  value={reportDate}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setReportDate(next);
+                    if (next && selectedScheduleId !== 'all') {
+                      const stillVisible = filterReportScheduleOptions(scheduleOptions, {
+                        examType,
+                        testId: selectedTestId,
+                        dateKey: next,
+                      }).some((s) => s.id === selectedScheduleId);
+                      if (!stillVisible) setSelectedScheduleId('all');
+                    }
+                  }}
+                  className="h-9"
+                />
+              </div>
+              <div className="min-w-[280px] flex-1">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Time slot</label>
+                <select
+                  className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                  value={selectedScheduleId}
+                  onChange={(e) => setSelectedScheduleId(e.target.value)}
+                >
+                  <option value="all">
+                    {reportDate
+                      ? `All slots on ${reportDate} (mixed)`
+                      : 'All slots / all dates (mixed)'}
+                  </option>
+                  {visibleSchedules.map((schedule) => (
+                    <option key={schedule.id} value={schedule.id}>
+                      {formatScheduleSlotLabel(schedule)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => {
+                  setReportDate('');
+                  setSelectedScheduleId('all');
+                }}
+              >
+                Clear date &amp; slot
+              </Button>
+            </div>
+            {activeScheduleLabel ? (
+              <p className="text-xs text-slate-600 mt-3">
+                Active filter: <strong>{activeScheduleLabel}</strong>
+              </p>
+            ) : null}
+            {visibleSchedules.length > 1 ? (
+              <div className="mt-4 pt-4 border-t border-[#c4a052]/25">
+                <p className="text-xs font-medium text-slate-700 mb-2">
+                  Download each slot separately ({visibleSchedules.length} slots
+                  {reportDate ? ` on ${reportDate}` : ''})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {visibleSchedules.map((schedule) => {
+                    const label = schedule.slot_number
+                      ? `Slot ${schedule.slot_number}`
+                      : schedule.title;
+                    const pdfBusy = slotDownloadBusy === `${schedule.id}:pdf`;
+                    const csvBusy = slotDownloadBusy === `${schedule.id}:csv`;
+                    return (
+                      <div
+                        key={schedule.id}
+                        className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1"
+                      >
+                        <span className="text-xs font-semibold text-[#0c2340] px-1">{label}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={Boolean(slotDownloadBusy)}
+                          onClick={() => void downloadSlotPdf(schedule)}
+                        >
+                          {pdfBusy ? '…' : 'PDF'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={Boolean(slotDownloadBusy)}
+                          onClick={() => void downloadSlotCsv(schedule)}
+                        >
+                          {csvBusy ? '…' : 'CSV'}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : visibleSchedules.length === 0 && reportDate ? (
+              <p className="text-xs text-amber-800 mt-3">
+                No scheduled slots found on {reportDate} for this filter. Try another date or clear the
+                date filter.
+              </p>
+            ) : null}
+          </Card>
+
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <StatCard
               label="Attempts"
@@ -454,6 +683,7 @@ export function TestReportsDashboard() {
                       <th>Roll</th>
                       <th>Branch</th>
                       <th>Test</th>
+                      {selectedScheduleId === 'all' ? <th>Slot / time</th> : null}
                       <th>Score</th>
                       <th>Status</th>
                       <th>Finished</th>
@@ -497,6 +727,23 @@ export function TestReportsDashboard() {
                         <td className="text-sm text-slate-800 max-w-[10rem] truncate" title={row.test_name}>
                           {row.test_name}
                         </td>
+                        {selectedScheduleId === 'all' ? (
+                          <td className="text-xs text-slate-600 whitespace-nowrap max-w-[12rem]">
+                            {row.slot_number != null
+                              ? `Slot ${row.slot_number}`
+                              : row.schedule_title
+                                ? row.schedule_title
+                                : row.completed_at
+                                  ? new Date(row.completed_at).toLocaleString('en-IN', {
+                                      timeZone: 'Asia/Kolkata',
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : '—'}
+                          </td>
+                        ) : null}
                         <td>
                           <span
                             className={cn(

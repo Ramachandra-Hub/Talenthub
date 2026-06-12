@@ -65,7 +65,7 @@ export async function GET() {
   const { data: schedules, error: schedulesError } = await admin
     .from('exam_schedules')
     .select(
-      'id, title, description, notice, faculty_exam_request_id, test_id, status, starts_at, ends_at, target_departments, target_years, created_by, created_at, updated_at',
+      'id, title, description, notice, faculty_exam_request_id, test_id, status, starts_at, ends_at, target_departments, target_years, slot_number, slot_capacity, created_by, created_at, updated_at',
     )
     .order('starts_at', { ascending: false });
 
