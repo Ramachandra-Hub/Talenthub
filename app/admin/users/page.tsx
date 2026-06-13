@@ -57,18 +57,50 @@ type StudentReport = {
   attempts: AttemptReport[];
 };
 
+type PortalSessionStatus = {
+  active: boolean;
+  last_heartbeat: string | null;
+  locked_at: string | null;
+};
+
+type AdminStudentRow = User & {
+  roll_number?: string | null;
+  portal_session?: PortalSessionStatus;
+};
+
 export default function UsersManagementPage() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminStudentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [reportLoadingUserId, setReportLoadingUserId] = useState<string | null>(null);
+  const [releaseLoadingUserId, setReleaseLoadingUserId] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<StudentReport | null>(null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [scorecardLoading, setScorecardLoading] = useState(false);
   const [fetchedScorecard, setFetchedScorecard] = useState<PlacementScorecard | null>(null);
   const [rdsEnvMissing, setDbEnvMissing] = useState(false);
+
+  const loadUsers = async () => {
+    const res = await fetch('/api/admin/users', { credentials: 'include' });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      console.error('Admin users API:', json.error ?? res.status);
+      return;
+    }
+    const json = (await res.json()) as { students?: AdminStudentRow[]; users?: AdminStudentRow[] };
+    const rows = json.students ?? json.users ?? [];
+    setUsers(
+      rows.map((u) => ({
+        ...u,
+        branch: (u as AdminStudentRow & { branch?: string | null }).branch ?? null,
+        academic_year: (u as AdminStudentRow & { academic_year?: string }).academic_year ?? null,
+        roll_number: u.roll_number ?? null,
+        portal_session: u.portal_session ?? { active: false, last_heartbeat: null, locked_at: null },
+      })) as AdminStudentRow[],
+    );
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -79,22 +111,7 @@ export default function UsersManagementPage() {
           return;
         }
         setIsAdmin(true);
-
-        const res = await fetch('/api/admin/users', { credentials: 'include' });
-        if (res.ok) {
-          const json = (await res.json()) as { students?: User[]; users?: User[] };
-          const rows = json.students ?? json.users ?? [];
-          setUsers(
-            rows.map((u) => ({
-              ...u,
-              branch: (u as User & { branch?: string | null }).branch ?? null,
-              academic_year: (u as User & { academic_year?: string }).academic_year ?? null,
-            })) as User[],
-          );
-        } else {
-          const json = (await res.json().catch(() => ({}))) as { error?: string };
-          console.error('Admin users API:', json.error ?? res.status);
-        }
+        await loadUsers();
       } catch (error) {
         console.error('Error:', formatDbError(error), error);
       } finally {
@@ -105,12 +122,45 @@ export default function UsersManagementPage() {
     fetchData();
   }, [router]);
 
-  const filteredUsers = users.filter(user => {
-    return user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()));
+  const handleForceLogout = async (student: AdminStudentRow) => {
+    const label =
+      student.roll_number?.trim() ||
+      student.full_name?.trim() ||
+      student.email;
+    const confirmed = window.confirm(
+      `Release portal login for ${label}?\n\nThis clears the "roll number already logged in" lock so the student can sign in again and continue their exam.`,
+    );
+    if (!confirmed) return;
+
+    setReleaseLoadingUserId(student.id);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(student.id)}/release-session`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const json = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Failed to release portal session');
+      }
+      alert(json.message ?? 'Portal session released.');
+      await loadUsers();
+    } catch (error) {
+      alert(`Force logout failed: ${formatDbError(error)}`);
+    } finally {
+      setReleaseLoadingUserId(null);
+    }
+  };
+
+  const filteredUsers = users.filter((user) => {
+    const q = searchTerm.toLowerCase();
+    return (
+      user.email.toLowerCase().includes(q) ||
+      (user.full_name?.toLowerCase().includes(q) ?? false) ||
+      (user.roll_number?.toLowerCase().includes(q) ?? false)
+    );
   });
 
-  const activeUsers = users.length;
+  const activePortalSessions = users.filter((u) => u.portal_session?.active).length;
 
   const getAttemptQuestions = async (
     db: DbServiceClient,
@@ -368,8 +418,8 @@ export default function UsersManagementPage() {
             <p className="text-4xl font-bold text-blue-600">{users.length}</p>
           </Card>
           <Card className="p-6">
-            <p className="text-gray-600 text-sm font-medium mb-2">Active Users</p>
-            <p className="text-4xl font-bold text-[#1e3a5f]">{activeUsers}</p>
+            <p className="text-gray-600 text-sm font-medium mb-2">Portal Logged In</p>
+            <p className="text-4xl font-bold text-[#1e3a5f]">{activePortalSessions}</p>
           </Card>
           <Card className="p-6">
             <p className="text-gray-600 text-sm font-medium mb-2">Registered This Month</p>
@@ -390,7 +440,7 @@ export default function UsersManagementPage() {
         {/* Filters */}
         <div className="mb-6 flex gap-4">
           <Input
-            placeholder="Search by email or name..."
+            placeholder="Search by roll number, email, or name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="flex-1"
@@ -403,30 +453,49 @@ export default function UsersManagementPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Roll No.</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Account</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Portal session</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Joined</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Phone</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Report</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-gray-500">
+                    <td colSpan={8} className="text-center py-8 text-gray-500">
                       No users found
                     </td>
                   </tr>
                 ) : (
                   filteredUsers.map((user) => (
                     <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm text-gray-900 font-medium">
+                        {user.roll_number || '-'}
+                      </td>
                       <td className="py-3 px-4 text-sm text-gray-900">{user.email}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{user.full_name || '-'}</td>
                       <td className="py-3 px-4 text-sm">
-                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          active
-                        </span>
+                        {user.portal_session?.active ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                              Logged in
+                            </span>
+                            {user.portal_session.last_heartbeat ? (
+                              <p className="text-xs text-gray-500">
+                                Last active{' '}
+                                {new Date(user.portal_session.last_heartbeat).toLocaleString()}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            Not logged in
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
                         {new Date(user.created_at).toLocaleDateString()}
@@ -443,6 +512,21 @@ export default function UsersManagementPage() {
                         >
                           {reportLoadingUserId === user.id ? 'Loading...' : 'View Report'}
                         </Button>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {isAdmin && user.portal_session?.active ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-200 text-red-700 hover:bg-red-50"
+                            onClick={() => handleForceLogout(user)}
+                            disabled={releaseLoadingUserId === user.id}
+                          >
+                            {releaseLoadingUserId === user.id ? 'Releasing...' : 'Force logout'}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                     </tr>
                   ))
