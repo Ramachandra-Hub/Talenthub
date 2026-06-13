@@ -227,40 +227,39 @@ export default function AdminTestAttemptsPage() {
         </div>
       </Card>
 
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px]">
+      <Card className="overflow-hidden">
+          <table className="admin-table">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Test</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Student</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Roll</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Email</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Score</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Attempted on</th>
+                <th className="text-left py-2.5 px-3 text-sm font-semibold text-gray-700">Test</th>
+                <th className="text-left py-2.5 px-3 text-sm font-semibold text-gray-700">Student</th>
+                <th className="text-left py-2.5 px-3 text-sm font-semibold text-gray-700">Score</th>
+                <th className="text-left py-2.5 px-3 text-sm font-semibold text-gray-700">Status</th>
+                <th className="text-left py-2.5 px-3 text-sm font-semibold text-gray-700 hidden md:table-cell">Attempted</th>
               </tr>
             </thead>
             <tbody>
               {filteredAttempts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-gray-500">
+                  <td colSpan={5} className="text-center py-10 text-gray-500">
                     No student attempts found for the current filters.
                   </td>
                 </tr>
               ) : (
                 filteredAttempts.map((a) => (
                   <tr key={String(a.id)} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 text-sm text-gray-900 max-w-[12rem] truncate" title={a.testName}>
+                    <td className="py-2.5 px-3 text-sm text-gray-900 truncate" title={a.testName}>
                       {a.testName}
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-900">{a.studentName}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-gray-700">{a.roll_number || '—'}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600 max-w-[10rem] truncate">{a.studentEmail}</td>
-                    <td className="py-3 px-4 text-sm font-semibold text-blue-700">
+                    <td className="py-2.5 px-3 text-sm min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{a.studentName}</p>
+                      <p className="text-xs text-gray-500 truncate">{a.studentEmail}</p>
+                      <p className="text-xs font-mono text-gray-600">{a.roll_number || '—'}</p>
+                    </td>
+                    <td className="py-2.5 px-3 text-sm font-semibold text-blue-700">
                       {a.score == null ? '—' : formatScorePercentLabel(Number(a.score))}
                     </td>
-                    <td className="py-3 px-4 text-sm">
+                    <td className="py-2.5 px-3 text-sm">
                       <span
                         className={cn(
                           'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold',
@@ -270,7 +269,7 @@ export default function AdminTestAttemptsPage() {
                         {formatAttemptStatus(a.status)}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600 whitespace-nowrap">
+                    <td className="py-2.5 px-3 text-sm text-gray-600 hidden md:table-cell">
                       {new Date(a.created_at).toLocaleString()}
                     </td>
                   </tr>
@@ -278,7 +277,6 @@ export default function AdminTestAttemptsPage() {
               )}
             </tbody>
           </table>
-        </div>
         {refreshedAt ? (
           <p className="text-xs text-gray-500 px-4 py-3 border-t border-gray-100">
             Last updated {new Date(refreshedAt).toLocaleTimeString()} · {attempts.length} total in log

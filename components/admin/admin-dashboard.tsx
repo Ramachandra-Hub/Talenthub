@@ -969,8 +969,7 @@ export function AdminDashboard() {
               Click a test for student-wise results and PDF/CSV download
             </p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <table className="admin-table">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Test</th>
@@ -1018,7 +1017,6 @@ export function AdminDashboard() {
                 )}
               </tbody>
             </table>
-          </div>
         </Card>
 
         <Card className="p-6 mb-8">
@@ -1067,8 +1065,7 @@ export function AdminDashboard() {
             Showing {filteredStudents.length} of {allStudents.length} students ·{' '}
             {attendanceDaySummary.attemptsOnDate} attempts on selected date
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <table className="admin-table">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="text-left py-3 px-4 font-semibold text-slate-700">Student</th>
@@ -1138,7 +1135,6 @@ export function AdminDashboard() {
                 )}
               </tbody>
             </table>
-          </div>
         </Card>
 
         <div className="grid md:grid-cols-3 gap-6">

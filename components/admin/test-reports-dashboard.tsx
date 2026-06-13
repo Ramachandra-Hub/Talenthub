@@ -610,8 +610,8 @@ export function TestReportsDashboard() {
               <strong>All slots (overall)</strong> to see every student across all slots — ranked highest
               to lowest. Download leaderboard PDF/Excel or all individual reports below.
             </p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[180px]">
+            <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto] gap-3 items-end">
+              <div className="w-full min-w-0">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Start date (IST)</label>
                 <Input
                   type="date"
@@ -636,7 +636,7 @@ export function TestReportsDashboard() {
                   className="h-9"
                 />
               </div>
-              <div className="min-w-[180px]">
+              <div className="w-full min-w-0">
                 <label className="block text-xs font-medium text-slate-600 mb-1">End date (IST)</label>
                 <Input
                   type="date"
@@ -660,7 +660,7 @@ export function TestReportsDashboard() {
                   className="h-9"
                 />
               </div>
-              <div className="min-w-[280px] flex-1">
+              <div className="w-full min-w-0">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Time slot</label>
                 <select
                   className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -895,8 +895,8 @@ export function TestReportsDashboard() {
           </div>
 
           <Card className="p-4 mb-6">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[200px]">
+            <div className="grid w-full min-w-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
+              <div className="w-full min-w-0">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Search student</label>
                 <Input
                   value={search}
@@ -905,7 +905,7 @@ export function TestReportsDashboard() {
                   className="h-9"
                 />
               </div>
-              <div className="min-w-[220px]">
+              <div className="w-full min-w-0">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Filter by test</label>
                 <select
                   className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -920,7 +920,7 @@ export function TestReportsDashboard() {
                   ))}
                 </select>
               </div>
-              <div className="min-w-[180px]">
+              <div className="w-full min-w-0">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
                 <select
                   className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
@@ -949,18 +949,15 @@ export function TestReportsDashboard() {
             </Card>
           ) : (
             <Card className="overflow-hidden border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="app-table w-full min-w-[900px]">
+                <table className="admin-table app-table">
                   <thead>
                     <tr>
                       <th>Student</th>
-                      <th>Roll</th>
-                      <th>Branch</th>
                       <th>Test</th>
-                      {selectedScheduleId === 'all' ? <th>Slot / time</th> : null}
+                      {selectedScheduleId === 'all' ? <th className="hidden lg:table-cell">Slot</th> : null}
                       <th>Score</th>
                       <th>Status</th>
-                      <th>Finished</th>
+                      <th className="hidden md:table-cell">Finished</th>
                       <th>Report</th>
                     </tr>
                   </thead>
@@ -977,32 +974,32 @@ export function TestReportsDashboard() {
                             : undefined
                         }
                       >
-                        <td>
-                          <p className="font-medium text-[#0c2340]">{row.student_name}</p>
-                          <p className="text-xs text-slate-500 truncate max-w-[12rem]">{row.email}</p>
+                        <td className="min-w-0">
+                          <p className="font-medium text-[#0c2340] truncate">{row.student_name}</p>
+                          <p className="text-xs text-slate-500 truncate">{row.email}</p>
+                          <p className="text-xs text-slate-600 truncate">
+                            {showReport && row.roll_number ? (
+                              <button
+                                type="button"
+                                className="font-mono text-[#1e3a5f] font-semibold underline-offset-2 hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openElevateXReport(row);
+                                }}
+                              >
+                                {row.roll_number}
+                              </button>
+                            ) : (
+                              <span className="font-mono">{row.roll_number || '—'}</span>
+                            )}
+                            {row.branch ? ` · ${row.branch}` : ''}
+                          </p>
                         </td>
-                        <td className="font-mono text-xs">
-                          {showReport && row.roll_number ? (
-                            <button
-                              type="button"
-                              className="text-[#1e3a5f] font-semibold underline-offset-2 hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openElevateXReport(row);
-                              }}
-                            >
-                              {row.roll_number}
-                            </button>
-                          ) : (
-                            <span className="text-slate-700">{row.roll_number || '—'}</span>
-                          )}
-                        </td>
-                        <td className="text-sm text-slate-700">{row.branch ?? '—'}</td>
-                        <td className="text-sm text-slate-800 max-w-[10rem] truncate" title={row.test_name}>
+                        <td className="text-sm text-slate-800 truncate" title={row.test_name}>
                           {row.test_name}
                         </td>
                         {selectedScheduleId === 'all' ? (
-                          <td className="text-xs text-slate-600 whitespace-nowrap max-w-[12rem]">
+                          <td className="hidden lg:table-cell text-xs text-slate-600 truncate">
                             {row.slot_number != null
                               ? `Slot ${row.slot_number}`
                               : row.schedule_title
@@ -1042,11 +1039,11 @@ export function TestReportsDashboard() {
                             {formatAttemptStatus(row.status)}
                           </span>
                         </td>
-                        <td className="text-sm text-slate-600 whitespace-nowrap">
+                        <td className="hidden md:table-cell text-sm text-slate-600">
                           {row.completed_at ? (
                             new Date(row.completed_at).toLocaleString()
                           ) : isInProgressStatus(row.status) ? (
-                            <span className="text-amber-700 font-medium">
+                            <span className="text-amber-700 font-medium text-xs">
                               Started {new Date(row.created_at).toLocaleString()}
                             </span>
                           ) : (
@@ -1078,7 +1075,6 @@ export function TestReportsDashboard() {
                     })}
                   </tbody>
                 </table>
-              </div>
               <p className="text-xs text-slate-500 px-4 py-3 border-t border-slate-100">
                 Showing {filteredRows.length} of {payload.rows.length} attempts
                 {search ? ' (search filtered)' : ''}.

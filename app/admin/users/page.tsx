@@ -530,14 +530,14 @@ export default function UsersManagementPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-6 flex flex-wrap gap-4 items-end">
+        <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_11rem_auto] lg:items-end">
           <Input
-            placeholder="Search by roll number, email, or name..."
+            placeholder="Search roll, email, or name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 min-w-[220px]"
+            className="w-full min-w-0"
           />
-          <div className="min-w-[180px]">
+          <div className="w-full min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Academic year</label>
             <select
               className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
@@ -555,123 +555,195 @@ export default function UsersManagementPage() {
           {isAdmin && filteredUsers.length > 0 ? (
             <Button
               variant="outline"
-              className="border-red-300 text-red-700 hover:bg-red-50"
+              className="w-full lg:w-auto border-red-300 text-red-700 hover:bg-red-50 shrink-0"
               disabled={bulkDeleteBusy || Boolean(deleteLoadingUserId)}
               onClick={() => void handleBulkDeleteFiltered()}
             >
-              {bulkDeleteBusy
-                ? 'Deleting…'
-                : `Delete filtered (${filteredUsers.length})`}
+              {bulkDeleteBusy ? 'Deleting…' : `Delete (${filteredUsers.length})`}
             </Button>
           ) : null}
         </div>
 
-        {/* Users Table */}
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Roll No.</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Year</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Portal session</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Joined</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Phone</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Report</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
+        {/* Mobile list — no horizontal scroll */}
+        <div className="md:hidden space-y-3">
+          {filteredUsers.length === 0 ? (
+            <Card className="p-8 text-center text-gray-500">No users found</Card>
+          ) : (
+            filteredUsers.map((user) => (
+              <Card key={user.id} className="p-4 overflow-hidden">
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-gray-900 truncate">
+                      {user.roll_number || 'No roll'} · {user.full_name || 'Unnamed'}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate mt-0.5">{user.email}</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {user.academic_year || 'Year —'} · Joined{' '}
+                      {new Date(user.created_at).toLocaleDateString()}
+                      {user.phone ? ` · ${user.phone}` : ''}
+                    </p>
+                  </div>
+                  {user.portal_session?.active ? (
+                    <span
+                      className="shrink-0 inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800"
+                      title={
+                        user.portal_session.last_heartbeat
+                          ? `Last active ${new Date(user.portal_session.last_heartbeat).toLocaleString()}`
+                          : undefined
+                      }
+                    >
+                      Online
+                    </span>
+                  ) : (
+                    <span className="shrink-0 inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
+                      Offline
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={() => handleOpenReport(user)}
+                    disabled={reportLoadingUserId === user.id}
+                  >
+                    {reportLoadingUserId === user.id ? '…' : 'Report'}
+                  </Button>
+                  {isAdmin && user.portal_session?.active ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs border-red-200 text-red-700"
+                      onClick={() => handleForceLogout(user)}
+                      disabled={releaseLoadingUserId === user.id || Boolean(bulkDeleteBusy)}
+                    >
+                      {releaseLoadingUserId === user.id ? '…' : 'Logout'}
+                    </Button>
+                  ) : null}
+                  {isAdmin ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs border-red-300 text-red-800"
+                      onClick={() => void handleDeleteStudent(user)}
+                      disabled={
+                        deleteLoadingUserId === user.id ||
+                        Boolean(bulkDeleteBusy) ||
+                        releaseLoadingUserId === user.id
+                      }
+                    >
+                      {deleteLoadingUserId === user.id ? '…' : 'Delete'}
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Desktop table — fits screen width */}
+        <Card className="hidden md:block overflow-hidden">
+          <table className="admin-table">
+            <colgroup>
+              <col className="w-[9%]" />
+              <col className="w-[32%]" />
+              <col className="w-[9%]" />
+              <col className="w-[14%]" />
+              <col className="w-[36%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Roll</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Student</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Year</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Session</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                    No users found
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="text-center py-8 text-gray-500">
-                      No users found
+              ) : (
+                filteredUsers.map((user) => (
+                  <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2.5 px-3 text-sm text-gray-900 font-medium">
+                      {user.roll_number || '—'}
                     </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 text-sm text-gray-900 font-medium">
-                        {user.roll_number || '-'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-900">{user.email}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{user.full_name || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {user.academic_year || '-'}
-                      </td>
-                      <td className="py-3 px-4 text-sm">
-                        {user.portal_session?.active ? (
-                          <div className="space-y-1">
-                            <span className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                              Logged in
-                            </span>
-                            {user.portal_session.last_heartbeat ? (
-                              <p className="text-xs text-gray-500">
-                                Last active{' '}
-                                {new Date(user.portal_session.last_heartbeat).toLocaleString()}
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            Not logged in
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {new Date(user.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {user.phone || '-'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
+                    <td className="py-2.5 px-3 text-sm min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{user.full_name || '—'}</p>
+                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      <p className="text-xs text-gray-400 truncate lg:hidden">
+                        {user.phone || 'No phone'}
+                      </p>
+                    </td>
+                    <td className="py-2.5 px-3 text-sm text-gray-600">{user.academic_year || '—'}</td>
+                    <td className="py-2.5 px-3 text-sm">
+                      {user.portal_session?.active ? (
+                        <span
+                          className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
+                          title={
+                            user.portal_session.last_heartbeat
+                              ? `Last active ${new Date(user.portal_session.last_heartbeat).toLocaleString()}`
+                              : undefined
+                          }
+                        >
+                          Online
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          Offline
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-sm">
+                      <div className="flex flex-wrap gap-1.5">
                         <Button
                           size="sm"
                           variant="outline"
+                          className="h-8 px-2.5 text-xs"
                           onClick={() => handleOpenReport(user)}
                           disabled={reportLoadingUserId === user.id}
                         >
-                          {reportLoadingUserId === user.id ? 'Loading...' : 'View Report'}
+                          {reportLoadingUserId === user.id ? '…' : 'Report'}
                         </Button>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        <div className="flex flex-wrap gap-2">
-                          {isAdmin && user.portal_session?.active ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-red-200 text-red-700 hover:bg-red-50"
-                              onClick={() => handleForceLogout(user)}
-                              disabled={releaseLoadingUserId === user.id || Boolean(bulkDeleteBusy)}
-                            >
-                              {releaseLoadingUserId === user.id ? 'Releasing...' : 'Force logout'}
-                            </Button>
-                          ) : null}
-                          {isAdmin ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-red-300 text-red-800 hover:bg-red-50"
-                              onClick={() => void handleDeleteStudent(user)}
-                              disabled={
-                                deleteLoadingUserId === user.id ||
-                                Boolean(bulkDeleteBusy) ||
-                                releaseLoadingUserId === user.id
-                              }
-                            >
-                              {deleteLoadingUserId === user.id ? 'Deleting...' : 'Delete'}
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                        {isAdmin && user.portal_session?.active ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2.5 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                            onClick={() => handleForceLogout(user)}
+                            disabled={releaseLoadingUserId === user.id || Boolean(bulkDeleteBusy)}
+                          >
+                            {releaseLoadingUserId === user.id ? '…' : 'Logout'}
+                          </Button>
+                        ) : null}
+                        {isAdmin ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2.5 text-xs border-red-300 text-red-800 hover:bg-red-50"
+                            onClick={() => void handleDeleteStudent(user)}
+                            disabled={
+                              deleteLoadingUserId === user.id ||
+                              Boolean(bulkDeleteBusy) ||
+                              releaseLoadingUserId === user.id
+                            }
+                          >
+                            {deleteLoadingUserId === user.id ? '…' : 'Delete'}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </Card>
 
         <p className="text-sm text-gray-600 mt-4">
@@ -824,8 +896,8 @@ export default function UsersManagementPage() {
                         {selectedAttempt.totalQuestions}
                       </p>
                 </div>
-                    <div className="rounded-lg border border-slate-200 overflow-x-auto">
-                      <table className="w-full min-w-[640px] text-sm table-fixed">
+                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                      <table className="admin-table text-sm">
                         <colgroup>
                           <col className="w-[42%]" />
                           <col className="w-[22%]" />
