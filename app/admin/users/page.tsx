@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
@@ -65,6 +65,7 @@ type PortalSessionStatus = {
 
 type AdminStudentRow = User & {
   roll_number?: string | null;
+  academic_year?: string | null;
   portal_session?: PortalSessionStatus;
 };
 
@@ -74,8 +75,11 @@ export default function UsersManagementPage() {
   const [users, setUsers] = useState<AdminStudentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [yearFilter, setYearFilter] = useState('all');
   const [reportLoadingUserId, setReportLoadingUserId] = useState<string | null>(null);
   const [releaseLoadingUserId, setReleaseLoadingUserId] = useState<string | null>(null);
+  const [deleteLoadingUserId, setDeleteLoadingUserId] = useState<string | null>(null);
+  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false);
   const [selectedReport, setSelectedReport] = useState<StudentReport | null>(null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [scorecardLoading, setScorecardLoading] = useState(false);
@@ -151,13 +155,100 @@ export default function UsersManagementPage() {
     }
   };
 
+  const handleDeleteStudent = async (student: AdminStudentRow) => {
+    const label =
+      student.roll_number?.trim() ||
+      student.full_name?.trim() ||
+      student.email;
+    const yearNote = student.academic_year ? ` (${student.academic_year})` : '';
+    const confirmed = window.confirm(
+      `Permanently delete ${label}${yearNote}?\n\nThis removes the student account, login, exam attempts, and related data. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeleteLoadingUserId(student.id);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(student.id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const json = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Failed to delete student');
+      }
+      alert(json.message ?? 'Student deleted.');
+      if (selectedReport?.student.id === student.id) {
+        setSelectedReport(null);
+      }
+      await loadUsers();
+    } catch (error) {
+      alert(`Delete failed: ${formatDbError(error)}`);
+    } finally {
+      setDeleteLoadingUserId(null);
+    }
+  };
+
+  const handleBulkDeleteFiltered = async () => {
+    if (filteredUsers.length === 0) return;
+
+    const yearLabel = yearFilter !== 'all' ? ` in ${yearFilter}` : '';
+    const confirmed = window.confirm(
+      `Permanently delete ${filteredUsers.length} student${filteredUsers.length === 1 ? '' : 's'}${yearLabel}?\n\nThis removes their accounts, logins, exam attempts, and related data. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    const typed = window.prompt(
+      `Type DELETE to confirm removal of ${filteredUsers.length} student${filteredUsers.length === 1 ? '' : 's'}.`,
+    );
+    if (typed?.trim().toUpperCase() !== 'DELETE') return;
+
+    setBulkDeleteBusy(true);
+    try {
+      const res = await fetch('/api/admin/users/bulk-delete', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: filteredUsers.map((u) => u.id) }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        deleted?: number;
+        failed?: number;
+      };
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Bulk delete failed');
+      }
+      alert(json.message ?? `Deleted ${json.deleted ?? 0} students.`);
+      setSelectedReport(null);
+      await loadUsers();
+    } catch (error) {
+      alert(`Bulk delete failed: ${formatDbError(error)}`);
+    } finally {
+      setBulkDeleteBusy(false);
+    }
+  };
+
+  const academicYears = useMemo(() => {
+    const years = new Set<string>();
+    for (const user of users) {
+      const year = user.academic_year?.trim();
+      if (year) years.add(year);
+    }
+    return Array.from(years).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  }, [users]);
+
   const filteredUsers = users.filter((user) => {
     const q = searchTerm.toLowerCase();
-    return (
+    const matchesSearch =
       user.email.toLowerCase().includes(q) ||
       (user.full_name?.toLowerCase().includes(q) ?? false) ||
-      (user.roll_number?.toLowerCase().includes(q) ?? false)
-    );
+      (user.roll_number?.toLowerCase().includes(q) ?? false);
+    if (!matchesSearch) return false;
+
+    if (yearFilter === 'all') return true;
+    const year = user.academic_year?.trim() ?? '';
+    return year === yearFilter;
   });
 
   const activePortalSessions = users.filter((u) => u.portal_session?.active).length;
@@ -408,7 +499,9 @@ export default function UsersManagementPage() {
     <div>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Users</h2>
-        <p className="text-sm text-gray-600 mt-1">Registered students, departments, and learning activity.</p>
+        <p className="text-sm text-gray-600 mt-1">
+          Filter students by year, view reports, force logout, or permanently delete accounts.
+        </p>
       </div>
       <div>
         {/* Stats */}
@@ -438,13 +531,40 @@ export default function UsersManagementPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-6 flex gap-4">
+        <div className="mb-6 flex flex-wrap gap-4 items-end">
           <Input
             placeholder="Search by roll number, email, or name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1"
+            className="flex-1 min-w-[220px]"
           />
+          <div className="min-w-[180px]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Academic year</label>
+            <select
+              className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+            >
+              <option value="all">All years</option>
+              {academicYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+          {isAdmin && filteredUsers.length > 0 ? (
+            <Button
+              variant="outline"
+              className="border-red-300 text-red-700 hover:bg-red-50"
+              disabled={bulkDeleteBusy || Boolean(deleteLoadingUserId)}
+              onClick={() => void handleBulkDeleteFiltered()}
+            >
+              {bulkDeleteBusy
+                ? 'Deleting…'
+                : `Delete filtered (${filteredUsers.length})`}
+            </Button>
+          ) : null}
         </div>
 
         {/* Users Table */}
@@ -456,6 +576,7 @@ export default function UsersManagementPage() {
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Roll No.</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Year</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Portal session</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Joined</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Phone</th>
@@ -466,7 +587,7 @@ export default function UsersManagementPage() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-8 text-gray-500">
+                    <td colSpan={9} className="text-center py-8 text-gray-500">
                       No users found
                     </td>
                   </tr>
@@ -478,6 +599,9 @@ export default function UsersManagementPage() {
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-900">{user.email}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{user.full_name || '-'}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {user.academic_year || '-'}
+                      </td>
                       <td className="py-3 px-4 text-sm">
                         {user.portal_session?.active ? (
                           <div className="space-y-1">
@@ -514,19 +638,34 @@ export default function UsersManagementPage() {
                         </Button>
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">
-                        {isAdmin && user.portal_session?.active ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-red-200 text-red-700 hover:bg-red-50"
-                            onClick={() => handleForceLogout(user)}
-                            disabled={releaseLoadingUserId === user.id}
-                          >
-                            {releaseLoadingUserId === user.id ? 'Releasing...' : 'Force logout'}
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {isAdmin && user.portal_session?.active ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-700 hover:bg-red-50"
+                              onClick={() => handleForceLogout(user)}
+                              disabled={releaseLoadingUserId === user.id || Boolean(bulkDeleteBusy)}
+                            >
+                              {releaseLoadingUserId === user.id ? 'Releasing...' : 'Force logout'}
+                            </Button>
+                          ) : null}
+                          {isAdmin ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-300 text-red-800 hover:bg-red-50"
+                              onClick={() => void handleDeleteStudent(user)}
+                              disabled={
+                                deleteLoadingUserId === user.id ||
+                                Boolean(bulkDeleteBusy) ||
+                                releaseLoadingUserId === user.id
+                              }
+                            >
+                              {deleteLoadingUserId === user.id ? 'Deleting...' : 'Delete'}
+                            </Button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -538,6 +677,7 @@ export default function UsersManagementPage() {
 
         <p className="text-sm text-gray-600 mt-4">
           Showing {filteredUsers.length} of {users.length} users
+          {yearFilter !== 'all' ? ` · year: ${yearFilter}` : ''}
         </p>
       </div>
 
