@@ -175,7 +175,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="app-portal-main w-full min-w-0">{children}</main>
+      <main className="app-portal-main w-full min-w-0">
+        <div className="admin-page-wrap">{children}</div>
+      </main>
     </div>
   );
 }

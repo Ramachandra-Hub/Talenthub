@@ -69,8 +69,20 @@ export function AdminReportDashboardShell({
   exportDisabled,
 }: AdminReportDashboardShellProps) {
   const [mounted, setMounted] = useState(false);
+  const [chartsReady, setChartsReady] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) {
+      setChartsReady(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      setChartsReady(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -90,7 +102,7 @@ export function AdminReportDashboardShell({
 
   const modal = (
     <div
-      className="fixed inset-0 z-[210] overflow-y-auto overscroll-contain animate-in fade-in-0 duration-300"
+      className="fixed inset-0 z-[210] overflow-y-auto overscroll-contain animate-in fade-in-0 duration-150"
       role="dialog"
       aria-modal="true"
       aria-labelledby="admin-report-dashboard-title"
@@ -102,9 +114,9 @@ export function AdminReportDashboardShell({
         onClick={onClose}
       />
 
-      <div className="flex min-h-full items-start sm:items-center justify-center p-3 sm:p-6">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-6">
         <div
-          className="relative z-[1] my-auto w-full max-w-[min(96vw,56rem)] max-h-[min(calc(100dvh-1.5rem),900px)] flex flex-col overflow-hidden rounded-[1.5rem] border border-[#c4a052]/30 bg-[#f8fafc] shadow-[0_32px_80px_-12px_rgba(12,35,64,0.45)] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300"
+          className="admin-modal-panel relative z-[1] my-auto max-h-[min(calc(100dvh-1.5rem),900px)] flex flex-col overflow-hidden rounded-[1.5rem] border border-[#c4a052]/30 bg-[#f8fafc] shadow-[0_32px_80px_-12px_rgba(12,35,64,0.45)]"
           onClick={(e) => e.stopPropagation()}
         >
           <header className="admin-modal-dark-header relative shrink-0 overflow-hidden px-6 sm:px-8 pt-8 pb-10 text-white">
@@ -221,7 +233,19 @@ export function AdminReportDashboardShell({
               </div>
             ) : null}
 
-            {activeTab === 'overview' ? overview : details}
+            <div className={cn(activeTab !== 'overview' && 'hidden')} aria-hidden={activeTab !== 'overview'}>
+              <div
+                className={cn(
+                  chartsReady ? 'opacity-100' : 'opacity-0',
+                  'transition-opacity duration-100',
+                )}
+              >
+                {overview}
+              </div>
+            </div>
+            <div className={cn(activeTab !== 'details' && 'hidden')} aria-hidden={activeTab !== 'details'}>
+              {details}
+            </div>
           </div>
 
           <footer className="shrink-0 border-t border-slate-200 bg-white/95 px-4 sm:px-6 py-3 text-center text-xs text-slate-500">

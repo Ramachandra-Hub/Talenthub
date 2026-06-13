@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Clock, Play, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useExamSlotWindowWatch } from '@/hooks/use-exam-slot-window-watch';
 import { CodeEditor } from '@/components/coding/code-editor';
 import {
   CODING_LANGUAGES,
@@ -223,7 +224,7 @@ export function ProgrammingExamWorkspace() {
 
   const finishExam = useCallback(
     (
-      reason: 'timeout' | 'submit',
+      reason: 'timeout' | 'submit' | 'slot_closed',
       summary?: {
         lines: string[];
         scorePercent: number;
@@ -236,9 +237,11 @@ export function ProgrammingExamWorkspace() {
       setPhase('ended');
       clearExamTimer();
       const msg =
-        reason === 'timeout'
-          ? 'Time is up. Your programming test session has ended.'
-          : 'You submitted the programming test.';
+        reason === 'slot_closed'
+          ? 'Exam slot time ended. Your programming test was auto-submitted.'
+          : reason === 'timeout'
+            ? 'Time is up. Your programming test session has ended.'
+            : 'You submitted the programming test.';
       if (summary?.lines.length) {
         setOutput(summary.lines.join('\n'));
       } else {
@@ -286,6 +289,20 @@ export function ProgrammingExamWorkspace() {
     const id = window.setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [phase, endAt, finishExam, gradeAllProblems]);
+
+  useExamSlotWindowWatch({
+    testId: PROGRAMMING_DASHBOARD_TEST_ID,
+    enabled: phase === 'active' && !locked && !submitting,
+    onSlotClosed: () => {
+      void gradeAllProblems().then((graded) =>
+        finishExam('slot_closed', {
+          lines: graded.lines,
+          scorePercent: graded.scorePercent,
+          answers: graded.answers,
+        }),
+      );
+    },
+  });
 
   const handleSubmitTest = async () => {
     if (locked || submitting) return;

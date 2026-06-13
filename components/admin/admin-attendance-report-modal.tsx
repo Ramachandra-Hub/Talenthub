@@ -82,12 +82,22 @@ export function AdminAttendanceReportModal({
 }: AdminAttendanceReportModalProps) {
   const todayKey = getTodayDateKeyInIST();
   const [mounted, setMounted] = useState(false);
+  const [chartsReady, setChartsReady] = useState(false);
   const [branchFilter, setBranchFilter] = useState('all');
   const [yearFilter, setYearFilter] = useState('all');
   const [view, setView] = useState<ViewTab>('overview');
   const [search, setSearch] = useState('');
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) {
+      setChartsReady(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() => setChartsReady(true));
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -204,7 +214,7 @@ export function AdminAttendanceReportModal({
 
   const modal = (
     <div
-      className="fixed inset-0 z-[210] overflow-y-auto overscroll-contain animate-in fade-in-0 duration-300"
+      className="fixed inset-0 z-[210] overflow-y-auto overscroll-contain animate-in fade-in-0 duration-150"
       role="dialog"
       aria-modal="true"
       aria-labelledby="attendance-dashboard-title"
@@ -216,9 +226,9 @@ export function AdminAttendanceReportModal({
         onClick={onClose}
       />
 
-      <div className="flex min-h-full items-start sm:items-center justify-center p-3 sm:p-6">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-6">
         <div
-          className="relative z-[1] my-auto w-full max-w-[min(96vw,56rem)] max-h-[min(calc(100dvh-1.5rem),900px)] flex flex-col overflow-hidden rounded-[1.5rem] border border-[#c4a052]/30 bg-[#f8fafc] shadow-[0_32px_80px_-12px_rgba(12,35,64,0.45)] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300"
+          className="admin-modal-panel relative z-[1] my-auto max-h-[min(calc(100dvh-1.5rem),900px)] flex flex-col overflow-hidden rounded-[1.5rem] border border-[#c4a052]/30 bg-[#f8fafc] shadow-[0_32px_80px_-12px_rgba(12,35,64,0.45)]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Poster header */}
@@ -437,8 +447,14 @@ export function AdminAttendanceReportModal({
               ))}
             </div>
 
-            {view === 'overview' ? (
-              <div className="grid lg:grid-cols-2 gap-4">
+            <div className={cn(view !== 'overview' && 'hidden')} aria-hidden={view !== 'overview'}>
+              <div
+                className={cn(
+                  'grid lg:grid-cols-2 gap-4',
+                  chartsReady ? 'opacity-100' : 'opacity-0',
+                  'transition-opacity duration-100',
+                )}
+              >
                 {/* Donut */}
                 <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
                   <h3 className="text-sm font-bold text-[#0c2340] mb-1">Present vs absent</h3>
@@ -446,7 +462,7 @@ export function AdminAttendanceReportModal({
                   {summary.totalStudents === 0 ? (
                     <p className="text-sm text-slate-500 py-12 text-center">No students in this filter.</p>
                   ) : (
-                    <ChartContainer config={pieChartConfig} className="mx-auto aspect-square max-h-[220px]">
+                    <ChartContainer config={pieChartConfig} className="mx-auto h-[220px] max-w-[280px]">
                       <PieChart>
                         <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                         <Pie
@@ -458,6 +474,7 @@ export function AdminAttendanceReportModal({
                           paddingAngle={2}
                           strokeWidth={2}
                           stroke="#fff"
+                          isAnimationActive={false}
                         >
                           {pieData.map((_, i) => (
                             <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -485,7 +502,7 @@ export function AdminAttendanceReportModal({
                   {branchBarData.length === 0 ? (
                     <p className="text-sm text-slate-500 py-12 text-center">No branch data.</p>
                   ) : (
-                    <ChartContainer config={branchChartConfig} className="h-[240px] w-full">
+                    <ChartContainer config={branchChartConfig} className="h-[240px] min-h-[240px] w-full">
                       <BarChart data={branchBarData} layout="vertical" margin={{ left: 4, right: 12 }}>
                         <XAxis type="number" hide />
                         <YAxis
@@ -516,8 +533,20 @@ export function AdminAttendanceReportModal({
                             />
                           }
                         />
-                        <Bar dataKey="attended" fill="var(--color-attended)" radius={[0, 4, 4, 0]} stackId="a" />
-                        <Bar dataKey="absent" fill="#e2e8f0" radius={[0, 4, 4, 0]} stackId="a" />
+                        <Bar
+                          dataKey="attended"
+                          fill="var(--color-attended)"
+                          radius={[0, 4, 4, 0]}
+                          stackId="a"
+                          isAnimationActive={false}
+                        />
+                        <Bar
+                          dataKey="absent"
+                          fill="#e2e8f0"
+                          radius={[0, 4, 4, 0]}
+                          stackId="a"
+                          isAnimationActive={false}
+                        />
                       </BarChart>
                     </ChartContainer>
                   )}
@@ -530,7 +559,7 @@ export function AdminAttendanceReportModal({
                   {yearBarData.length === 0 ? (
                     <p className="text-sm text-slate-500 py-8 text-center">No year data.</p>
                   ) : (
-                    <ChartContainer config={branchChartConfig} className="h-[200px] w-full">
+                    <ChartContainer config={branchChartConfig} className="h-[200px] min-h-[200px] w-full">
                       <BarChart data={yearBarData} margin={{ bottom: 8 }}>
                         <XAxis dataKey="year" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                         <YAxis hide />
@@ -547,14 +576,16 @@ export function AdminAttendanceReportModal({
                             />
                           }
                         />
-                        <Bar dataKey="attended" fill="#059669" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="absent" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="attended" fill="#059669" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                        <Bar dataKey="absent" fill="#e2e8f0" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                       </BarChart>
                     </ChartContainer>
                   )}
                 </div>
               </div>
-            ) : (
+            </div>
+
+            <div className={cn(view === 'overview' && 'hidden')} aria-hidden={view === 'overview'}>
               <div className="space-y-3">
                 <div className="relative max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -614,7 +645,7 @@ export function AdminAttendanceReportModal({
                   </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           <footer className="shrink-0 border-t border-slate-200 bg-white/95 px-4 sm:px-6 py-3 text-center text-xs text-slate-500">

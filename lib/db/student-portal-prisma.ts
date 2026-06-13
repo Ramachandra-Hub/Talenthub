@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { isSchedulePastEnd } from '@/lib/exam-schedule-sync';
+import { finalizeOpenAttemptsForScheduleIdsPrisma } from '@/lib/exam-schedule-slot-finalize';
 import {
   isScheduleWindowOpen,
   partitionSchedulesForStudent,
@@ -58,6 +59,8 @@ async function syncExpiredLiveExamSchedulesPrisma(
     where: { id: { in: ids } },
     data: { status: 'ended' },
   });
+
+  void finalizeOpenAttemptsForScheduleIdsPrisma(ids).catch(() => undefined);
 
   const endedIds = new Set(ids);
   return schedules.map((s) => (endedIds.has(s.id) ? { ...s, status: 'ended' as const } : s));

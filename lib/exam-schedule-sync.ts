@@ -1,6 +1,9 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { scheduleEndMs, type ExamScheduleRow } from '@/lib/exam-schedule';
-import { prisma } from '@/lib/prisma';
+import {
+  finalizeOpenAttemptsForScheduleIdsPrisma,
+  syncExpiredSchedulesAndFinalizeAttemptsPrisma,
+} from '@/lib/exam-schedule-slot-finalize';
 
 /** True when a live schedule's end time has passed (do not treat "not started yet" as expired). */
 export function isSchedulePastEnd(
@@ -39,6 +42,8 @@ export async function syncExpiredLiveExamSchedules(
     return schedules;
   }
 
+  void finalizeOpenAttemptsForScheduleIdsPrisma(ids).catch(() => undefined);
+
   const endedIds = new Set(ids);
   return schedules.map((s) =>
     endedIds.has(s.id) ? { ...s, status: 'ended' as const } : s,
@@ -47,22 +52,18 @@ export async function syncExpiredLiveExamSchedules(
 
 /** Mark live exam_schedules past ends_at as ended (Prisma path — used by live dashboard). */
 export async function syncExpiredLiveExamSchedulesPrisma(now = Date.now()): Promise<void> {
-  const cutoff = new Date(now);
-  try {
-    await prisma.examSchedule.updateMany({
-      where: {
-        status: 'live',
-        endsAt: { lt: cutoff },
-      },
-      data: {
-        status: 'ended',
-        updatedAt: new Date(),
-      },
-    });
-  } catch (err) {
+  await syncExpiredSchedulesAndFinalizeAttemptsPrisma(now).catch((err) => {
     console.warn(
       '[exam-schedules] syncExpiredLiveExamSchedulesPrisma:',
       err instanceof Error ? err.message : err,
     );
-  }
+  });
+}
+
+/** Admin or manual end — finalize every open attempt tied to this slot. */
+export async function finalizeAttemptsForEndedSchedulePrisma(
+  scheduleId: string,
+  now = new Date(),
+): Promise<number> {
+  return finalizeOpenAttemptsForScheduleIdsPrisma([scheduleId], now);
 }

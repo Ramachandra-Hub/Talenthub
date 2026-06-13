@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 
@@ -15,7 +16,7 @@ export type BarRow = {
 
 const DEFAULT_PIE = ['#10b981', '#94a3b8', '#f59e0b', '#6366f1', '#0ea5e9'];
 
-export function ReportDonutCard({
+export const ReportDonutCard = memo(function ReportDonutCard({
   title,
   hint,
   data,
@@ -34,14 +35,14 @@ export function ReportDonutCard({
   );
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm w-full">
       <h3 className="text-sm font-bold text-[#0c2340] mb-1">{title}</h3>
       <p className="text-xs text-slate-500 mb-3">{hint}</p>
       {total === 0 ? (
         <p className="text-sm text-slate-500 py-12 text-center">No data for this chart.</p>
       ) : (
         <>
-          <ChartContainer config={config} className="mx-auto aspect-square max-h-[220px]">
+          <ChartContainer config={config} className="mx-auto h-[220px] max-w-[280px]">
             <PieChart>
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Pie
@@ -53,6 +54,7 @@ export function ReportDonutCard({
                 paddingAngle={2}
                 strokeWidth={2}
                 stroke="#fff"
+                isAnimationActive={false}
                 className={onSliceClick ? 'cursor-pointer' : undefined}
               >
                 {data.map((slice, i) => (
@@ -87,9 +89,9 @@ export function ReportDonutCard({
       )}
     </div>
   );
-}
+});
 
-export function ReportBarCard({
+export const ReportBarCard = memo(function ReportBarCard({
   title,
   hint,
   data,
@@ -114,13 +116,13 @@ export function ReportBarCard({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm w-full">
       <h3 className="text-sm font-bold text-[#0c2340] mb-1">{title}</h3>
       <p className="text-xs text-slate-500 mb-3">{hint}</p>
       {data.length === 0 ? (
         <p className="text-sm text-slate-500 py-12 text-center">No data for this chart.</p>
       ) : layout === 'vertical' ? (
-        <ChartContainer config={config} className="h-[220px] w-full">
+        <ChartContainer config={config} className="h-[220px] min-h-[220px] w-full">
           <BarChart data={data} margin={{ bottom: 8, left: 4, right: 8 }}>
             <XAxis dataKey="shortLabel" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
             <YAxis hide />
@@ -139,6 +141,7 @@ export function ReportBarCard({
               fill={primaryColor}
               radius={[4, 4, 0, 0]}
               stackId={stacked ? 's' : undefined}
+              isAnimationActive={false}
               className={onBarClick ? 'cursor-pointer' : undefined}
               onClick={
                 onBarClick
@@ -150,12 +153,18 @@ export function ReportBarCard({
               }
             />
             {stacked ? (
-              <Bar dataKey="secondary" fill={secondaryColor} radius={[4, 4, 0, 0]} stackId="s" />
+              <Bar
+                dataKey="secondary"
+                fill={secondaryColor}
+                radius={[4, 4, 0, 0]}
+                stackId="s"
+                isAnimationActive={false}
+              />
             ) : null}
           </BarChart>
         </ChartContainer>
       ) : (
-        <ChartContainer config={config} className="h-[min(280px,40vh)] w-full">
+        <ChartContainer config={config} className="h-[min(280px,40vh)] min-h-[220px] w-full">
           <BarChart data={data} layout="vertical" margin={{ left: 4, right: 12 }}>
             <XAxis type="number" hide />
             <YAxis
@@ -181,6 +190,7 @@ export function ReportBarCard({
               fill={primaryColor}
               radius={[0, 4, 4, 0]}
               stackId={stacked ? 's' : undefined}
+              isAnimationActive={false}
               className={onBarClick ? 'cursor-pointer' : undefined}
               onClick={
                 onBarClick
@@ -192,15 +202,21 @@ export function ReportBarCard({
               }
             />
             {stacked ? (
-              <Bar dataKey="secondary" fill={secondaryColor} radius={[0, 4, 4, 0]} stackId="s" />
+              <Bar
+                dataKey="secondary"
+                fill={secondaryColor}
+                radius={[0, 4, 4, 0]}
+                stackId="s"
+                isAnimationActive={false}
+              />
             ) : null}
           </BarChart>
         </ChartContainer>
       )}
     </div>
   );
-}
+});
 
 export function ReportChartGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid lg:grid-cols-2 gap-4">{children}</div>;
+  return <div className="grid lg:grid-cols-2 gap-4 items-stretch">{children}</div>;
 }

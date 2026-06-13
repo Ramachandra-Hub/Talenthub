@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { AdminReportDashboardShell } from '@/components/admin/admin-report-dashboard-shell';
+import type { ReportTab } from '@/components/admin/admin-report-dashboard-shell';
 import {
   ReportBarCard,
   ReportChartGrid,
@@ -25,10 +26,10 @@ type AdminCardDashboardModalProps = {
   toolbar?: React.ReactNode;
 };
 
-const TABS = [
+const TABS: ReportTab[] = [
   { id: 'overview', label: 'Charts & overview' },
   { id: 'details', label: 'Full data' },
-] as const;
+];
 
 export function AdminCardDashboardModal({
   open,

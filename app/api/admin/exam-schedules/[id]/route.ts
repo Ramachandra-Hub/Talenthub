@@ -6,6 +6,7 @@ import { goLiveExamScheduleNow } from '@/lib/exam-schedule-slots';
 import { goLiveElevateXSlot } from '@/lib/elevatex-admin';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { deleteExamScheduleById } from '@/lib/delete-faculty-exam';
+import { finalizeAttemptsForEndedSchedulePrisma } from '@/lib/exam-schedule-sync';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 
@@ -137,6 +138,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     .single();
 
   if (!updateErr && updated) {
+    if (action === 'end') {
+      void finalizeAttemptsForEndedSchedulePrisma(id).catch((err) => {
+        console.warn('[exam-schedules PATCH end] finalize attempts:', err);
+      });
+    }
     return NextResponse.json({ schedule: updated });
   }
 
@@ -167,6 +173,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: { id },
         data: prismaPatch,
       });
+      if (patch.status === 'ended') {
+        void finalizeAttemptsForEndedSchedulePrisma(id).catch((err) => {
+          console.warn('[exam-schedules PATCH end/prisma] finalize attempts:', err);
+        });
+      }
       return NextResponse.json({ schedule: mapPrismaSchedule(row) });
     } catch (prismaErr) {
       const msg =
