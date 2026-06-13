@@ -16,6 +16,7 @@ import autoTable from 'jspdf-autotable';
 import { ElevateXScorecardView } from '@/components/placement/elevatex-scorecard-view';
 import { downloadElevateXScorecardPdf } from '@/lib/placement/elevatex-scorecard-pdf';
 import type { PlacementScorecard } from '@/lib/placement/types';
+import { AdminPageHeader } from '@/components/admin/admin-page-header';
 
 type AttemptRow = TestAttempt & {
   test?: {
@@ -496,16 +497,14 @@ export default function UsersManagementPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Users</h2>
-        <p className="text-sm text-gray-600 mt-1">
-          Filter students by year, view reports, force logout, or permanently delete accounts.
-        </p>
-      </div>
+    <div className="w-full min-w-0">
+      <AdminPageHeader
+        title="Users"
+        description="Filter students by year, view reports, force logout, or permanently delete accounts."
+      />
       <div>
         {/* Stats */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="p-6">
             <p className="text-gray-600 text-sm font-medium mb-2">Total Users</p>
             <p className="text-4xl font-bold text-blue-600">{users.length}</p>

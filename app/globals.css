@@ -205,6 +205,7 @@
 /* Persistent RCE blue branding — header bar, auth cards, portal shells */
 .app-brand-bar,
 .auth-card-header {
+  min-height: var(--brand-bar-height);
   border-bottom: 1px solid rgba(30, 74, 122, 0.4);
   background: var(--brand-gradient);
   box-shadow:
@@ -261,6 +262,8 @@
   html {
     scroll-behavior: smooth;
     -webkit-tap-highlight-color: transparent;
+    overflow-x: clip;
+    max-width: 100%;
   }
 
   body {
@@ -274,6 +277,8 @@
       radial-gradient(ellipse 80% 50% at 0% 100%, rgba(30, 58, 95, 0.08), transparent 50%),
       linear-gradient(180deg, #f4f8fd 0%, #e8f0fa 100%);
     min-height: 100dvh;
+    overflow-x: clip;
+    max-width: 100%;
     text-rendering: optimizeLegibility;
   }
 
@@ -402,7 +407,7 @@
 
   /* Page chrome */
   .app-page {
-    @apply min-h-screen bg-background;
+    @apply min-h-screen w-full min-w-0 overflow-x-clip bg-background;
     background-image:
       radial-gradient(ellipse 120% 80% at 50% -20%, rgba(37, 99, 235, 0.12), transparent 55%),
       radial-gradient(ellipse 70% 50% at 100% 0%, rgba(30, 58, 95, 0.08), transparent 50%),
@@ -598,7 +603,7 @@
 
   /* Brand portal headers (admin / faculty) */
   .app-portal-shell {
-    @apply min-h-screen;
+    @apply min-h-screen w-full min-w-0 overflow-x-clip;
     background:
       radial-gradient(ellipse 90% 50% at 50% -10%, rgba(37, 99, 235, 0.1), transparent 55%),
       radial-gradient(ellipse 60% 40% at 100% 0%, rgba(30, 58, 95, 0.08), transparent 50%),
@@ -606,7 +611,7 @@
   }
 
   .app-portal-main {
-    @apply mx-auto max-w-7xl px-4 py-5 sm:py-7;
+    @apply mx-auto w-full min-w-0 max-w-7xl px-4 py-5 sm:px-6 sm:py-7;
   }
 
   .app-portal-header {
@@ -614,6 +619,11 @@
     top: var(--brand-bar-height);
     background: var(--brand-gradient);
     box-shadow: 0 4px 16px rgba(30, 58, 95, 0.2);
+  }
+
+  /* Admin uses its own header bar (college brand bar hidden on /admin). */
+  .app-portal-header--standalone {
+    top: 0;
   }
 
   .app-portal-header::after {

@@ -40,13 +40,16 @@ export default function CollegeSiteHeader() {
     return null;
   }
 
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
+
   const isPortalRoute =
-    pathname?.startsWith('/admin') ||
     pathname?.startsWith('/auth');
 
   return (
     <header className="app-brand-bar relative sticky top-0 z-[100]">
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5 sm:gap-4 sm:py-3">
+      <div className="mx-auto flex max-w-7xl min-w-0 items-center gap-3 px-4 py-2.5 sm:gap-4 sm:px-6 sm:py-3">
         <div
           className="flex shrink-0 items-center gap-2.5 sm:gap-3 pointer-events-none select-none"
           aria-hidden

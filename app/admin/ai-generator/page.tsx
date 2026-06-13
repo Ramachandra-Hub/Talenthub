@@ -211,7 +211,7 @@ Return ONLY a JSON array. Each item:
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="mb-2">
         <h2 className="text-2xl font-bold text-gray-900">AI generator</h2>
         <p className="text-sm text-gray-600 mt-1">

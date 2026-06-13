@@ -227,7 +227,7 @@ export default function AdminExamBuilderPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="mx-auto w-full max-w-4xl space-y-6">
       <AdminPageHeader
         title="Exam builder"
         description="Create exams, configure slot schedules, and publish directly. Go live per slot from Exam schedules."

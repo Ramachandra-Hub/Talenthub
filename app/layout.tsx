@@ -39,7 +39,7 @@ export default function RootLayout({
       className={`${dmSans.variable} ${geistMono.variable}`}
     >
       <body
-        className={`${dmSans.className} app-branded font-sans font-medium antialiased bg-background text-foreground min-h-dvh`}
+        className={`${dmSans.className} app-branded font-sans font-medium antialiased bg-background text-foreground min-h-dvh w-full min-w-0 overflow-x-clip`}
       >
         <CollegeSiteHeader />
         <GlobalBackButton />

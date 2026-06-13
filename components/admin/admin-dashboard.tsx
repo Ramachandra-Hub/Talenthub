@@ -739,7 +739,7 @@ export function AdminDashboard() {
         }
       />
       <div>
-        <div className="grid sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
+        <div className="grid sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-8">
           <StatCard
             className="sm:col-span-2"
             label="Registered users"
@@ -963,9 +963,9 @@ export function AdminDashboard() {
         </div>
 
         <Card className="p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
             <h2 className="text-xl font-bold text-[#0c2340]">Test-wise performance overview</h2>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 sm:text-right max-w-md">
               Click a test for student-wise results and PDF/CSV download
             </p>
           </div>

@@ -855,7 +855,7 @@ export function TestReportsDashboard() {
             </div>
           </Card>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <StatCard
               label="Attempts"
               value={displaySummary?.total_attempts ?? 0}

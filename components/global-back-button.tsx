@@ -11,6 +11,10 @@ export default function GlobalBackButton() {
     return null;
   }
 
+  if (pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <button
       type="button"
