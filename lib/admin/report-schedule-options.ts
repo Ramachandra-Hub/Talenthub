@@ -1,7 +1,7 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import type { AdminExamType } from '@/lib/admin/exam-type';
 import { classifyExamAttempt, matchesAdminExamType } from '@/lib/admin/exam-type';
-import { getDateKeyInTimeZone } from '@/lib/admin/report-date-filter';
+import { getDateKeyInTimeZone, isScheduleStartInDateRange } from '@/lib/admin/report-date-filter';
 import { formatCollegeDateTime } from '@/lib/college-timezone';
 import { isElevateXModule } from '@/lib/elevatex';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
@@ -48,9 +48,11 @@ export function filterReportScheduleOptions(
     examType?: AdminExamType;
     testId?: string;
     dateKey?: string;
+    startDateKey?: string;
+    endDateKey?: string;
   },
 ): ReportScheduleOption[] {
-  const { examType = 'all', testId, dateKey } = filters;
+  const { examType = 'all', testId, dateKey, startDateKey, endDateKey } = filters;
   return options.filter((opt) => {
     if (examType !== 'all' && !matchesAdminExamType(examType, { test_id: opt.test_id, test_name: opt.title })) {
       return false;
@@ -58,7 +60,9 @@ export function filterReportScheduleOptions(
     if (testId && testId !== 'all' && opt.test_id && !testIdsMatch(opt.test_id, testId)) {
       return false;
     }
-    if (dateKey && !scheduleStartsOnDateKey(opt.starts_at, dateKey)) {
+    if (startDateKey && endDateKey) {
+      if (!isScheduleStartInDateRange(opt.starts_at, startDateKey, endDateKey)) return false;
+    } else if (dateKey && !scheduleStartsOnDateKey(opt.starts_at, dateKey)) {
       return false;
     }
     return true;

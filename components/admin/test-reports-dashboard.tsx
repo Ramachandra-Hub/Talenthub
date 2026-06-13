@@ -77,7 +77,10 @@ export function TestReportsDashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailCard, setDetailCard] = useState<TestReportsCardKey | null>(null);
-  const [reportDate, setReportDate] = useState(() =>
+  const [reportStartDate, setReportStartDate] = useState(() =>
+    todayOnly ? getTodayDateKeyInIST() : '',
+  );
+  const [reportEndDate, setReportEndDate] = useState(() =>
     todayOnly ? getTodayDateKeyInIST() : '',
   );
   const [selectedScheduleId, setSelectedScheduleId] = useState('all');
@@ -91,14 +94,17 @@ export function TestReportsDashboard() {
     async (
       type: AdminExamType,
       testId: string,
-      filters: { dateKey?: string; scheduleId?: string },
+      filters: { startDate?: string; endDate?: string; scheduleId?: string },
     ) => {
     setLoading(true);
     setLoadError(null);
     try {
       const q = new URLSearchParams({ examType: type });
       if (testId && testId !== 'all') q.set('testId', testId);
-      if (filters.dateKey) q.set('date', filters.dateKey);
+      if (filters.startDate) q.set('startDate', filters.startDate);
+      if (filters.endDate && filters.endDate !== filters.startDate) {
+        q.set('endDate', filters.endDate);
+      }
       if (filters.scheduleId && filters.scheduleId !== 'all') {
         q.set('scheduleId', filters.scheduleId);
       }
@@ -132,10 +138,20 @@ export function TestReportsDashboard() {
 
   useEffect(() => {
     void load(examType, selectedTestId, {
-      dateKey: reportDate || undefined,
+      startDate: reportStartDate || undefined,
+      endDate: reportEndDate || reportStartDate || undefined,
       scheduleId: selectedScheduleId,
     });
-  }, [examType, selectedTestId, reportDate, selectedScheduleId, load]);
+  }, [examType, selectedTestId, reportStartDate, reportEndDate, selectedScheduleId, load]);
+
+  const hasDateFilter = Boolean(reportStartDate);
+  const isDateRange =
+    Boolean(reportStartDate && reportEndDate && reportEndDate !== reportStartDate);
+  const dateRangeLabel = useMemo(() => {
+    if (!reportStartDate) return undefined;
+    if (!reportEndDate || reportEndDate === reportStartDate) return reportStartDate;
+    return `${reportStartDate} – ${reportEndDate}`;
+  }, [reportStartDate, reportEndDate]);
 
   const scheduleOptions = payload?.schedule_options ?? [];
 
@@ -144,9 +160,11 @@ export function TestReportsDashboard() {
       filterReportScheduleOptions(scheduleOptions, {
         examType,
         testId: selectedTestId,
-        dateKey: reportDate || undefined,
+        dateKey: reportStartDate && !isDateRange ? reportStartDate : undefined,
+        startDateKey: isDateRange ? reportStartDate : undefined,
+        endDateKey: isDateRange ? reportEndDate : undefined,
       }),
-    [scheduleOptions, examType, selectedTestId, reportDate],
+    [scheduleOptions, examType, selectedTestId, reportStartDate, reportEndDate, isDateRange],
   );
 
   const selectedScheduleOption = useMemo(
@@ -167,9 +185,11 @@ export function TestReportsDashboard() {
       });
     }
     if (selectedScheduleOption) return formatScheduleSlotLabel(selectedScheduleOption);
+    if (payload?.report_date_range_label) return `Date range (IST): ${payload.report_date_range_label}`;
     if (payload?.report_date_label) return `Date (IST): ${payload.report_date_label}`;
+    if (dateRangeLabel) return `Date range (IST): ${dateRangeLabel}`;
     return undefined;
-  }, [payload, selectedScheduleOption]);
+  }, [payload, selectedScheduleOption, dateRangeLabel]);
 
   const setExamTypeAndUrl = (type: AdminExamType) => {
     setExamType(type);
@@ -186,7 +206,8 @@ export function TestReportsDashboard() {
     router.replace('/admin/reports?type=elevatex&today=1', { scroll: false });
     setExamType('elevatex');
     setStatusFilter('all');
-    setReportDate(getTodayDateKeyInIST());
+    setReportStartDate(getTodayDateKeyInIST());
+    setReportEndDate(getTodayDateKeyInIST());
     setSelectedScheduleId('all');
   };
 
@@ -235,7 +256,7 @@ export function TestReportsDashboard() {
       search.trim().length > 0 ||
       selectedTestId !== 'all' ||
       selectedScheduleId !== 'all' ||
-      Boolean(reportDate);
+      hasDateFilter;
     if (!hasActiveFilter) return payload.summary;
     return (
       filteredSummary ?? {
@@ -249,7 +270,7 @@ export function TestReportsDashboard() {
         highest_score: 0,
       }
     );
-  }, [payload, filteredSummary, statusFilter, search, selectedTestId, selectedScheduleId, reportDate]);
+  }, [payload, filteredSummary, statusFilter, search, selectedTestId, selectedScheduleId, hasDateFilter]);
 
   const buildReportDownloadPayload = (rows: TestReportsPayload['rows'], summary: TestReportsPayload['summary']) => ({
     ...payload!,
@@ -258,6 +279,9 @@ export function TestReportsDashboard() {
     schedule: payload?.schedule,
     report_date: payload?.report_date,
     report_date_label: payload?.report_date_label,
+    report_date_start: payload?.report_date_start,
+    report_date_end: payload?.report_date_end,
+    report_date_range_label: payload?.report_date_range_label,
   });
 
   const completedRows = useMemo(
@@ -269,7 +293,15 @@ export function TestReportsDashboard() {
     () => ({
       examLabel: meta.label,
       testName: selectedTestId !== 'all' ? selectedTestName : undefined,
-      scheduleLabel: activeScheduleLabel,
+      scheduleLabel:
+        selectedScheduleId !== 'all'
+          ? activeScheduleLabel
+          : hasDateFilter
+            ? 'All slots (overall)'
+            : activeScheduleLabel,
+      dateRangeLabel:
+        payload?.report_date_range_label ??
+        (hasDateFilter ? payload?.report_date_label ?? dateRangeLabel : undefined),
       rows: filteredRows,
       summary: filteredSummary ?? payload?.summary,
     }),
@@ -278,6 +310,11 @@ export function TestReportsDashboard() {
       selectedTestId,
       selectedTestName,
       activeScheduleLabel,
+      hasDateFilter,
+      dateRangeLabel,
+      selectedScheduleId,
+      payload?.report_date_range_label,
+      payload?.report_date_label,
       filteredRows,
       filteredSummary,
       payload?.summary,
@@ -288,9 +325,13 @@ export function TestReportsDashboard() {
     const parts = ['test-reports', examType];
     if (selectedTestId !== 'all') parts.push(selectedTestId.slice(0, 8));
     if (payload?.schedule?.slot_number != null) parts.push(`slot-${payload.schedule.slot_number}`);
-    if (reportDate) parts.push(reportDate);
+    if (dateRangeLabel) parts.push(slugifyDateRange(dateRangeLabel));
     return parts.join('-');
-  }, [examType, selectedTestId, payload?.schedule?.slot_number, reportDate]);
+  }, [examType, selectedTestId, payload?.schedule?.slot_number, dateRangeLabel]);
+
+  function slugifyDateRange(value: string): string {
+    return value.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  }
 
   const downloadConsolidatedPdf = () => {
     if (!payload || completedRows.length === 0) return;
@@ -351,7 +392,8 @@ export function TestReportsDashboard() {
   const fetchSlotReport = async (schedule: ReportScheduleOption) => {
     const q = new URLSearchParams({ examType, scheduleId: schedule.id });
     if (selectedTestId !== 'all') q.set('testId', selectedTestId);
-    if (reportDate) q.set('date', reportDate);
+    if (reportStartDate) q.set('startDate', reportStartDate);
+    if (reportEndDate && reportEndDate !== reportStartDate) q.set('endDate', reportEndDate);
     const res = await fetchWithAuth(`/api/admin/test-reports?${q.toString()}`, {
       cache: 'no-store',
     });
@@ -444,7 +486,7 @@ export function TestReportsDashboard() {
         description={
           todayOnly && payload?.report_date_label
             ? `Students who wrote ElevateX on ${payload.report_date_label} (IST). Download PDF or CSV for the examination cell.`
-            : 'Filter by exam date and time slot (Slot 1 morning, Slot 2 afternoon, etc.) — download separate PDF/CSV per slot.'
+            : 'Select exam type, set a start/end date range, and leave slot as All slots (overall) for a combined leaderboard across every slot — download PDF, Excel, or individual reports.'
         }
         actions={
           payload ? (
@@ -562,21 +604,55 @@ export function TestReportsDashboard() {
       ) : (
         <>
           <Card className="p-4 mb-6 border-[#c4a052]/30 bg-[#f8f4eb]/50">
-            <p className="text-sm font-semibold text-[#0c2340] mb-3">Date &amp; time slot</p>
+            <p className="text-sm font-semibold text-[#0c2340] mb-1">Date range &amp; time slot</p>
+            <p className="text-xs text-slate-600 mb-3">
+              Pick an exam above, set a start and end date, leave time slot as{' '}
+              <strong>All slots (overall)</strong> to see every student across all slots — ranked highest
+              to lowest. Download leaderboard PDF/Excel or all individual reports below.
+            </p>
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[180px]">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Exam date (IST)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Start date (IST)</label>
                 <Input
                   type="date"
-                  value={reportDate}
+                  value={reportStartDate}
                   onChange={(e) => {
                     const next = e.target.value;
-                    setReportDate(next);
+                    setReportStartDate(next);
+                    if (!reportEndDate || reportEndDate < next) setReportEndDate(next);
                     if (next && selectedScheduleId !== 'all') {
                       const stillVisible = filterReportScheduleOptions(scheduleOptions, {
                         examType,
                         testId: selectedTestId,
                         dateKey: next,
+                        startDateKey:
+                          reportEndDate && reportEndDate !== next ? next : undefined,
+                        endDateKey:
+                          reportEndDate && reportEndDate !== next ? reportEndDate : undefined,
+                      }).some((s) => s.id === selectedScheduleId);
+                      if (!stillVisible) setSelectedScheduleId('all');
+                    }
+                  }}
+                  className="h-9"
+                />
+              </div>
+              <div className="min-w-[180px]">
+                <label className="block text-xs font-medium text-slate-600 mb-1">End date (IST)</label>
+                <Input
+                  type="date"
+                  value={reportEndDate}
+                  min={reportStartDate || undefined}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setReportEndDate(next);
+                    if (next && selectedScheduleId !== 'all') {
+                      const start = reportStartDate || next;
+                      const stillVisible = filterReportScheduleOptions(scheduleOptions, {
+                        examType,
+                        testId: selectedTestId,
+                        dateKey: start === next ? next : undefined,
+                        startDateKey: start !== next ? start : undefined,
+                        endDateKey: start !== next ? next : undefined,
                       }).some((s) => s.id === selectedScheduleId);
                       if (!stillVisible) setSelectedScheduleId('all');
                     }
@@ -592,9 +668,11 @@ export function TestReportsDashboard() {
                   onChange={(e) => setSelectedScheduleId(e.target.value)}
                 >
                   <option value="all">
-                    {reportDate
-                      ? `All slots on ${reportDate} (mixed)`
-                      : 'All slots / all dates (mixed)'}
+                    {hasDateFilter
+                      ? isDateRange
+                        ? `All slots — overall (${dateRangeLabel})`
+                        : `All slots — overall (${reportStartDate})`
+                      : 'All slots / all dates (overall)'}
                   </option>
                   {visibleSchedules.map((schedule) => (
                     <option key={schedule.id} value={schedule.id}>
@@ -609,23 +687,49 @@ export function TestReportsDashboard() {
                 size="sm"
                 className="h-9"
                 onClick={() => {
-                  setReportDate('');
+                  setReportStartDate('');
+                  setReportEndDate('');
                   setSelectedScheduleId('all');
                 }}
               >
-                Clear date &amp; slot
+                Clear dates &amp; slot
               </Button>
             </div>
             {activeScheduleLabel ? (
               <p className="text-xs text-slate-600 mt-3">
                 Active filter: <strong>{activeScheduleLabel}</strong>
+                {selectedScheduleId === 'all' && hasDateFilter ? (
+                  <span> — one row per student, ranked by score (highest first)</span>
+                ) : null}
               </p>
+            ) : null}
+            {selectedScheduleId === 'all' && hasDateFilter && completedRows.length > 0 ? (
+              <div className="mt-4 pt-4 border-t border-[#c4a052]/25 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-[#0c2340] hover:bg-[#16304f] text-white"
+                  disabled={Boolean(bulkExportBusy)}
+                  onClick={downloadConsolidatedPdf}
+                >
+                  Overall leaderboard PDF ({completedRows.length})
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={Boolean(bulkExportBusy)}
+                  onClick={downloadConsolidatedExcel}
+                >
+                  Overall leaderboard Excel ({completedRows.length})
+                </Button>
+              </div>
             ) : null}
             {visibleSchedules.length > 1 ? (
               <div className="mt-4 pt-4 border-t border-[#c4a052]/25">
                 <p className="text-xs font-medium text-slate-700 mb-2">
                   Download each slot separately ({visibleSchedules.length} slots
-                  {reportDate ? ` on ${reportDate}` : ''})
+                  {hasDateFilter ? ` in ${dateRangeLabel}` : ''})
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {visibleSchedules.map((schedule) => {
@@ -665,10 +769,10 @@ export function TestReportsDashboard() {
                   })}
                 </div>
               </div>
-            ) : visibleSchedules.length === 0 && reportDate ? (
+            ) : visibleSchedules.length === 0 && hasDateFilter ? (
               <p className="text-xs text-amber-800 mt-3">
-                No scheduled slots found on {reportDate} for this filter. Try another date or clear the
-                date filter.
+                No scheduled slots found in {dateRangeLabel} for this filter. You can still use{' '}
+                <strong>All slots (overall)</strong> for the combined student list.
               </p>
             ) : null}
           </Card>

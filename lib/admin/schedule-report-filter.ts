@@ -93,6 +93,27 @@ export function filterRollupAttemptsForSchedule(
   return attempts.filter((attempt) => attemptMatchesScheduleReport(attempt, ctx));
 }
 
+export function bestAttemptPerUser(attempts: RollupAttempt[]): RollupAttempt[] {
+  const byUser = new Map<string, RollupAttempt>();
+  for (const attempt of attempts) {
+    const existing = byUser.get(attempt.user_id);
+    if (!existing) {
+      byUser.set(attempt.user_id, attempt);
+      continue;
+    }
+    if (attempt.score > existing.score) {
+      byUser.set(attempt.user_id, attempt);
+      continue;
+    }
+    if (attempt.score === existing.score) {
+      const attemptMs = new Date(attempt.completed_at ?? attempt.created_at).getTime();
+      const existingMs = new Date(existing.completed_at ?? existing.created_at).getTime();
+      if (attemptMs < existingMs) byUser.set(attempt.user_id, attempt);
+    }
+  }
+  return Array.from(byUser.values());
+}
+
 export function latestAttemptPerUser(attempts: RollupAttempt[]): RollupAttempt[] {
   const byUser = new Map<string, RollupAttempt>();
   for (const attempt of attempts) {

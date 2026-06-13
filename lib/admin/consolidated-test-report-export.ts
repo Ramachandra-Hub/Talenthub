@@ -10,6 +10,7 @@ export type ConsolidatedReportOptions = {
   examLabel: string;
   testName?: string;
   scheduleLabel?: string;
+  dateRangeLabel?: string;
   rows: TestReportRow[];
   summary?: TestReportsPayload['summary'];
 };
@@ -43,8 +44,10 @@ function reportFileBase(options: ConsolidatedReportOptions): string {
   const namePart = options.testName ? slugify(options.testName) : slugify(options.examLabel);
   const slotPart =
     options.rows[0]?.slot_number != null ? `-slot-${options.rows[0].slot_number}` : '';
-  const datePart = new Date().toISOString().slice(0, 10);
-  return `exam-leaderboard-${namePart}${slotPart}-${datePart}`;
+  const rangePart = options.dateRangeLabel
+    ? `-${slugify(options.dateRangeLabel)}`
+    : `-${new Date().toISOString().slice(0, 10)}`;
+  return `exam-leaderboard-${namePart}${slotPart}${rangePart}`;
 }
 
 function sheetRow(row: TestReportRow): (string | number)[] {
@@ -104,6 +107,10 @@ export function downloadConsolidatedTestReportPdf(options: ConsolidatedReportOpt
   }
   if (options.scheduleLabel) {
     doc.text(`Schedule: ${options.scheduleLabel}`, margin, y);
+    y += 6;
+  }
+  if (options.dateRangeLabel) {
+    doc.text(`Date range (IST): ${options.dateRangeLabel}`, margin, y);
     y += 6;
   }
   doc.text(`Generated: ${generatedAt} · ${ranked.length} completed students`, margin, y);
@@ -171,6 +178,7 @@ export function downloadConsolidatedTestReportExcel(options: ConsolidatedReportO
     [options.examLabel],
     ...(options.testName ? [[`Exam: ${options.testName}`]] : []),
     ...(options.scheduleLabel ? [[`Schedule: ${options.scheduleLabel}`]] : []),
+    ...(options.dateRangeLabel ? [[`Date range (IST): ${options.dateRangeLabel}`]] : []),
     [`Generated: ${new Date().toLocaleString('en-IN')}`],
     [`Completed students: ${ranked.length}`],
     [],

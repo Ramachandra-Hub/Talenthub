@@ -9,6 +9,7 @@ import { isCompletedAttemptStatus, isInProgressStatus } from '@/lib/attempt-stat
 import { averageScorePercent, roundRatePercent, roundScorePercent } from '@/lib/format-score';
 import {
   filterRollupAttemptsForSchedule,
+  bestAttemptPerUser,
   latestAttemptPerUser,
   sortTestReportRows,
   type ScheduleReportContext,
@@ -18,7 +19,11 @@ import {
   scheduleReportContextFromLoaded,
 } from '@/lib/admin/load-schedule-for-report';
 import { loadElevateXTodayReportFast } from '@/lib/admin/elevatex-today-report';
-import { isInstantOnDateKey, parseReportDateFilter } from '@/lib/admin/report-date-filter';
+import {
+  isInstantInDateRange,
+  parseReportDateFilter,
+  parseReportDateRangeFilter,
+} from '@/lib/admin/report-date-filter';
 import {
   loadReportScheduleOptions,
   type ReportScheduleOption,
@@ -57,12 +62,18 @@ export type TestOption = {
 export type TestReportsLoadOptions = {
   /** `today` or YYYY-MM-DD in IST — only attempts active on that calendar day. */
   dateFilter?: string | null;
+  /** Inclusive IST range — overrides single `dateFilter` when both bounds are set. */
+  startDate?: string | null;
+  endDate?: string | null;
 };
 
 export type TestReportsPayload = {
   exam_type: AdminExamType;
   report_date?: string;
   report_date_label?: string;
+  report_date_start?: string;
+  report_date_end?: string;
+  report_date_range_label?: string;
   schedule?: {
     id: string;
     title: string;
@@ -92,12 +103,28 @@ export async function loadTestReportsPayload(
   scheduleIdFilter?: string,
   options?: TestReportsLoadOptions,
 ): Promise<TestReportsPayload> {
-  const parsedDate = parseReportDateFilter(options?.dateFilter ?? null);
-  const reportDateKey = parsedDate?.dateKey;
-  const reportDateLabel = parsedDate?.label;
+  const dateRange =
+    parseReportDateRangeFilter(options?.startDate, options?.endDate) ??
+    (options?.dateFilter
+      ? (() => {
+          const single = parseReportDateFilter(options.dateFilter);
+          return single
+            ? {
+                startKey: single.dateKey,
+                endKey: single.dateKey,
+                label: single.label,
+                isSingleDay: true,
+              }
+            : null;
+        })()
+      : null);
+
+  const reportDateKey = dateRange?.isSingleDay ? dateRange.startKey : undefined;
+  const reportDateLabel = dateRange?.isSingleDay ? dateRange.label : undefined;
 
   if (
     examType === 'elevatex' &&
+    dateRange?.isSingleDay &&
     reportDateKey &&
     reportDateLabel &&
     !scheduleIdFilter &&
@@ -166,14 +193,16 @@ export async function loadTestReportsPayload(
     });
   }
 
-  if (reportDateKey) {
+  if (dateRange) {
     filtered = filtered.filter(
       (a) =>
-        isInstantOnDateKey(a.completed_at, reportDateKey) ||
-        isInstantOnDateKey(a.created_at, reportDateKey),
+        isInstantInDateRange(a.completed_at, dateRange.startKey, dateRange.endKey) ||
+        isInstantInDateRange(a.created_at, dateRange.startKey, dateRange.endKey),
     );
-    if (examType === 'elevatex') {
-      filtered = latestAttemptPerUser(filtered) as typeof filtered;
+    if (!scheduleIdFilter) {
+      filtered = (
+        examType === 'elevatex' ? latestAttemptPerUser(filtered) : bestAttemptPerUser(filtered)
+      ) as typeof filtered;
     }
   }
 
@@ -262,6 +291,9 @@ export async function loadTestReportsPayload(
     exam_type: examType,
     report_date: reportDateKey,
     report_date_label: reportDateLabel,
+    report_date_start: dateRange?.startKey,
+    report_date_end: dateRange?.endKey,
+    report_date_range_label: dateRange && !dateRange.isSingleDay ? dateRange.label : undefined,
     schedule: scheduleMeta,
     summary: {
       total_attempts: rows.length,

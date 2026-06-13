@@ -23,6 +23,8 @@ export async function GET(request: Request) {
   const dateFilter =
     searchParams.get('date')?.trim() ||
     (searchParams.get('today') === '1' ? 'today' : undefined);
+  const startDate = searchParams.get('startDate')?.trim() || undefined;
+  const endDate = searchParams.get('endDate')?.trim() || undefined;
 
   if (examType === 'elevatex') {
     const { finalizeOpenElevateXAttemptsAfterExamPrisma } = await import(
@@ -32,7 +34,9 @@ export async function GET(request: Request) {
   }
 
   const payload = await loadTestReportsPayload(admin, examType, testId, scheduleId, {
-    dateFilter,
+    dateFilter: startDate ? undefined : dateFilter,
+    startDate,
+    endDate,
   });
 
   return NextResponse.json(payload);
