@@ -30,6 +30,14 @@ import {
   filterReportRows,
 } from '@/lib/admin/export-test-report-csv';
 import { downloadTestReportPdf } from '@/lib/admin/export-test-report-pdf';
+import {
+  downloadConsolidatedTestReportExcel,
+  downloadConsolidatedTestReportPdf,
+} from '@/lib/admin/consolidated-test-report-export';
+import {
+  downloadAllIndividualTestReportsZip,
+  type BulkIndividualFormat,
+} from '@/lib/admin/bulk-individual-test-reports';
 import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
 import { buildTestReportsCardDashboardView } from '@/lib/admin/test-reports-analytics';
 import type { TestReportsCardKey } from '@/lib/admin/test-reports-card-reports';
@@ -74,6 +82,9 @@ export function TestReportsDashboard() {
   );
   const [selectedScheduleId, setSelectedScheduleId] = useState('all');
   const [slotDownloadBusy, setSlotDownloadBusy] = useState<string | null>(null);
+  const [individualFormat, setIndividualFormat] = useState<BulkIndividualFormat>('pdf');
+  const [bulkExportBusy, setBulkExportBusy] = useState<string | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
   const scorecardModal = useElevateXScorecardModal();
 
   const load = useCallback(
@@ -249,6 +260,71 @@ export function TestReportsDashboard() {
     report_date_label: payload?.report_date_label,
   });
 
+  const completedRows = useMemo(
+    () => filteredRows.filter((r) => isCompletedAttemptStatus(r.status, r.completed_at)),
+    [filteredRows],
+  );
+
+  const consolidatedExportOptions = useMemo(
+    () => ({
+      examLabel: meta.label,
+      testName: selectedTestId !== 'all' ? selectedTestName : undefined,
+      scheduleLabel: activeScheduleLabel,
+      rows: filteredRows,
+      summary: filteredSummary ?? payload?.summary,
+    }),
+    [
+      meta.label,
+      selectedTestId,
+      selectedTestName,
+      activeScheduleLabel,
+      filteredRows,
+      filteredSummary,
+      payload?.summary,
+    ],
+  );
+
+  const zipBaseName = useMemo(() => {
+    const parts = ['test-reports', examType];
+    if (selectedTestId !== 'all') parts.push(selectedTestId.slice(0, 8));
+    if (payload?.schedule?.slot_number != null) parts.push(`slot-${payload.schedule.slot_number}`);
+    if (reportDate) parts.push(reportDate);
+    return parts.join('-');
+  }, [examType, selectedTestId, payload?.schedule?.slot_number, reportDate]);
+
+  const downloadConsolidatedPdf = () => {
+    if (!payload || completedRows.length === 0) return;
+    downloadConsolidatedTestReportPdf(consolidatedExportOptions);
+  };
+
+  const downloadConsolidatedExcel = () => {
+    if (!payload || completedRows.length === 0) return;
+    downloadConsolidatedTestReportExcel(consolidatedExportOptions);
+  };
+
+  const downloadAllIndividual = async () => {
+    if (!payload || completedRows.length === 0) return;
+    setBulkExportBusy('individual');
+    setBulkProgress(null);
+    try {
+      const { filesAdded, skipped } = await downloadAllIndividualTestReportsZip({
+        rows: filteredRows,
+        format: individualFormat,
+        zipBaseName,
+        onProgress: (current, total, name) => {
+          setBulkProgress(`${current} / ${total} — ${name}`);
+        },
+      });
+      const extra = skipped > 0 ? ` (${skipped} skipped)` : '';
+      setBulkProgress(`Done — ${filesAdded} file${filesAdded === 1 ? '' : 's'} in ZIP${extra}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Bulk export failed');
+      setBulkProgress(null);
+    } finally {
+      setBulkExportBusy(null);
+    }
+  };
+
   const downloadPdf = () => {
     if (!payload || filteredRows.length === 0) return;
     downloadTestReportPdf({
@@ -375,17 +451,33 @@ export function TestReportsDashboard() {
             <div className="flex flex-wrap gap-2">
               <Button
                 className="bg-[#0c2340] hover:bg-[#16304f] text-white shrink-0"
-                onClick={downloadPdf}
-                disabled={filteredRows.length === 0}
+                onClick={downloadConsolidatedPdf}
+                disabled={completedRows.length === 0 || Boolean(bulkExportBusy)}
               >
-                Download report (PDF)
+                Leaderboard PDF
               </Button>
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                onClick={downloadConsolidatedExcel}
+                disabled={completedRows.length === 0 || Boolean(bulkExportBusy)}
+              >
+                Leaderboard Excel
+              </Button>
+              <Button
+                variant="outline"
+                className="shrink-0 border-slate-300"
+                onClick={downloadPdf}
+                disabled={filteredRows.length === 0}
+              >
+                Summary PDF
+              </Button>
+              <Button
+                variant="outline"
+                className="shrink-0 border-slate-300"
                 onClick={downloadCsv}
                 disabled={filteredRows.length === 0}
               >
-                Download report (CSV)
+                Summary CSV
               </Button>
             </div>
           ) : null
@@ -579,6 +671,84 @@ export function TestReportsDashboard() {
                 date filter.
               </p>
             ) : null}
+          </Card>
+
+          <Card className="p-4 mb-6 border-[#0c2340]/15 bg-white">
+            <p className="text-sm font-semibold text-[#0c2340] mb-1">Bulk export</p>
+            <p className="text-xs text-slate-600 mb-4">
+              Uses the current filters (exam type, test, date, slot, search).{' '}
+              <strong>{completedRows.length}</strong> completed student
+              {completedRows.length === 1 ? '' : 's'} ready to export.
+            </p>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Consolidated leaderboard
+                </p>
+                <p className="text-sm text-slate-700 mb-3">
+                  One sheet for the whole exam — students ranked highest to lowest. Excel includes{' '}
+                  <strong>Winners</strong>, <strong>Top 100</strong>, and <strong>Top 200</strong> tabs.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-[#0c2340] hover:bg-[#16304f] text-white"
+                    disabled={completedRows.length === 0 || Boolean(bulkExportBusy)}
+                    onClick={downloadConsolidatedPdf}
+                  >
+                    Leaderboard PDF
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={completedRows.length === 0 || Boolean(bulkExportBusy)}
+                    onClick={downloadConsolidatedExcel}
+                  >
+                    Leaderboard Excel
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  All individual student reports
+                </p>
+                <p className="text-sm text-slate-700 mb-3">
+                  One click downloads a ZIP with a separate report for every completed student
+                  (ElevateX = section-wise scorecard; other exams = attempt summary).
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-[120px]">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">File type</label>
+                    <select
+                      className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                      value={individualFormat}
+                      onChange={(e) => setIndividualFormat(e.target.value as BulkIndividualFormat)}
+                      disabled={Boolean(bulkExportBusy)}
+                    >
+                      <option value="pdf">PDF (ZIP)</option>
+                      <option value="csv">CSV (ZIP)</option>
+                    </select>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-[#1e3a5f]/40 text-[#0c2340] font-semibold"
+                    disabled={completedRows.length === 0 || Boolean(bulkExportBusy)}
+                    onClick={() => void downloadAllIndividual()}
+                  >
+                    {bulkExportBusy === 'individual'
+                      ? 'Preparing ZIP…'
+                      : `Download all (${individualFormat.toUpperCase()})`}
+                  </Button>
+                </div>
+                {bulkProgress ? (
+                  <p className="text-xs text-slate-600 mt-2 tabular-nums">{bulkProgress}</p>
+                ) : null}
+              </div>
+            </div>
           </Card>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">

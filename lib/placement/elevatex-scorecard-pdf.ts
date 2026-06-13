@@ -14,14 +14,11 @@ function formatHms(totalSec: number): string {
   return `${s}s`;
 }
 
-export function downloadElevateXScorecardPdf(
-  scorecard: PlacementScorecard,
-  fileName?: string,
-): void {
+/** Build the scorecard PDF document (caller saves or zips the output). */
+export function buildElevateXScorecardPdfDoc(scorecard: PlacementScorecard): jsPDF {
   const dept = findDepartment(scorecard.candidate.departmentId);
   const doc = new jsPDF();
   const hall = scorecard.candidate.hallTicket;
-  const safeName = (scorecard.candidate.fullName || hall).replace(/[^a-zA-Z0-9_-]+/g, '_');
 
   doc.setFontSize(16);
   doc.text('ElevateX Scorecard', 14, 18);
@@ -109,5 +106,18 @@ export function downloadElevateXScorecardPdf(
     }
   }
 
-  doc.save(fileName ?? `elevatex-scorecard-${safeName}-${hall}.pdf`);
+  return doc;
+}
+
+export function buildElevateXScorecardPdfBlob(scorecard: PlacementScorecard): Blob {
+  return buildElevateXScorecardPdfDoc(scorecard).output('blob');
+}
+
+export function downloadElevateXScorecardPdf(
+  scorecard: PlacementScorecard,
+  fileName?: string,
+): void {
+  const hall = scorecard.candidate.hallTicket;
+  const safeName = (scorecard.candidate.fullName || hall).replace(/[^a-zA-Z0-9_-]+/g, '_');
+  buildElevateXScorecardPdfDoc(scorecard).save(fileName ?? `elevatex-scorecard-${safeName}-${hall}.pdf`);
 }
