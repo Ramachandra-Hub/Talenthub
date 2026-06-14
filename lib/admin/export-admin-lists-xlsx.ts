@@ -8,7 +8,9 @@ export type UserExportRow = {
   academic_year?: string | null;
   email: string;
   auto_submit_count?: number;
+  zero_score_auto_submit_count?: number;
   has_auto_submit?: boolean;
+  logged_in_with_auto_submit?: boolean;
   last_auto_submit_at?: string | null;
   best_score?: number;
   avg_score?: number;
@@ -47,6 +49,8 @@ export function downloadFilteredUsersExcel(rows: UserExportRow[], label = 'stude
     Email: r.email,
     'Auto-submitted': r.has_auto_submit ? 'Yes' : 'No',
     'Auto-submit count': r.auto_submit_count ?? 0,
+    '0% auto-submit count': r.zero_score_auto_submit_count ?? 0,
+    'Logged in (auto-submit)': r.logged_in_with_auto_submit ? 'Yes' : 'No',
     'Last auto-submit': r.last_auto_submit_at
       ? new Date(r.last_auto_submit_at).toLocaleString('en-IN')
       : '—',

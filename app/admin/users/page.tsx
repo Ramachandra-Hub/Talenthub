@@ -18,6 +18,7 @@ import { downloadElevateXScorecardPdf } from '@/lib/placement/elevatex-scorecard
 import type { PlacementScorecard } from '@/lib/placement/types';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { downloadFilteredUsersExcel } from '@/lib/admin/export-admin-lists-xlsx';
+import { studentMatchesAutoSubmitFilter } from '@/lib/admin/student-auto-submit-stats';
 
 type AttemptRow = TestAttempt & {
   test?: {
@@ -74,7 +75,9 @@ type AdminStudentRow = User & {
   best_score?: number;
   avg_score?: number;
   auto_submit_count?: number;
+  zero_score_auto_submit_count?: number;
   has_auto_submit?: boolean;
+  logged_in_with_auto_submit?: boolean;
   last_auto_submit_at?: string | null;
 };
 
@@ -82,6 +85,7 @@ function matchesScoreFilter(
   user: AdminStudentRow,
   scoreInput: string,
   mode: 'min' | 'exact',
+  options?: { autoSubmitFilterActive?: boolean },
 ): boolean {
   const raw = scoreInput.trim();
   if (!raw) return true;
@@ -91,9 +95,25 @@ function matchesScoreFilter(
   const best = roundScorePercent(user.best_score ?? 0);
   const avg = roundScorePercent(user.avg_score ?? 0);
   const hasAttempts = (user.attempt_count ?? 0) > 0;
-  if (!hasAttempts && best <= 0 && avg <= 0) return false;
-
   const targetRounded = roundScorePercent(target);
+
+  if (options?.autoSubmitFilterActive && user.has_auto_submit) {
+    if (targetRounded <= 0.01) {
+      return (
+        (user.zero_score_auto_submit_count ?? 0) > 0 ||
+        best <= 0.01 ||
+        avg <= 0.01 ||
+        !hasAttempts
+      );
+    }
+    return true;
+  }
+
+  if (!hasAttempts && best <= 0 && avg <= 0) {
+    if (targetRounded <= 0.01 && user.has_auto_submit) return true;
+    return false;
+  }
+
   if (mode === 'exact') {
     return Math.abs(best - targetRounded) <= 0.5 || Math.abs(avg - targetRounded) <= 0.5;
   }
@@ -175,7 +195,9 @@ export default function UsersManagementPage() {
         best_score: u.best_score ?? 0,
         avg_score: u.avg_score ?? 0,
         auto_submit_count: u.auto_submit_count ?? 0,
+        zero_score_auto_submit_count: u.zero_score_auto_submit_count ?? 0,
         has_auto_submit: u.has_auto_submit ?? false,
+        logged_in_with_auto_submit: u.logged_in_with_auto_submit ?? false,
         last_auto_submit_at: u.last_auto_submit_at ?? null,
       })) as AdminStudentRow[],
     );
@@ -398,15 +420,17 @@ export default function UsersManagementPage() {
 
     if (slotFilter !== 'all' && !userInSlotRoster(user, slotUserIds, slotRosterRolls)) return false;
 
-    if (autoSubmitFilter === 'auto_only' && !user.has_auto_submit) return false;
+    if (autoSubmitFilter === 'auto_only' && !studentMatchesAutoSubmitFilter(user)) return false;
 
-    return matchesScoreFilter(user, scoreFilter, scoreFilterMode);
+    return matchesScoreFilter(user, scoreFilter, scoreFilterMode, {
+      autoSubmitFilterActive: autoSubmitFilter === 'auto_only',
+    });
   });
 
   const scoreFilterActive = scoreFilter.trim().length > 0;
   const slotFilterActive = slotFilter !== 'all';
   const autoSubmitFilterActive = autoSubmitFilter === 'auto_only';
-  const autoSubmitTotal = users.filter((u) => u.has_auto_submit).length;
+  const autoSubmitTotal = users.filter((u) => studentMatchesAutoSubmitFilter(u)).length;
 
   const activePortalSessions = users.filter((u) => u.portal_session?.active).length;
 
@@ -430,6 +454,8 @@ export default function UsersManagementPage() {
         email: u.email,
         auto_submit_count: u.auto_submit_count,
         has_auto_submit: u.has_auto_submit,
+        zero_score_auto_submit_count: u.zero_score_auto_submit_count,
+        logged_in_with_auto_submit: u.logged_in_with_auto_submit,
         last_auto_submit_at: u.last_auto_submit_at,
         best_score: u.best_score,
         avg_score: u.avg_score,
@@ -866,6 +892,10 @@ export default function UsersManagementPage() {
                     {user.has_auto_submit ? (
                       <p className="text-xs text-red-700 mt-1 font-medium">
                         Auto-submitted: {user.auto_submit_count ?? 1}
+                        {(user.zero_score_auto_submit_count ?? 0) > 0
+                          ? ` · ${user.zero_score_auto_submit_count} at 0%`
+                          : ''}
+                        {user.logged_in_with_auto_submit ? ' · logged in' : ''}
                         {user.last_auto_submit_at
                           ? ` · ${new Date(user.last_auto_submit_at).toLocaleDateString()}`
                           : ''}
@@ -1019,7 +1049,8 @@ export default function UsersManagementPage() {
                               : undefined
                           }
                         >
-                          Auto-submit ({user.auto_submit_count ?? 1})
+                          Auto-submit ({user.auto_submit_count ?? 1}
+                          {(user.zero_score_auto_submit_count ?? 0) > 0 ? ', 0%' : ''})
                         </span>
                       ) : null}
                       </div>

@@ -28,7 +28,9 @@ export type AdminUserRow = {
   best_score?: number;
   avg_score?: number;
   auto_submit_count?: number;
+  zero_score_auto_submit_count?: number;
   has_auto_submit?: boolean;
+  logged_in_with_auto_submit?: boolean;
   last_auto_submit_at?: string | null;
 };
 
@@ -62,11 +64,14 @@ export async function GET() {
     const studentIds = studentRows
       .filter((u) => (u.userRole ?? 'student') !== 'faculty')
       .map((u) => u.id);
-    const [sessionMap, scoreStatsMap, autoSubmitMap] = await Promise.all([
+    const [sessionMap, scoreStatsMap] = await Promise.all([
       getStudentPortalSessionMap(studentIds),
       loadStudentScoreStatsMap(studentIds),
-      loadStudentAutoSubmitMap(studentIds),
     ]);
+    const activePortalIds = new Set(
+      studentIds.filter((id) => sessionMap.get(id)?.active),
+    );
+    const autoSubmitMap = await loadStudentAutoSubmitMap(studentIds, activePortalIds);
 
     const users: AdminUserRow[] = studentRows.map((u) => {
       const session = sessionMap.get(u.id);
@@ -91,7 +96,9 @@ export async function GET() {
         best_score: scores?.best_score ?? 0,
         avg_score: scores?.avg_score ?? 0,
         auto_submit_count: autoSubmit?.auto_submit_count ?? 0,
-        has_auto_submit: (autoSubmit?.auto_submit_count ?? 0) > 0,
+        zero_score_auto_submit_count: autoSubmit?.zero_score_auto_submit_count ?? 0,
+        has_auto_submit: autoSubmit?.has_auto_submit ?? false,
+        logged_in_with_auto_submit: autoSubmit?.logged_in_with_auto_submit ?? false,
         last_auto_submit_at: autoSubmit?.last_auto_submit_at ?? null,
       };
     });
