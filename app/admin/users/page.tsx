@@ -83,14 +83,17 @@ function matchesScoreFilter(
   if (!raw) return true;
   const target = Number(raw);
   if (!Number.isFinite(target)) return true;
-  if (!user.completed_count) return false;
 
   const best = roundScorePercent(user.best_score ?? 0);
+  const avg = roundScorePercent(user.avg_score ?? 0);
+  const hasAttempts = (user.attempt_count ?? 0) > 0;
+  if (!hasAttempts && best <= 0 && avg <= 0) return false;
+
   const targetRounded = roundScorePercent(target);
   if (mode === 'exact') {
-    return Math.abs(best - targetRounded) < 0.01;
+    return Math.abs(best - targetRounded) <= 0.5 || Math.abs(avg - targetRounded) <= 0.5;
   }
-  return best >= targetRounded;
+  return best >= targetRounded - 0.001;
 }
 
 export default function UsersManagementPage() {
@@ -641,21 +644,21 @@ export default function UsersManagementPage() {
                       {new Date(user.created_at).toLocaleDateString()}
                       {user.phone ? ` · ${user.phone}` : ''}
                     </p>
-                    {(scoreFilterActive || (user.completed_count ?? 0) > 0) && (
+                    {(scoreFilterActive || (user.attempt_count ?? 0) > 0) && (
                       <p className="text-xs text-gray-700 mt-1.5">
                         Best:{' '}
                         <span className="font-semibold text-[#1e3a5f]">
-                          {(user.completed_count ?? 0) > 0
+                          {(user.attempt_count ?? 0) > 0
                             ? formatScorePercentLabel(user.best_score)
                             : '—'}
                         </span>
                         {' · '}
                         Avg:{' '}
-                        {(user.completed_count ?? 0) > 0
+                        {(user.attempt_count ?? 0) > 0
                           ? formatScorePercentLabel(user.avg_score)
                           : '—'}
                         {' · '}
-                        Attempts: {user.completed_count ?? 0}
+                        Attempts: {user.attempt_count ?? 0}
                       </p>
                     )}
                   </div>
@@ -763,12 +766,12 @@ export default function UsersManagementPage() {
                     </td>
                     <td className="py-2.5 px-3 text-sm text-gray-600">{user.academic_year || '—'}</td>
                     <td className="py-2.5 px-3 text-sm font-medium text-[#1e3a5f]">
-                      {(user.completed_count ?? 0) > 0
+                      {(user.attempt_count ?? 0) > 0
                         ? formatScorePercentLabel(user.best_score)
                         : '—'}
                     </td>
                     <td className="py-2.5 px-3 text-sm text-gray-700">
-                      {(user.completed_count ?? 0) > 0
+                      {(user.attempt_count ?? 0) > 0
                         ? formatScorePercentLabel(user.avg_score)
                         : '—'}
                     </td>

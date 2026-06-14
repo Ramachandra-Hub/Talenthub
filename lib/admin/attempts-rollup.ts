@@ -1,6 +1,7 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
-import { resolveStoredPercent, testIdsMatch, type AttemptRow } from '@/lib/test-attempts';
+import { livePartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-score';
+import { testIdsMatch, type AttemptRow } from '@/lib/test-attempts';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
 
 export type RollupAttempt = {
@@ -36,11 +37,12 @@ function parseStatAttempts(raw: unknown): DashboardStatEntry[] {
 }
 
 function rowScore(row: AttemptRow): number {
-  return resolveStoredPercent(
-    row.percentage_score != null ? Number(row.percentage_score) : null,
-    row.score != null ? Number(row.score) : null,
-    row.total_score != null ? Number(row.total_score) : null,
-  );
+  return livePartialScoreFromAttemptRow({
+    answers: row.answers,
+    percentageScore: row.percentage_score != null ? Number(row.percentage_score) : null,
+    score: row.score != null ? Number(row.score) : null,
+    totalScore: row.total_score != null ? Number(row.total_score) : null,
+  });
 }
 
 function inferAttemptStatus(row: AttemptRow): string {
