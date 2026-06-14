@@ -18,7 +18,7 @@ import { downloadElevateXScorecardPdf } from '@/lib/placement/elevatex-scorecard
 import type { PlacementScorecard } from '@/lib/placement/types';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { downloadFilteredUsersExcel } from '@/lib/admin/export-admin-lists-xlsx';
-import { studentMatchesAutoSubmitFilter } from '@/lib/admin/student-auto-submit-stats';
+import { studentMatchesAutoSubmitFilter } from '@/lib/admin/student-auto-submit-filter';
 
 type AttemptRow = TestAttempt & {
   test?: {
@@ -68,6 +68,7 @@ type PortalSessionStatus = {
 
 type AdminStudentRow = User & {
   roll_number?: string | null;
+  branch?: string | null;
   academic_year?: string | null;
   portal_session?: PortalSessionStatus;
   attempt_count?: number;

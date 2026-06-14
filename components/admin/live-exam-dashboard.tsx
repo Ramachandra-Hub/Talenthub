@@ -123,6 +123,7 @@ async function downloadSlotReport(meta: EndedReportMeta, testTitle: string): Pro
     slot_number: meta.slot_number,
     faculty_department: null,
     students_attempted: 0,
+    students_writing: 0,
     completed_attempts: 0,
     total_attempts: 0,
     departments_attempted: [],

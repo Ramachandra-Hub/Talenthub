@@ -357,7 +357,6 @@ export async function loadAdminTestsOverview(
       kind_label: 'Faculty exam (not scheduled)',
       status: 'upcoming',
       status_label: 'Approved · awaiting schedule',
-      students_writing: 0,
       departments: departmentsForFacultyRequest(faculty),
       years: faculty.target_years ?? [],
       starts_at: null,

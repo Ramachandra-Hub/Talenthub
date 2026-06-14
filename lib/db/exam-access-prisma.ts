@@ -282,7 +282,7 @@ export async function assertStudentCanSubmitAttemptPrisma(
   const findOpenAttempt = async (whereExtra?: { id?: string }) => {
     const base = {
       userId,
-      status: { in: ['in_progress', 'started', 'active'] as const },
+      status: { in: ['in_progress', 'started', 'active'] },
       completedAt: null,
       ...(whereExtra?.id ? { id: whereExtra.id } : {}),
     };
@@ -296,7 +296,7 @@ export async function assertStudentCanSubmitAttemptPrisma(
   if (isElevateXTestId(testId)) {
     const elevatexWhere = {
       userId,
-      status: { in: ['in_progress', 'started', 'active'] as const },
+      status: { in: ['in_progress', 'started', 'active'] },
       completedAt: null,
       OR: [
         { testTitle: { contains: 'ElevateX', mode: 'insensitive' as const } },

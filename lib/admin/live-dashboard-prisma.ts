@@ -619,7 +619,7 @@ export async function loadElevateXSessionSubmittedEntriesPrisma(
       email: 'Student',
     };
     const completed_at = row.completedAt!.toISOString();
-    const partial = elevateXPartialScoreFromAttemptRow({
+    const partial = livePartialScoreFromAttemptRow({
       answers: row.answers,
       percentageScore: row.percentageScore != null ? Number(row.percentageScore) : null,
       score: row.score != null ? Number(row.score) : null,

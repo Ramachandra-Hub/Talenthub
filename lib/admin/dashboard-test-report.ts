@@ -60,6 +60,7 @@ export function buildDashboardTestOverviewItem(row: {
     slot_number: null,
     faculty_department: null,
     students_attempted: row.attempts,
+    students_writing: 0,
     completed_attempts: row.attempts,
     total_attempts: row.attempts,
     departments_attempted: [],
@@ -147,5 +148,6 @@ export function buildDashboardTestReportPayload(input: {
     },
     tests: [{ id: input.testId, name: input.testName, attempt_count: rows.length }],
     rows,
+    schedule_options: [],
   };
 }
