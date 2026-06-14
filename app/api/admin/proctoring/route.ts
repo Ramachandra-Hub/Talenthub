@@ -21,7 +21,7 @@ export async function GET() {
 
   const userIds = [...new Set(violations.map((v) => v.user_id).filter(Boolean))];
   const { data: users } = userIds.length
-    ? await admin.from('users').select('id, email, full_name, branch').in('id', userIds)
+    ? await admin.from('users').select('id, email, full_name, branch, roll_number').in('id', userIds)
     : { data: [] };
 
   const userMap = new Map((users ?? []).map((u) => [u.id as string, u]));
@@ -47,6 +47,15 @@ export async function GET() {
             (typeof meta.department === 'string' ? meta.department : null)
           );
         })(),
+        roll_number: (() => {
+          const meta = authUser.user.user_metadata as Record<string, unknown>;
+          const saved = (meta.prep_profile ?? {}) as Record<string, unknown>;
+          return (
+            (typeof saved.roll_number === 'string' ? saved.roll_number : null) ??
+            (typeof meta.roll_number === 'string' ? meta.roll_number : null) ??
+            (typeof meta.rollNumber === 'string' ? meta.rollNumber : null)
+          );
+        })(),
       });
     }
   }
@@ -58,6 +67,7 @@ export async function GET() {
       email: (u?.email as string) ?? null,
       full_name: (u?.full_name as string) ?? null,
       branch: (u?.branch as string) ?? null,
+      roll_number: (u?.roll_number as string) ?? null,
     };
   });
 

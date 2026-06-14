@@ -34,6 +34,7 @@ async function getDeleteGuard(
 /** Permanently remove a student and related data from the application. */
 export async function deleteStudentFromApplication(
   userId: string,
+  options?: { preserveRoster?: boolean },
 ): Promise<DeleteStudentResult | { error: string }> {
   const guard = await getDeleteGuard(userId);
   if (!guard.ok) return { error: guard.error };
@@ -46,7 +47,7 @@ export async function deleteStudentFromApplication(
 
   let rosterEntriesDeleted = 0;
   const roll = user.rollNumber?.trim();
-  if (roll) {
+  if (roll && !options?.preserveRoster) {
     const roster1 = await prisma.examStudentRoster.deleteMany({ where: { rollNumber: roll } });
     const roster2 = await prisma.examSlotRosterEntry.deleteMany({ where: { rollNumber: roll } });
     rosterEntriesDeleted = roster1.count + roster2.count;
@@ -67,7 +68,10 @@ export async function deleteStudentFromApplication(
   };
 }
 
-export async function deleteStudentsFromApplication(userIds: string[]): Promise<{
+export async function deleteStudentsFromApplication(
+  userIds: string[],
+  options?: { preserveRoster?: boolean },
+): Promise<{
   deleted: number;
   results: Array<DeleteStudentResult | { userId: string; error: string }>;
 }> {
@@ -76,7 +80,7 @@ export async function deleteStudentsFromApplication(userIds: string[]): Promise<
   let deleted = 0;
 
   for (const userId of uniqueIds) {
-    const outcome = await deleteStudentFromApplication(userId);
+    const outcome = await deleteStudentFromApplication(userId, options);
     if ('error' in outcome) {
       results.push({ userId, error: outcome.error });
     } else {

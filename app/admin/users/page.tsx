@@ -105,6 +105,22 @@ export default function UsersManagementPage() {
   const [yearFilter, setYearFilter] = useState('all');
   const [scoreFilter, setScoreFilter] = useState('');
   const [scoreFilterMode, setScoreFilterMode] = useState<'min' | 'exact'>('min');
+  const [slotFilter, setSlotFilter] = useState('all');
+  const [slotSchedules, setSlotSchedules] = useState<
+    Array<{
+      id: string;
+      label: string;
+      slot_number: number | null;
+      roster_count: number;
+    }>
+  >([]);
+  const [slotUserIds, setSlotUserIds] = useState<Set<string>>(new Set());
+  const [slotRosterMeta, setSlotRosterMeta] = useState<{
+    label: string;
+    roster_count: number;
+    matched_count: number;
+  } | null>(null);
+  const [slotRosterLoading, setSlotRosterLoading] = useState(false);
   const [reportLoadingUserId, setReportLoadingUserId] = useState<string | null>(null);
   const [releaseLoadingUserId, setReleaseLoadingUserId] = useState<string | null>(null);
   const [deleteLoadingUserId, setDeleteLoadingUserId] = useState<string | null>(null);
@@ -158,6 +174,66 @@ export default function UsersManagementPage() {
 
     fetchData();
   }, [router]);
+
+  useEffect(() => {
+    void fetch('/api/admin/users/slot-roster', { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          schedules?: Array<{
+            id: string;
+            label: string;
+            slot_number: number | null;
+            roster_count: number;
+          }>;
+        };
+        setSlotSchedules(json.schedules ?? []);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (slotFilter === 'all') {
+      setSlotUserIds(new Set());
+      setSlotRosterMeta(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSlotRosterLoading(true);
+    void fetch(`/api/admin/users/slot-roster?scheduleId=${encodeURIComponent(slotFilter)}`, {
+      credentials: 'include',
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as {
+          schedule_title?: string;
+          slot_number?: number | null;
+          roster_count?: number;
+          matched_user_ids?: string[];
+        };
+      })
+      .then((json) => {
+        if (cancelled || !json) return;
+        const label =
+          json.slot_number != null
+            ? `${json.schedule_title ?? 'Exam'} · Slot ${json.slot_number}`
+            : (json.schedule_title ?? 'Exam schedule');
+        setSlotUserIds(new Set(json.matched_user_ids ?? []));
+        setSlotRosterMeta({
+          label,
+          roster_count: json.roster_count ?? 0,
+          matched_count: json.matched_user_ids?.length ?? 0,
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setSlotRosterLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slotFilter]);
 
   const handleForceLogout = async (student: AdminStudentRow) => {
     const label =
@@ -224,9 +300,10 @@ export default function UsersManagementPage() {
   const handleBulkDeleteFiltered = async () => {
     if (filteredUsers.length === 0) return;
 
+    const slotLabel = slotRosterMeta ? ` from ${slotRosterMeta.label}` : '';
     const yearLabel = yearFilter !== 'all' ? ` in ${yearFilter}` : '';
     const confirmed = window.confirm(
-      `Permanently delete ${filteredUsers.length} student${filteredUsers.length === 1 ? '' : 's'}${yearLabel}?\n\nThis removes their accounts, logins, exam attempts, and related data. This cannot be undone.`,
+      `Permanently delete ${filteredUsers.length} student${filteredUsers.length === 1 ? '' : 's'}${slotLabel}${yearLabel}?\n\nThis removes their accounts, logins, and exam attempts so they can register again and re-attempt. This cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -237,11 +314,15 @@ export default function UsersManagementPage() {
 
     setBulkDeleteBusy(true);
     try {
+      const body =
+        slotFilter !== 'all'
+          ? { scheduleId: slotFilter }
+          : { userIds: filteredUsers.map((u) => u.id) };
       const res = await fetch('/api/admin/users/bulk-delete', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userIds: filteredUsers.map((u) => u.id) }),
+        body: JSON.stringify(body),
       });
       const json = (await res.json().catch(() => ({}))) as {
         message?: string;
@@ -254,6 +335,7 @@ export default function UsersManagementPage() {
       }
       alert(json.message ?? `Deleted ${json.deleted ?? 0} students.`);
       setSelectedReport(null);
+      setSlotFilter('all');
       await loadUsers();
     } catch (error) {
       alert(`Bulk delete failed: ${formatDbError(error)}`);
@@ -285,10 +367,13 @@ export default function UsersManagementPage() {
       if (year !== yearFilter) return false;
     }
 
+    if (slotFilter !== 'all' && !slotUserIds.has(user.id)) return false;
+
     return matchesScoreFilter(user, scoreFilter, scoreFilterMode);
   });
 
   const scoreFilterActive = scoreFilter.trim().length > 0;
+  const slotFilterActive = slotFilter !== 'all';
 
   const activePortalSessions = users.filter((u) => u.portal_session?.active).length;
 
@@ -538,7 +623,7 @@ export default function UsersManagementPage() {
     <div className="w-full min-w-0">
       <AdminPageHeader
         title="Users"
-        description="Filter students by year and exam score, view reports, force logout, or permanently delete accounts."
+        description="Filter by year, score, or exam schedule slot. Bulk-delete a slot to let students register again and re-attempt."
       />
       <div>
         {/* Stats */}
@@ -568,7 +653,7 @@ export default function UsersManagementPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_11rem_auto] lg:items-end">
+        <div className="mb-4 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_11rem] lg:items-end">
           <Input
             placeholder="Search roll, email, or name..."
             value={searchTerm}
@@ -614,14 +699,47 @@ export default function UsersManagementPage() {
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="w-full min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Exam schedule slot (from Exam Schedules)
+            </label>
+            <select
+              className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
+              value={slotFilter}
+              onChange={(e) => setSlotFilter(e.target.value)}
+              disabled={slotRosterLoading}
+            >
+              <option value="all">All students (no slot filter)</option>
+              {slotSchedules.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  {slot.label}
+                  {slot.roster_count > 0 ? ` · ${slot.roster_count} rostered` : ''}
+                </option>
+              ))}
+            </select>
+            {slotFilterActive && slotRosterMeta ? (
+              <p className="text-xs text-gray-600 mt-1.5">
+                {slotRosterLoading
+                  ? 'Loading slot roster…'
+                  : `${slotRosterMeta.matched_count} registered account${slotRosterMeta.matched_count === 1 ? '' : 's'} matched of ${slotRosterMeta.roster_count} on roster. Delete removes accounts and attempts so students can sign in again.`}
+              </p>
+            ) : null}
+          </div>
           {isAdmin && filteredUsers.length > 0 ? (
             <Button
               variant="outline"
               className="w-full lg:w-auto border-red-300 text-red-700 hover:bg-red-50 shrink-0"
-              disabled={bulkDeleteBusy || Boolean(deleteLoadingUserId)}
+              disabled={bulkDeleteBusy || Boolean(deleteLoadingUserId) || slotRosterLoading}
               onClick={() => void handleBulkDeleteFiltered()}
             >
-              {bulkDeleteBusy ? 'Deleting…' : `Delete (${filteredUsers.length})`}
+              {bulkDeleteBusy
+                ? 'Deleting…'
+                : slotFilterActive
+                  ? `Delete slot (${filteredUsers.length})`
+                  : `Delete (${filteredUsers.length})`}
             </Button>
           ) : null}
         </div>
@@ -841,6 +959,7 @@ export default function UsersManagementPage() {
 
         <p className="text-sm text-gray-600 mt-4">
           Showing {filteredUsers.length} of {users.length} users
+          {slotFilterActive && slotRosterMeta ? ` · ${slotRosterMeta.label}` : ''}
           {yearFilter !== 'all' ? ` · year: ${yearFilter}` : ''}
           {scoreFilterActive
             ? ` · score ${scoreFilterMode === 'exact' ? '=' : '≥'} ${scoreFilter.trim()}% (best)`
