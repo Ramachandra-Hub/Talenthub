@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getStudentPortalSessionMap } from '@/lib/admin/student-portal-session-admin';
 import { loadStudentScoreStatsMap } from '@/lib/admin/user-score-stats';
+import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/server-auth';
 
@@ -69,7 +70,7 @@ export async function GET() {
         id: u.id,
         email: u.email,
         full_name: u.fullName,
-        roll_number: u.rollNumber,
+        roll_number: u.rollNumber?.trim() || rollNumberFromUser(u.email) || null,
         branch: u.branch,
         academic_year: u.academicYear,
         user_role: u.userRole ?? 'student',

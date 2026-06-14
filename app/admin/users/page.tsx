@@ -96,6 +96,23 @@ function matchesScoreFilter(
   return best >= targetRounded - 0.001;
 }
 
+function resolveUserRoll(user: AdminStudentRow): string {
+  const direct = user.roll_number?.trim();
+  if (direct) return direct.toUpperCase().replace(/\s+/g, '');
+  const local = user.email.split('@')[0]?.trim();
+  return (local ?? '').toUpperCase().replace(/\s+/g, '');
+}
+
+function userInSlotRoster(
+  user: AdminStudentRow,
+  slotUserIds: Set<string>,
+  slotRosterRolls: Set<string>,
+): boolean {
+  if (slotUserIds.has(user.id)) return true;
+  const roll = resolveUserRoll(user);
+  return Boolean(roll && slotRosterRolls.has(roll));
+}
+
 export default function UsersManagementPage() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -115,6 +132,7 @@ export default function UsersManagementPage() {
     }>
   >([]);
   const [slotUserIds, setSlotUserIds] = useState<Set<string>>(new Set());
+  const [slotRosterRolls, setSlotRosterRolls] = useState<Set<string>>(new Set());
   const [slotRosterMeta, setSlotRosterMeta] = useState<{
     label: string;
     roster_count: number;
@@ -195,6 +213,7 @@ export default function UsersManagementPage() {
   useEffect(() => {
     if (slotFilter === 'all') {
       setSlotUserIds(new Set());
+      setSlotRosterRolls(new Set());
       setSlotRosterMeta(null);
       return;
     }
@@ -211,6 +230,7 @@ export default function UsersManagementPage() {
           slot_number?: number | null;
           roster_count?: number;
           matched_user_ids?: string[];
+          roster_rolls?: string[];
         };
       })
       .then((json) => {
@@ -220,6 +240,7 @@ export default function UsersManagementPage() {
             ? `${json.schedule_title ?? 'Exam'} · Slot ${json.slot_number}`
             : (json.schedule_title ?? 'Exam schedule');
         setSlotUserIds(new Set(json.matched_user_ids ?? []));
+        setSlotRosterRolls(new Set(json.roster_rolls ?? []));
         setSlotRosterMeta({
           label,
           roster_count: json.roster_count ?? 0,
@@ -367,7 +388,7 @@ export default function UsersManagementPage() {
       if (year !== yearFilter) return false;
     }
 
-    if (slotFilter !== 'all' && !slotUserIds.has(user.id)) return false;
+    if (slotFilter !== 'all' && !userInSlotRoster(user, slotUserIds, slotRosterRolls)) return false;
 
     return matchesScoreFilter(user, scoreFilter, scoreFilterMode);
   });
