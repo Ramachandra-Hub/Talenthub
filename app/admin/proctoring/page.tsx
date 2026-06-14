@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { LoadingScreen } from '@/components/ui/loading-screen';
 import { downloadProctoringExcel } from '@/lib/admin/export-admin-lists-xlsx';
+import { formatCollegeDateTime, todayIstDateKey } from '@/lib/college-timezone';
 
 const POLL_MS = 2000;
 
@@ -57,14 +58,21 @@ function buildSummary(rows: ViolationRow[]): Summary {
 }
 
 export default function AdminProctoringPage() {
+  const today = todayIstDateKey();
   const [rows, setRows] = useState<ViolationRow[]>([]);
   const [summary, setSummary] = useState<Summary>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [live, setLive] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [rollFilter, setRollFilter] = useState('');
   const [minViolations, setMinViolations] = useState('');
   const [incidentFilter, setIncidentFilter] = useState<'all' | 'auto_submit'>('all');
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
+  const [loadedRange, setLoadedRange] = useState<{ from: string; to: string } | null>(null);
+
+  const viewingToday = dateFrom === today && dateTo === today;
 
   const filteredRows = useMemo(() => {
     let list = rows;
@@ -110,24 +118,38 @@ export default function AdminProctoringPage() {
     Boolean(searchTerm.trim()) ||
     Boolean(rollFilter.trim()) ||
     Boolean(minViolations.trim()) ||
-    incidentFilter === 'auto_submit';
+    incidentFilter === 'auto_submit' ||
+    !viewingToday;
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/admin/proctoring', { credentials: 'include' });
+    setRefreshing(true);
+    const params = new URLSearchParams({ from: dateFrom, to: dateTo });
+    const res = await fetch(`/api/admin/proctoring?${params.toString()}`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
     if (res.ok) {
-      const json = (await res.json()) as { violations?: ViolationRow[]; summary?: Summary };
+      const json = (await res.json()) as {
+        violations?: ViolationRow[];
+        summary?: Summary;
+        dateRange?: { from?: string; to?: string };
+      };
       setRows(json.violations ?? []);
       setSummary(json.summary ?? {});
+      if (json.dateRange?.from && json.dateRange?.to) {
+        setLoadedRange({ from: json.dateRange.from, to: json.dateRange.to });
+      }
     }
     setLoading(false);
-  }, []);
+    setRefreshing(false);
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
-    if (!live) return;
+    if (!live || !viewingToday) return;
     const tick = () => {
       if (document.visibilityState === 'visible') void load();
     };
@@ -141,7 +163,15 @@ export default function AdminProctoringPage() {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [live, load]);
+  }, [live, load, viewingToday]);
+
+  const applyLastDays = (days: number) => {
+    const end = todayIstDateKey();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - (days - 1));
+    setDateFrom(todayIstDateKey(startDate));
+    setDateTo(end);
+  };
 
   const handleDownloadExcel = () => {
     if (!filteredRows.length) return;
@@ -178,7 +208,7 @@ export default function AdminProctoringPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Proctoring"
-        description="Search by roll or name, filter by violation counts, and export auto-submit lists to Excel."
+        description="Filter by date (IST), roll number, violation counts, or auto-submits. Export to Excel."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -189,15 +219,60 @@ export default function AdminProctoringPage() {
             >
               Download Excel ({filteredRows.length})
             </Button>
-            <Button variant={live ? 'default' : 'outline'} size="sm" onClick={() => setLive((v) => !v)}>
-              {live ? 'Live refresh on' : 'Live refresh off'}
+            <Button
+              variant={live && viewingToday ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setLive((v) => !v)}
+              disabled={!viewingToday}
+              title={viewingToday ? undefined : 'Live refresh is only for today’s date range'}
+            >
+              {live && viewingToday ? 'Live refresh on' : 'Live refresh off'}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void load()}>
-              Refresh
+            <Button variant="outline" size="sm" disabled={refreshing} onClick={() => void load()}>
+              {refreshing ? 'Loading…' : 'Refresh'}
             </Button>
           </div>
         }
       />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(2,minmax(0,11rem))_auto] gap-3 items-end">
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">From date (IST)</label>
+          <Input
+            type="date"
+            value={dateFrom}
+            max={dateTo}
+            onChange={(e) => setDateFrom(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">To date (IST)</label>
+          <Input
+            type="date"
+            value={dateTo}
+            min={dateFrom}
+            onChange={(e) => setDateTo(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => { setDateFrom(today); setDateTo(today); }}>
+            Today
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => applyLastDays(7)}>
+            Last 7 days
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => applyLastDays(30)}>
+            Last 30 days
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        {loadedRange
+          ? `Proctoring data for ${loadedRange.from === loadedRange.to ? loadedRange.from : `${loadedRange.from} → ${loadedRange.to}`} (IST)`
+          : 'Select a date range to load incidents'}
+        {filtersActive ? ` · showing ${filteredRows.length} of ${rows.length} loaded` : ` · ${rows.length} incident${rows.length === 1 ? '' : 's'}`}
+      </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Input
@@ -226,12 +301,6 @@ export default function AdminProctoringPage() {
           <option value="auto_submit">Auto-submits only</option>
         </select>
       </div>
-
-      {filtersActive ? (
-        <p className="text-sm text-muted-foreground">
-          Showing {filteredRows.length} of {rows.length} incidents
-        </p>
-      ) : null}
 
       <div className="grid sm:grid-cols-4 gap-3">
         <Card className="p-4 lux-surface">
@@ -279,7 +348,7 @@ export default function AdminProctoringPage() {
               {filteredRows.map((r) => (
                 <tr key={r.id} className="border-b border-border/50">
                   <td className="p-3 text-muted-foreground whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleString()}
+                    {formatCollegeDateTime(r.created_at)}
                   </td>
                   <td className="p-3 text-sm font-medium whitespace-nowrap">
                     {r.roll_number || (r.email ? r.email.split('@')[0] : '—')}
@@ -309,9 +378,9 @@ export default function AdminProctoringPage() {
               {!filteredRows.length ? (
                 <tr>
                   <td colSpan={9} className="p-8 text-center text-muted-foreground">
-                    {rows.length && filtersActive
-                      ? 'No incidents match your filters.'
-                      : 'No proctoring incidents yet. During ElevateX or faculty exams, tab-switch flags appear here within a few seconds.'}
+                    {rows.length && (filtersActive || !viewingToday)
+                      ? 'No incidents match your filters for this date range.'
+                      : 'No proctoring incidents for the selected dates. Try a wider range or another exam day.'}
                   </td>
                 </tr>
               ) : null}

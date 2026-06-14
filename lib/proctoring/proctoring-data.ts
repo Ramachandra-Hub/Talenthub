@@ -1,4 +1,5 @@
 import type { DbServiceClient, PostgrestError } from '@/lib/db/get-db-service';
+import { isoFallsInIstDateRange, resolveIstDateRange } from '@/lib/college-timezone';
 import { isExamViolationsSchemaError } from '@/lib/ensure-exam-violations';
 
 export type ProctorViolationRow = {
@@ -144,16 +145,19 @@ function mergeViolationRows(primary: ProctorViolationRow[], fallback: ProctorVio
 /** College-wide or filtered proctoring rows (exam_violations + attempt fallbacks). */
 export async function loadProctoringViolations(
   admin: DbServiceClient,
-  options?: { userIds?: string[] },
-): Promise<{ violations: ProctorViolationRow[]; summary: ProctoringSummary }> {
+  options?: { userIds?: string[]; fromDate?: string | null; toDate?: string | null },
+): Promise<{ violations: ProctorViolationRow[]; summary: ProctoringSummary; dateRange: ReturnType<typeof resolveIstDateRange> }> {
   const userFilter = options?.userIds?.length ? options.userIds : null;
+  const dateRange = resolveIstDateRange(options?.fromDate, options?.toDate);
 
   let tableRows: ProctorViolationRow[] = [];
   const { data: violations, error: violationsErr } = await admin
     .from('exam_violations')
     .select('id, user_id, test_id, attempt_id, violation_type, metadata, created_at')
+    .gte('created_at', dateRange.fromIso)
+    .lte('created_at', dateRange.toIso)
     .order('created_at', { ascending: false })
-    .limit(500);
+    .limit(5000);
 
   if (!violationsErr) {
     tableRows = (violations ?? [])
@@ -170,40 +174,51 @@ export async function loadProctoringViolations(
         metadata: (row.metadata as Record<string, unknown> | null) ?? null,
         created_at: String(row.created_at ?? new Date().toISOString()),
         source: 'exam_violations' as const,
-      }));
+      }))
+      .filter((row) => isoFallsInIstDateRange(row.created_at, dateRange.fromIso, dateRange.toIso));
   }
 
-  let attemptQuery = admin
-    .from('test_attempts')
-    .select(
-      'id, user_id, test_id, proctor_violations, proctor_auto_submit, proctor_session_id, answers, completed_at, created_at, status',
-    )
-    .gte('created_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
-    .order('created_at', { ascending: false })
-    .limit(500);
-
-  if (userFilter) {
-    attemptQuery = attemptQuery.in('user_id', userFilter);
-  }
-
-  let { data: attempts, error: attemptsErr } = await attemptQuery;
-  if (attemptsErr && !isMissingTable(attemptsErr)) {
-    let fallbackQuery = admin
-      .from('test_attempts')
-      .select('id, user_id, test_id, answers, completed_at, created_at, score, status')
-      .order('created_at', { ascending: false })
-      .limit(500);
-    if (userFilter) {
-      fallbackQuery = fallbackQuery.in('user_id', userFilter);
-    }
-    const fallback = await fallbackQuery;
-    attempts = fallback.data;
-    attemptsErr = fallback.error;
-  }
   const attemptRows: ProctorViolationRow[] = [];
+  const pageSize = 1000;
+  let offset = 0;
 
-  if (!attemptsErr) {
-    for (const row of attempts ?? []) {
+  while (offset < 15000) {
+    let attemptQuery = admin
+      .from('test_attempts')
+      .select(
+        'id, user_id, test_id, proctor_violations, proctor_auto_submit, proctor_session_id, answers, completed_at, created_at, status',
+      )
+      .gte('created_at', dateRange.fromIso)
+      .lte('created_at', dateRange.toIso)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (userFilter) {
+      attemptQuery = attemptQuery.in('user_id', userFilter);
+    }
+
+    let { data: attempts, error: attemptsErr } = await attemptQuery;
+
+    if (attemptsErr && !isMissingTable(attemptsErr)) {
+      let fallbackQuery = admin
+        .from('test_attempts')
+        .select('id, user_id, test_id, answers, completed_at, created_at, score, status')
+        .gte('created_at', dateRange.fromIso)
+        .lte('created_at', dateRange.toIso)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (userFilter) {
+        fallbackQuery = fallbackQuery.in('user_id', userFilter);
+      }
+      const fallback = await fallbackQuery;
+      attempts = fallback.data;
+      attemptsErr = fallback.error;
+    }
+
+    const page = (attempts ?? []) as Record<string, unknown>[];
+    if (attemptsErr || !page.length) break;
+
+    for (const row of page) {
       const record = row as Record<string, unknown>;
       const count = Number(record.proctor_violations ?? 0);
       const auto = Boolean(record.proctor_auto_submit);
@@ -211,13 +226,19 @@ export async function loadProctoringViolations(
       const hasProctorInAnswers = Boolean(parsed?.violations.length);
       const inProgress = String(record.status ?? '').toLowerCase() === 'in_progress';
       if (count > 0 || auto || hasProctorInAnswers || (inProgress && parsed?.sessionId)) {
-        attemptRows.push(...rowsFromAttempt(record));
+        const built = rowsFromAttempt(record).filter((r) =>
+          isoFallsInIstDateRange(r.created_at, dateRange.fromIso, dateRange.toIso),
+        );
+        attemptRows.push(...built);
       }
     }
+
+    if (page.length < pageSize) break;
+    offset += pageSize;
   }
 
   const merged = mergeViolationRows(tableRows, attemptRows);
-  return { violations: merged, summary: buildSummary(merged) };
+  return { violations: merged, summary: buildSummary(merged), dateRange };
 }
 
 export function isProctoringSchemaMissing(error: unknown): boolean {

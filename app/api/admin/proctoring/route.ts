@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { ensureExamViolationsTableIfPossible } from '@/lib/ensure-exam-violations';
 import { requireAuth } from '@/lib/server-auth';
@@ -8,7 +8,7 @@ import { rollNumberFromUser } from '@/lib/admin/roll-number';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAuth(['admin']);
   if ('response' in auth) return auth.response;
 
@@ -19,7 +19,13 @@ export async function GET() {
 
   await ensureExamViolationsTableIfPossible();
 
-  const { violations, summary } = await loadProctoringViolations(admin);
+  const fromDate = request.nextUrl.searchParams.get('from');
+  const toDate = request.nextUrl.searchParams.get('to');
+
+  const { violations, summary, dateRange } = await loadProctoringViolations(admin, {
+    fromDate,
+    toDate,
+  });
 
   const userIds = [...new Set(violations.map((v) => v.user_id).filter(Boolean))];
   const { data: users } = userIds.length
@@ -82,5 +88,11 @@ export async function GET() {
   return NextResponse.json({
     violations: rows,
     summary,
+    dateRange: {
+      from: dateRange.fromDate,
+      to: dateRange.toDate,
+      from_iso: dateRange.fromIso,
+      to_iso: dateRange.toIso,
+    },
   });
 }
