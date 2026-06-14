@@ -3,6 +3,8 @@ import { getDbService } from '@/lib/db/get-db-service';
 import { ensureExamViolationsTableIfPossible } from '@/lib/ensure-exam-violations';
 import { requireAuth } from '@/lib/server-auth';
 import { loadProctoringViolations } from '@/lib/proctoring/proctoring-data';
+import { enrichProctoringDisplayRows } from '@/lib/proctoring/proctoring-display';
+import { rollNumberFromUser } from '@/lib/admin/roll-number';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,16 +62,22 @@ export async function GET() {
     }
   }
 
-  const rows = violations.map((row) => {
-    const u = userMap.get(row.user_id);
-    return {
-      ...row,
-      email: (u?.email as string) ?? null,
-      full_name: (u?.full_name as string) ?? null,
-      branch: (u?.branch as string) ?? null,
-      roll_number: (u?.roll_number as string) ?? null,
-    };
-  });
+  const rows = enrichProctoringDisplayRows(
+    violations.map((row) => {
+      const u = userMap.get(row.user_id);
+      const email = (u?.email as string) ?? null;
+      return {
+        ...row,
+        email,
+        full_name: (u?.full_name as string) ?? null,
+        branch: (u?.branch as string) ?? null,
+        roll_number:
+          (u?.roll_number as string)?.trim() ||
+          (email ? rollNumberFromUser(email) : null) ||
+          null,
+      };
+    }),
+  );
 
   return NextResponse.json({
     violations: rows,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getStudentPortalSessionMap } from '@/lib/admin/student-portal-session-admin';
 import { loadStudentScoreStatsMap } from '@/lib/admin/user-score-stats';
+import { loadStudentAutoSubmitMap } from '@/lib/admin/student-auto-submit-stats';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/server-auth';
@@ -26,6 +27,9 @@ export type AdminUserRow = {
   completed_count?: number;
   best_score?: number;
   avg_score?: number;
+  auto_submit_count?: number;
+  has_auto_submit?: boolean;
+  last_auto_submit_at?: string | null;
 };
 
 export async function GET() {
@@ -58,14 +62,16 @@ export async function GET() {
     const studentIds = studentRows
       .filter((u) => (u.userRole ?? 'student') !== 'faculty')
       .map((u) => u.id);
-    const [sessionMap, scoreStatsMap] = await Promise.all([
+    const [sessionMap, scoreStatsMap, autoSubmitMap] = await Promise.all([
       getStudentPortalSessionMap(studentIds),
       loadStudentScoreStatsMap(studentIds),
+      loadStudentAutoSubmitMap(studentIds),
     ]);
 
     const users: AdminUserRow[] = studentRows.map((u) => {
       const session = sessionMap.get(u.id);
       const scores = scoreStatsMap.get(u.id);
+      const autoSubmit = autoSubmitMap.get(u.id);
       return {
         id: u.id,
         email: u.email,
@@ -84,6 +90,9 @@ export async function GET() {
         completed_count: scores?.completed_count ?? 0,
         best_score: scores?.best_score ?? 0,
         avg_score: scores?.avg_score ?? 0,
+        auto_submit_count: autoSubmit?.auto_submit_count ?? 0,
+        has_auto_submit: (autoSubmit?.auto_submit_count ?? 0) > 0,
+        last_auto_submit_at: autoSubmit?.last_auto_submit_at ?? null,
       };
     });
 

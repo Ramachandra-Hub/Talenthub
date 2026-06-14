@@ -17,6 +17,7 @@ import { ElevateXScorecardView } from '@/components/placement/elevatex-scorecard
 import { downloadElevateXScorecardPdf } from '@/lib/placement/elevatex-scorecard-pdf';
 import type { PlacementScorecard } from '@/lib/placement/types';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
+import { downloadFilteredUsersExcel } from '@/lib/admin/export-admin-lists-xlsx';
 
 type AttemptRow = TestAttempt & {
   test?: {
@@ -72,6 +73,9 @@ type AdminStudentRow = User & {
   completed_count?: number;
   best_score?: number;
   avg_score?: number;
+  auto_submit_count?: number;
+  has_auto_submit?: boolean;
+  last_auto_submit_at?: string | null;
 };
 
 function matchesScoreFilter(
@@ -122,6 +126,7 @@ export default function UsersManagementPage() {
   const [yearFilter, setYearFilter] = useState('all');
   const [scoreFilter, setScoreFilter] = useState('');
   const [scoreFilterMode, setScoreFilterMode] = useState<'min' | 'exact'>('min');
+  const [autoSubmitFilter, setAutoSubmitFilter] = useState<'all' | 'auto_only'>('all');
   const [slotFilter, setSlotFilter] = useState('all');
   const [slotSchedules, setSlotSchedules] = useState<
     Array<{
@@ -169,6 +174,9 @@ export default function UsersManagementPage() {
         completed_count: u.completed_count ?? 0,
         best_score: u.best_score ?? 0,
         avg_score: u.avg_score ?? 0,
+        auto_submit_count: u.auto_submit_count ?? 0,
+        has_auto_submit: u.has_auto_submit ?? false,
+        last_auto_submit_at: u.last_auto_submit_at ?? null,
       })) as AdminStudentRow[],
     );
   };
@@ -390,13 +398,46 @@ export default function UsersManagementPage() {
 
     if (slotFilter !== 'all' && !userInSlotRoster(user, slotUserIds, slotRosterRolls)) return false;
 
+    if (autoSubmitFilter === 'auto_only' && !user.has_auto_submit) return false;
+
     return matchesScoreFilter(user, scoreFilter, scoreFilterMode);
   });
 
   const scoreFilterActive = scoreFilter.trim().length > 0;
   const slotFilterActive = slotFilter !== 'all';
+  const autoSubmitFilterActive = autoSubmitFilter === 'auto_only';
+  const autoSubmitTotal = users.filter((u) => u.has_auto_submit).length;
 
   const activePortalSessions = users.filter((u) => u.portal_session?.active).length;
+
+  const exportFilterLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (autoSubmitFilterActive) parts.push('auto-submit');
+    if (slotFilterActive && slotRosterMeta) parts.push(slotRosterMeta.label);
+    if (yearFilter !== 'all') parts.push(`year-${yearFilter}`);
+    if (scoreFilterActive) parts.push(`score-${scoreFilter.trim()}`);
+    return parts.join('-') || 'filtered';
+  }, [autoSubmitFilterActive, slotFilterActive, slotRosterMeta, yearFilter, scoreFilterActive, scoreFilter]);
+
+  const handleDownloadFilteredExcel = () => {
+    if (!filteredUsers.length) return;
+    downloadFilteredUsersExcel(
+      filteredUsers.map((u) => ({
+        full_name: u.full_name ?? null,
+        roll_number: u.roll_number ?? null,
+        branch: u.branch ?? null,
+        academic_year: u.academic_year ?? null,
+        email: u.email,
+        auto_submit_count: u.auto_submit_count,
+        has_auto_submit: u.has_auto_submit,
+        last_auto_submit_at: u.last_auto_submit_at,
+        best_score: u.best_score,
+        avg_score: u.avg_score,
+        attempt_count: u.attempt_count,
+      })),
+      exportFilterLabel,
+    );
+  };
 
   const getAttemptQuestions = async (
     db: DbServiceClient,
@@ -644,7 +685,7 @@ export default function UsersManagementPage() {
     <div className="w-full min-w-0">
       <AdminPageHeader
         title="Users"
-        description="Filter by year, score, or exam schedule slot. Bulk-delete a slot to let students register again and re-attempt."
+        description="Filter by year, score, exam slot, or auto-submitted exams. Bulk-delete a slot to let students re-attempt."
       />
       <div>
         {/* Stats */}
@@ -668,13 +709,13 @@ export default function UsersManagementPage() {
             </p>
           </Card>
           <Card className="p-6">
-            <p className="text-gray-600 text-sm font-medium mb-2">With Phone Number</p>
-            <p className="text-4xl font-bold text-orange-600">{users.filter((u) => !!u.phone).length}</p>
+            <p className="text-gray-600 text-sm font-medium mb-2">Auto-submitted</p>
+            <p className="text-4xl font-bold text-red-600">{autoSubmitTotal}</p>
           </Card>
         </div>
 
         {/* Filters */}
-        <div className="mb-4 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_11rem] lg:items-end">
+        <div className="mb-4 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_11rem_12rem] lg:items-end">
           <Input
             placeholder="Search roll, email, or name..."
             value={searchTerm}
@@ -720,6 +761,17 @@ export default function UsersManagementPage() {
               ))}
             </select>
           </div>
+          <div className="w-full min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Auto-submit</label>
+            <select
+              className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
+              value={autoSubmitFilter}
+              onChange={(e) => setAutoSubmitFilter(e.target.value as 'all' | 'auto_only')}
+            >
+              <option value="all">All students</option>
+              <option value="auto_only">Auto-submitted only</option>
+            </select>
+          </div>
         </div>
 
         <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
@@ -749,20 +801,31 @@ export default function UsersManagementPage() {
               </p>
             ) : null}
           </div>
-          {isAdmin && filteredUsers.length > 0 ? (
-            <Button
-              variant="outline"
-              className="w-full lg:w-auto border-red-300 text-red-700 hover:bg-red-50 shrink-0"
-              disabled={bulkDeleteBusy || Boolean(deleteLoadingUserId) || slotRosterLoading}
-              onClick={() => void handleBulkDeleteFiltered()}
-            >
-              {bulkDeleteBusy
-                ? 'Deleting…'
-                : slotFilterActive
-                  ? `Delete slot (${filteredUsers.length})`
-                  : `Delete (${filteredUsers.length})`}
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap gap-2 w-full lg:w-auto shrink-0 justify-end">
+            {filteredUsers.length > 0 ? (
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={handleDownloadFilteredExcel}
+              >
+                Download Excel ({filteredUsers.length})
+              </Button>
+            ) : null}
+            {isAdmin && filteredUsers.length > 0 ? (
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto border-red-300 text-red-700 hover:bg-red-50"
+                disabled={bulkDeleteBusy || Boolean(deleteLoadingUserId) || slotRosterLoading}
+                onClick={() => void handleBulkDeleteFiltered()}
+              >
+                {bulkDeleteBusy
+                  ? 'Deleting…'
+                  : slotFilterActive
+                    ? `Delete slot (${filteredUsers.length})`
+                    : `Delete (${filteredUsers.length})`}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {/* Mobile list — no horizontal scroll */}
@@ -800,7 +863,21 @@ export default function UsersManagementPage() {
                         Attempts: {user.attempt_count ?? 0}
                       </p>
                     )}
+                    {user.has_auto_submit ? (
+                      <p className="text-xs text-red-700 mt-1 font-medium">
+                        Auto-submitted: {user.auto_submit_count ?? 1}
+                        {user.last_auto_submit_at
+                          ? ` · ${new Date(user.last_auto_submit_at).toLocaleDateString()}`
+                          : ''}
+                      </p>
+                    ) : null}
                   </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                  {user.has_auto_submit ? (
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-800">
+                      Auto-submit
+                    </span>
+                  ) : null}
                   {user.portal_session?.active ? (
                     <span
                       className="shrink-0 inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800"
@@ -817,6 +894,7 @@ export default function UsersManagementPage() {
                       Offline
                     </span>
                   )}
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
@@ -915,6 +993,7 @@ export default function UsersManagementPage() {
                         : '—'}
                     </td>
                     <td className="py-2.5 px-3 text-sm">
+                      <div className="flex flex-col gap-1">
                       {user.portal_session?.active ? (
                         <span
                           className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
@@ -931,6 +1010,19 @@ export default function UsersManagementPage() {
                           Offline
                         </span>
                       )}
+                      {user.has_auto_submit ? (
+                        <span
+                          className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"
+                          title={
+                            user.last_auto_submit_at
+                              ? `Last auto-submit ${new Date(user.last_auto_submit_at).toLocaleString()}`
+                              : undefined
+                          }
+                        >
+                          Auto-submit ({user.auto_submit_count ?? 1})
+                        </span>
+                      ) : null}
+                      </div>
                     </td>
                     <td className="py-2.5 px-3 text-sm">
                       <div className="flex flex-wrap gap-1.5">
@@ -985,6 +1077,7 @@ export default function UsersManagementPage() {
           {scoreFilterActive
             ? ` · score ${scoreFilterMode === 'exact' ? '=' : '≥'} ${scoreFilter.trim()}% (best)`
             : ''}
+          {autoSubmitFilterActive ? ' · auto-submitted only' : ''}
         </p>
       </div>
 

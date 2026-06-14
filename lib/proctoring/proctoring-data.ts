@@ -75,6 +75,7 @@ function rowsFromAttempt(
   const rows: ProctorViolationRow[] = [];
 
   if (parsed?.violations.length) {
+    const attemptTotal = parsed.violationCount || parsed.violations.length;
     for (const v of parsed.violations) {
       rows.push({
         id: `attempt-${attemptId}-${v.type}-${v.at}`,
@@ -82,7 +83,12 @@ function rowsFromAttempt(
         test_id: testId,
         attempt_id: attemptId,
         violation_type: v.type,
-        metadata: { at: v.at, sessionId: parsed.sessionId ?? sessionId },
+        metadata: {
+          at: v.at,
+          sessionId: parsed.sessionId ?? sessionId,
+          violationCount: 1,
+          attemptViolationTotal: attemptTotal,
+        },
         created_at: v.at || completedAt,
         source: 'test_attempt',
       });
