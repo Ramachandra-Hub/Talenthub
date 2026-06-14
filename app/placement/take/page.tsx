@@ -46,7 +46,6 @@ import { PlacementMcqRunner } from '@/components/placement/placement-mcq-runner'
 import { PlacementTechnicalSection } from '@/components/placement/placement-technical-section';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
-import { useExamSlotWindowWatch } from '@/hooks/use-exam-slot-window-watch';
 import { getExamViolations, mergeExamViolations } from '@/lib/exam-v2/proctoring';
 import type { ProctorSummary } from '@/lib/exam-v2/proctoring-config';
 
@@ -98,9 +97,7 @@ export default function PlacementTakePage() {
   const liveAttemptIdRef = useRef('');
   const progressInFlightRef = useRef(false);
   const proctorSessionIdRef = useRef('');
-  const handleSubmitRef = useRef<(reason: 'manual' | 'timeout' | 'slot_closed') => Promise<void>>(
-    async () => {},
-  );
+  const handleSubmitRef = useRef<(reason: 'manual' | 'timeout') => Promise<void>>(async () => {});
   const proctorVideoRef = useRef<HTMLVideoElement>(null);
   const proctorSummaryRef = useRef<ProctorSummary | null>(null);
   const sessionRef = useRef<PlacementSession | null>(null);
@@ -345,7 +342,7 @@ export default function PlacementTakePage() {
   }, []);
 
   const handleSubmit = useCallback(
-    async (reason: 'manual' | 'timeout' | 'slot_closed') => {
+    async (reason: 'manual' | 'timeout') => {
       if (!session || submitGuardRef.current) return;
       submitGuardRef.current = true;
       setSubmitting(true);
@@ -359,21 +356,11 @@ export default function PlacementTakePage() {
         const isProctorAuto =
           reason === 'timeout' && Boolean(proctorSummaryRef.current);
         const testName = `ElevateX · ${dept?.name ?? 'Department'}${
-          isProctorAuto
-            ? ' (auto-submit)'
-            : reason === 'slot_closed'
-              ? ' (slot closed)'
-              : reason === 'timeout'
-                ? ' (time up)'
-                : ''
+          isProctorAuto ? ' (auto-submit)' : reason === 'timeout' ? ' (time up)' : ''
         }`;
 
         const submitReason =
-          reason === 'timeout' && proctorSummaryRef.current
-            ? 'proctor_violations'
-            : reason === 'slot_closed'
-              ? 'slot_closed'
-              : reason;
+          reason === 'timeout' && proctorSummaryRef.current ? 'proctor_violations' : reason;
         const proctorSummary =
           proctorSummaryRef.current ??
           (proctorActive
@@ -491,14 +478,6 @@ export default function PlacementTakePage() {
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
-
-  useExamSlotWindowWatch({
-    testId: elevateXTestId,
-    enabled: Boolean(session) && hydrated && !session?.submitted && !submitting && !blocked,
-    onSlotClosed: () => {
-      void handleSubmitRef.current('slot_closed').catch(() => undefined);
-    },
-  });
 
   useEffect(() => {
     if (!submitOnLoad || !session) return;

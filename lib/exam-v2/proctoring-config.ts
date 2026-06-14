@@ -22,7 +22,7 @@ export const PROCTOR_SUSPICIOUS_DEBOUNCE_MS = 12000;
 /** Batch violation ingest to reduce HTTP chatter (still low volume per student). */
 export const PROCTOR_INGEST_FLUSH_MS = 2000;
 
-export type ProctorSubmitReason = 'manual' | 'timeout' | 'proctor_violations' | 'slot_closed';
+export type ProctorSubmitReason = 'manual' | 'timeout' | 'proctor_violations';
 
 export type ProctorSummary = {
   sessionId: string;

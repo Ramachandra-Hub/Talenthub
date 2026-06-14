@@ -18,7 +18,6 @@ import { isCodingQuestion } from '@/lib/practice-mappers';
 import { formatScorePercentLabel, roundScorePercent } from '@/lib/format-score';
 import { isSchemaMissingError } from '@/lib/fallback-question-bank';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
-import { useExamSlotWindowWatch } from '@/hooks/use-exam-slot-window-watch';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import type { ProctorSubmitReason, ProctorSummary } from '@/lib/exam-v2/proctoring-config';
 import {
@@ -403,14 +402,6 @@ export default function TestInterface({
       void submitRef.current({ submitReason: 'timeout' });
     }
   }, [timeRemaining, isSubmitted, submitting]);
-
-  useExamSlotWindowWatch({
-    testId: test.id,
-    enabled: fullAccess && !isSubmitted && !submitting,
-    onSlotClosed: () => {
-      void submitRef.current({ submitReason: 'slot_closed' });
-    },
-  });
 
   // Per-question speed clock (psychometric rapid items)
   useEffect(() => {
