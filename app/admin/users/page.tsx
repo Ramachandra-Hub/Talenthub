@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { User, TestAttempt } from '@/lib/types';
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { adaptQuestionRow, answersMatchMcq, extractJoinedQuestion } from '@/lib/practice-mappers';
-import { formatScorePercent, formatScorePercentLabel } from '@/lib/format-score';
+import { formatScorePercent, formatScorePercentLabel, roundScorePercent } from '@/lib/format-score';
 import { formatDbError } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -68,7 +68,30 @@ type AdminStudentRow = User & {
   roll_number?: string | null;
   academic_year?: string | null;
   portal_session?: PortalSessionStatus;
+  attempt_count?: number;
+  completed_count?: number;
+  best_score?: number;
+  avg_score?: number;
 };
+
+function matchesScoreFilter(
+  user: AdminStudentRow,
+  scoreInput: string,
+  mode: 'min' | 'exact',
+): boolean {
+  const raw = scoreInput.trim();
+  if (!raw) return true;
+  const target = Number(raw);
+  if (!Number.isFinite(target)) return true;
+  if (!user.completed_count) return false;
+
+  const best = roundScorePercent(user.best_score ?? 0);
+  const targetRounded = roundScorePercent(target);
+  if (mode === 'exact') {
+    return Math.abs(best - targetRounded) < 0.01;
+  }
+  return best >= targetRounded;
+}
 
 export default function UsersManagementPage() {
   const router = useRouter();
@@ -77,6 +100,8 @@ export default function UsersManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [yearFilter, setYearFilter] = useState('all');
+  const [scoreFilter, setScoreFilter] = useState('');
+  const [scoreFilterMode, setScoreFilterMode] = useState<'min' | 'exact'>('min');
   const [reportLoadingUserId, setReportLoadingUserId] = useState<string | null>(null);
   const [releaseLoadingUserId, setReleaseLoadingUserId] = useState<string | null>(null);
   const [deleteLoadingUserId, setDeleteLoadingUserId] = useState<string | null>(null);
@@ -103,6 +128,10 @@ export default function UsersManagementPage() {
         academic_year: (u as AdminStudentRow & { academic_year?: string }).academic_year ?? null,
         roll_number: u.roll_number ?? null,
         portal_session: u.portal_session ?? { active: false, last_heartbeat: null, locked_at: null },
+        attempt_count: u.attempt_count ?? 0,
+        completed_count: u.completed_count ?? 0,
+        best_score: u.best_score ?? 0,
+        avg_score: u.avg_score ?? 0,
       })) as AdminStudentRow[],
     );
   };
@@ -242,15 +271,21 @@ export default function UsersManagementPage() {
   const filteredUsers = users.filter((user) => {
     const q = searchTerm.toLowerCase();
     const matchesSearch =
+      !q ||
       user.email.toLowerCase().includes(q) ||
       (user.full_name?.toLowerCase().includes(q) ?? false) ||
       (user.roll_number?.toLowerCase().includes(q) ?? false);
     if (!matchesSearch) return false;
 
-    if (yearFilter === 'all') return true;
-    const year = user.academic_year?.trim() ?? '';
-    return year === yearFilter;
+    if (yearFilter !== 'all') {
+      const year = user.academic_year?.trim() ?? '';
+      if (year !== yearFilter) return false;
+    }
+
+    return matchesScoreFilter(user, scoreFilter, scoreFilterMode);
   });
+
+  const scoreFilterActive = scoreFilter.trim().length > 0;
 
   const activePortalSessions = users.filter((u) => u.portal_session?.active).length;
 
@@ -500,7 +535,7 @@ export default function UsersManagementPage() {
     <div className="w-full min-w-0">
       <AdminPageHeader
         title="Users"
-        description="Filter students by year, view reports, force logout, or permanently delete accounts."
+        description="Filter students by year and exam score, view reports, force logout, or permanently delete accounts."
       />
       <div>
         {/* Stats */}
@@ -530,13 +565,37 @@ export default function UsersManagementPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_11rem_auto] lg:items-end">
+        <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_11rem_auto] lg:items-end">
           <Input
             placeholder="Search roll, email, or name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full min-w-0"
           />
+          <div className="w-full min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Score (%)</label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={0.01}
+              placeholder="e.g. 60"
+              value={scoreFilter}
+              onChange={(e) => setScoreFilter(e.target.value)}
+              className="w-full min-w-0"
+            />
+          </div>
+          <div className="w-full min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Score match</label>
+            <select
+              className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
+              value={scoreFilterMode}
+              onChange={(e) => setScoreFilterMode(e.target.value as 'min' | 'exact')}
+            >
+              <option value="min">At least</option>
+              <option value="exact">Exact best</option>
+            </select>
+          </div>
           <div className="w-full min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Academic year</label>
             <select
@@ -582,6 +641,23 @@ export default function UsersManagementPage() {
                       {new Date(user.created_at).toLocaleDateString()}
                       {user.phone ? ` · ${user.phone}` : ''}
                     </p>
+                    {(scoreFilterActive || (user.completed_count ?? 0) > 0) && (
+                      <p className="text-xs text-gray-700 mt-1.5">
+                        Best:{' '}
+                        <span className="font-semibold text-[#1e3a5f]">
+                          {(user.completed_count ?? 0) > 0
+                            ? formatScorePercentLabel(user.best_score)
+                            : '—'}
+                        </span>
+                        {' · '}
+                        Avg:{' '}
+                        {(user.completed_count ?? 0) > 0
+                          ? formatScorePercentLabel(user.avg_score)
+                          : '—'}
+                        {' · '}
+                        Attempts: {user.completed_count ?? 0}
+                      </p>
+                    )}
                   </div>
                   {user.portal_session?.active ? (
                     <span
@@ -646,17 +722,21 @@ export default function UsersManagementPage() {
         <Card className="hidden md:block overflow-hidden">
           <table className="admin-table">
             <colgroup>
-              <col className="w-[9%]" />
-              <col className="w-[32%]" />
-              <col className="w-[9%]" />
-              <col className="w-[14%]" />
-              <col className="w-[36%]" />
+              <col className="w-[8%]" />
+              <col className="w-[26%]" />
+              <col className="w-[8%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[28%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Roll</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Student</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Year</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Best</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Avg</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Session</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-700">Actions</th>
               </tr>
@@ -664,7 +744,7 @@ export default function UsersManagementPage() {
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                  <td colSpan={7} className="text-center py-8 text-gray-500">
                     No users found
                   </td>
                 </tr>
@@ -682,6 +762,16 @@ export default function UsersManagementPage() {
                       </p>
                     </td>
                     <td className="py-2.5 px-3 text-sm text-gray-600">{user.academic_year || '—'}</td>
+                    <td className="py-2.5 px-3 text-sm font-medium text-[#1e3a5f]">
+                      {(user.completed_count ?? 0) > 0
+                        ? formatScorePercentLabel(user.best_score)
+                        : '—'}
+                    </td>
+                    <td className="py-2.5 px-3 text-sm text-gray-700">
+                      {(user.completed_count ?? 0) > 0
+                        ? formatScorePercentLabel(user.avg_score)
+                        : '—'}
+                    </td>
                     <td className="py-2.5 px-3 text-sm">
                       {user.portal_session?.active ? (
                         <span
@@ -749,6 +839,9 @@ export default function UsersManagementPage() {
         <p className="text-sm text-gray-600 mt-4">
           Showing {filteredUsers.length} of {users.length} users
           {yearFilter !== 'all' ? ` · year: ${yearFilter}` : ''}
+          {scoreFilterActive
+            ? ` · score ${scoreFilterMode === 'exact' ? '=' : '≥'} ${scoreFilter.trim()}% (best)`
+            : ''}
         </p>
       </div>
 

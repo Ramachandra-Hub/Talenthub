@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getStudentPortalSessionMap } from '@/lib/admin/student-portal-session-admin';
+import { loadStudentScoreStatsMap } from '@/lib/admin/user-score-stats';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/server-auth';
 
@@ -20,6 +21,10 @@ export type AdminUserRow = {
     last_heartbeat: string | null;
     locked_at: string | null;
   };
+  attempt_count?: number;
+  completed_count?: number;
+  best_score?: number;
+  avg_score?: number;
 };
 
 export async function GET() {
@@ -52,10 +57,14 @@ export async function GET() {
     const studentIds = studentRows
       .filter((u) => (u.userRole ?? 'student') !== 'faculty')
       .map((u) => u.id);
-    const sessionMap = await getStudentPortalSessionMap(studentIds);
+    const [sessionMap, scoreStatsMap] = await Promise.all([
+      getStudentPortalSessionMap(studentIds),
+      loadStudentScoreStatsMap(studentIds),
+    ]);
 
     const users: AdminUserRow[] = studentRows.map((u) => {
       const session = sessionMap.get(u.id);
+      const scores = scoreStatsMap.get(u.id);
       return {
         id: u.id,
         email: u.email,
@@ -70,6 +79,10 @@ export async function GET() {
           last_heartbeat: session?.last_heartbeat ?? null,
           locked_at: session?.locked_at ?? null,
         },
+        attempt_count: scores?.attempt_count ?? 0,
+        completed_count: scores?.completed_count ?? 0,
+        best_score: scores?.best_score ?? 0,
+        avg_score: scores?.avg_score ?? 0,
       };
     });
 
