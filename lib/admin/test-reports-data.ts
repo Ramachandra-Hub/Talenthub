@@ -78,6 +78,7 @@ export type TestReportsPayload = {
     id: string;
     title: string;
     slot_number: number | null;
+    attempt_round?: number;
     starts_at: string;
     ends_at: string | null;
   };
@@ -221,6 +222,7 @@ export async function loadTestReportsPayload(
         id: loaded.schedule.id,
         title: loaded.schedule.title,
         slot_number: slotNumber,
+        attempt_round: loaded.schedule.attempt_round ?? 1,
         starts_at: loaded.schedule.starts_at,
         ends_at: loaded.schedule.ends_at,
       };

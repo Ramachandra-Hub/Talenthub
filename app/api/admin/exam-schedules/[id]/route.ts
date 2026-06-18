@@ -5,6 +5,7 @@ import { examSchedulesMigrationHint } from '@/lib/db-migration-hints';
 import { goLiveExamScheduleNow } from '@/lib/exam-schedule-slots';
 import { goLiveElevateXSlot } from '@/lib/elevatex-admin';
 import { isElevateXTestId } from '@/lib/elevatex';
+import { openNextAttemptRoundForSchedule } from '@/lib/admin/open-attempt-round';
 import { deleteExamScheduleById } from '@/lib/delete-faculty-exam';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
@@ -24,6 +25,7 @@ function mapPrismaSchedule(row: {
   targetDepartments: unknown;
   targetYears: unknown;
   slotNumber: number | null;
+  attemptRound: number;
   slotCapacity: number | null;
   createdBy: string | null;
   createdAt: Date;
@@ -44,6 +46,7 @@ function mapPrismaSchedule(row: {
       : [],
     target_years: Array.isArray(row.targetYears) ? (row.targetYears as string[]) : [],
     slot_number: row.slotNumber,
+    attempt_round: row.attemptRound ?? 1,
     slot_capacity: row.slotCapacity,
     created_by: row.createdBy,
     created_at: row.createdAt.toISOString(),
@@ -96,6 +99,28 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       console.error('[exam-schedules PATCH go_live]', err);
       return NextResponse.json(
         { error: err instanceof Error ? err.message : 'Could not go live' },
+        { status: 400 },
+      );
+    }
+  } else if (action === 'open_next_attempt') {
+    try {
+      const result = await openNextAttemptRoundForSchedule({
+        scheduleId: id,
+        adminUserId: auth.ctx.user.id,
+        startsAt: typeof body.startsAt === 'string' ? body.startsAt : undefined,
+        endsAt:
+          body.endsAt === null
+            ? null
+            : typeof body.endsAt === 'string'
+              ? body.endsAt
+              : undefined,
+        goLiveNow: Boolean(body.goLiveNow),
+      });
+      return NextResponse.json(result);
+    } catch (err) {
+      console.error('[exam-schedules PATCH open_next_attempt]', err);
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Could not open next attempt round' },
         { status: 400 },
       );
     }

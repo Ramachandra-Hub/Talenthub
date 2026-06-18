@@ -11,6 +11,7 @@ import {
 } from '@/lib/db/test-attempts-prisma';
 import { assertStudentCanReportProgressPrisma } from '@/lib/db/exam-access-prisma';
 import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
+import { findCompletedAttemptForSchedulePrisma } from '@/lib/exam-attempt-round';
 import { isElevateXTestId } from '@/lib/elevatex';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { rateLimitInMemory } from '@/lib/rate-limit';
@@ -63,6 +64,15 @@ export async function POST(request: Request) {
     }
 
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : '';
+    const scheduleId = typeof body.scheduleId === 'string' ? body.scheduleId.trim() : '';
+    const slotNumber =
+      body.slotNumber != null && Number.isFinite(Number(body.slotNumber))
+        ? Math.floor(Number(body.slotNumber))
+        : null;
+    const attemptRound =
+      body.attemptRound != null && Number.isFinite(Number(body.attemptRound))
+        ? Math.floor(Number(body.attemptRound))
+        : null;
     attemptIdForFallback = attemptId;
     const nowIso = new Date().toISOString();
     const startedAtIso =
@@ -203,7 +213,30 @@ export async function POST(request: Request) {
       void syncStudentRollNumberPrisma(userId, accessRollNumber).catch(() => {});
     }
 
-    if (isElevateXTestId(testId)) {
+    const resolvedScheduleId =
+      scheduleId || (access.schedule?.id ? String(access.schedule.id) : '');
+    const resolvedSlotNumber =
+      slotNumber ??
+      (access.schedule?.slot_number != null ? Number(access.schedule.slot_number) : null);
+    const resolvedAttemptRound =
+      attemptRound ??
+      (access.schedule?.attempt_round != null ? Number(access.schedule.attempt_round) : null);
+
+    if (resolvedScheduleId) {
+      const prior = await findCompletedAttemptForSchedulePrisma(userId, resolvedScheduleId);
+      if (prior) {
+        return NextResponse.json(
+          {
+            error:
+              'You have already submitted this exam sitting. Wait for the next attempt round if your college opens one.',
+            attemptId: prior.id,
+            priorAttempt: prior,
+            locked: true,
+          },
+          { status: 409 },
+        );
+      }
+    } else if (isElevateXTestId(testId)) {
       const prior = await findCompletedElevateXAttempt({
         userId,
         rollNumber: accessRollNumber,
@@ -221,11 +254,11 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      const prior = await findCompletedAttemptForTestPrisma(userId, testId);
+      const prior = await findCompletedAttemptForTestPrisma(userId, testId, scheduleId || undefined);
       if (prior) {
         return NextResponse.json(
           {
-            error: 'You have already submitted this test and cannot take it again.',
+            error: 'You have already submitted this exam sitting and cannot take it again.',
             attemptId: prior.id,
             priorAttempt: prior,
             locked: true,
@@ -247,6 +280,9 @@ export async function POST(request: Request) {
         startedAtIso,
         proctorSessionId: proctorSessionId || undefined,
         proctorViolationCount,
+        scheduleId: resolvedScheduleId || undefined,
+        slotNumber: resolvedSlotNumber,
+        attemptRound: resolvedAttemptRound,
       }),
     );
 

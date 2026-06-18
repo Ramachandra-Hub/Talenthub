@@ -24,6 +24,7 @@ function mapPrismaSchedule(row: {
   targetDepartments: unknown;
   targetYears: unknown;
   slotNumber: number | null;
+  attemptRound: number;
   slotCapacity: number | null;
   createdBy: string | null;
   createdAt: Date;
@@ -44,6 +45,7 @@ function mapPrismaSchedule(row: {
       : [],
     target_years: Array.isArray(row.targetYears) ? (row.targetYears as string[]) : [],
     slot_number: row.slotNumber,
+    attempt_round: row.attemptRound ?? 1,
     slot_capacity: row.slotCapacity,
     created_by: row.createdBy,
     created_at: row.createdAt.toISOString(),
@@ -65,7 +67,7 @@ export async function GET() {
   const { data: schedules, error: schedulesError } = await admin
     .from('exam_schedules')
     .select(
-      'id, title, description, notice, faculty_exam_request_id, test_id, status, starts_at, ends_at, target_departments, target_years, slot_number, slot_capacity, created_by, created_at, updated_at',
+      'id, title, description, notice, faculty_exam_request_id, test_id, status, starts_at, ends_at, target_departments, target_years, slot_number, attempt_round, slot_capacity, created_by, created_at, updated_at',
     )
     .order('starts_at', { ascending: false });
 

@@ -26,6 +26,7 @@ type Props = {
   groupDepartmentNames?: string[];
   groupLabel?: string | null;
   onSaved?: () => void;
+  onFormatsChange?: (formats: ElevateXTechnicalFormatsMap) => void;
 };
 
 export function ElevateXTechnicalFormatPanel({
@@ -34,6 +35,7 @@ export function ElevateXTechnicalFormatPanel({
   groupDepartmentNames = [],
   groupLabel,
   onSaved,
+  onFormatsChange,
 }: Props) {
   const [formats, setFormats] = useState<ElevateXTechnicalFormatsMap>(() =>
     normalizeElevateXTechnicalFormats(initialFormats),
@@ -60,6 +62,10 @@ export function ElevateXTechnicalFormatPanel({
   useEffect(() => {
     setFormats(normalizeElevateXTechnicalFormats(initialFormats));
   }, [initialFormats]);
+
+  useEffect(() => {
+    onFormatsChange?.(formats);
+  }, [formats, onFormatsChange]);
 
   const setDeptFormat = (deptId: string, fmt: PlacementTechnicalFormat) => {
     setFormats((prev) => ({ ...prev, [deptId]: fmt }));
@@ -184,32 +190,34 @@ export function ElevateXTechnicalFormatPanel({
             ))}
           </div>
         </div>
-      ) : (
-        <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-          <p className="text-xs text-slate-600">
-            Select a <strong>Department group</strong> above to apply MCQ/coding/both to that group in
-            one click. Or set each branch below.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {FORMAT_OPTIONS.map((opt) => (
-              <Button
-                key={opt}
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  applyFormatToDeptIds(
-                    PLACEMENT_DEPARTMENTS.map((d) => d.id),
-                    opt,
-                  )
-                }
-              >
-                All branches → {technicalFormatButtonLabel(opt)}
-              </Button>
-            ))}
-          </div>
+      ) : null}
+
+      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+        <p className="text-xs text-slate-600">
+          {hasGroupFilter
+            ? 'Apply the same format to every ElevateX branch (EEE, ECE, Civil, etc.), not only the selected group.'
+            : 'Select a department group above to apply MCQ/coding to that group in one click. Or set each branch below.'}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {FORMAT_OPTIONS.map((opt) => (
+            <Button
+              key={opt}
+              type="button"
+              size="sm"
+              variant={opt === 'coding' ? 'default' : 'outline'}
+              className={opt === 'coding' ? 'bg-[#1e3a5f] hover:bg-[#16304f]' : ''}
+              onClick={() =>
+                applyFormatToDeptIds(
+                  PLACEMENT_DEPARTMENTS.map((d) => d.id),
+                  opt,
+                )
+              }
+            >
+              All branches → {technicalFormatButtonLabel(opt)}
+            </Button>
+          ))}
         </div>
-      )}
+      </div>
 
       <div className="space-y-3 max-h-[min(28rem,55vh)] overflow-y-auto pr-1">
         {list ? (

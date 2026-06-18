@@ -217,6 +217,7 @@ model TestAttempt {
   proctorMetadata Json?     @map("proctor_metadata")
   scheduleId      String?   @map("schedule_id") @db.Uuid
   slotNumber      Int?      @map("slot_number")
+  attemptRound    Int?      @default(1) @map("attempt_round")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -242,6 +243,7 @@ model ExamSchedule {
   targetDepartments   Json?     @default("[]") @map("target_departments")
   targetYears         Json?     @default("[]") @map("target_years")
   slotNumber          Int?      @map("slot_number")
+  attemptRound        Int       @default(1) @map("attempt_round")
   slotCapacity        Int?      @default(130) @map("slot_capacity")
   createdBy           String?   @map("created_by") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at")

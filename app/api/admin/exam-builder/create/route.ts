@@ -19,6 +19,11 @@ import {
   scheduleWindowFromConfiguredSlots,
 } from '@/lib/exam-schedule-slots';
 import { syncElevateXEvaloraModuleFromSchedule } from '@/lib/elevatex-admin';
+import {
+  mergeElevateXTechnicalFormats,
+  serializeElevateXTechnicalConfig,
+  type ElevateXTechnicalFormatsMap,
+} from '@/lib/placement/elevatex-technical-config';
 
 /** Publishing + roster provision can exceed the default 10s on Vercel. */
 export const maxDuration = 120;
@@ -121,6 +126,14 @@ export async function POST(request: NextRequest) {
       ? primaryDepartment
       : DEPARTMENTS[0];
 
+  const elevateXTechnicalFormats = isElevateX
+    ? mergeElevateXTechnicalFormats(
+        body.technicalFormats && typeof body.technicalFormats === 'object'
+          ? (body.technicalFormats as ElevateXTechnicalFormatsMap)
+          : null,
+      )
+    : null;
+
   try {
     const result = await createFacultyExamRequestRecord(admin, {
       creatorUserId: auth.ctx.user.id,
@@ -130,7 +143,9 @@ export async function POST(request: NextRequest) {
         typeof body.description === 'string'
           ? body.description
           : `${def.name} · ${slotKey}`,
-      topic: def.name,
+      topic: isElevateX
+        ? serializeElevateXTechnicalConfig(elevateXTechnicalFormats!)
+        : def.name,
       targetYears,
       extraBranches,
       departmentGroupId,

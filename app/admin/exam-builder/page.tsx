@@ -20,6 +20,8 @@ import {
 } from '@/components/exam-builder/exam-slot-schedule-panel';
 import { McqUploadFormatGuide } from '@/components/exam-builder/mcq-upload-format-guide';
 import { ElevateXTechnicalFormatSection } from '@/components/admin/elevatex-technical-format-section';
+import { defaultElevateXTechnicalFormats } from '@/lib/placement/elevatex-technical-config';
+import type { ElevateXTechnicalFormatsMap } from '@/lib/placement/elevatex-technical-config';
 import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
 import { getExamBuilderTestType } from '@/lib/exam-builder/test-catalog';
 import { isElevateXBuilderTestType } from '@/lib/exam-builder/elevatex-exam';
@@ -64,6 +66,9 @@ export default function AdminExamBuilderPage() {
   const [manualPaste, setManualPaste] = useState('');
   const [parsingManual, setParsingManual] = useState(false);
   const [departmentGroups, setDepartmentGroups] = useState<DepartmentGroupOption[]>([]);
+  const [technicalFormats, setTechnicalFormats] = useState<ElevateXTechnicalFormatsMap>(() =>
+    defaultElevateXTechnicalFormats(),
+  );
 
   useEffect(() => {
     void fetch('/api/department-groups', { credentials: 'include' })
@@ -208,6 +213,7 @@ export default function AdminExamBuilderPage() {
           usesSlotScheduling: isElevateX || usesSlotScheduling,
           scheduleSlots: isElevateX || usesSlotScheduling ? scheduleSlots : undefined,
           questions: questions.length ? questions : undefined,
+          technicalFormats: isElevateX ? technicalFormats : undefined,
         }),
       });
       const json = (await res.json()) as {
@@ -402,6 +408,7 @@ export default function AdminExamBuilderPage() {
           <ElevateXTechnicalFormatSection
             groupDepartmentNames={selectedDepartmentGroup?.departments ?? []}
             groupLabel={selectedDepartmentGroup?.name ?? null}
+            onFormatsChange={setTechnicalFormats}
           />
         ) : null}
 

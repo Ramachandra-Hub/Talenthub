@@ -53,6 +53,8 @@ import {
   isDepartmentExamTest,
 } from '@/lib/programming-dashboard';
 
+import type { ExamScheduleRow } from '@/lib/exam-schedule';
+
 interface TestInterfaceProps {
   test: Test;
   questions: Question[];
@@ -61,6 +63,7 @@ interface TestInterfaceProps {
   examSections?: TestSectionConfig[];
   proctorEnabled?: boolean;
   proctorSessionId?: string;
+  examSchedule?: ExamScheduleRow | null;
 }
 
 export default function TestInterface({
@@ -70,6 +73,7 @@ export default function TestInterface({
   examSections = [],
   proctorEnabled = false,
   proctorSessionId = '',
+  examSchedule = null,
 }: TestInterfaceProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -114,6 +118,18 @@ export default function TestInterface({
 
   const proctorActive = fullAccess && proctorEnabled && Boolean(proctorSessionId);
   const useClientScoring = test.id.startsWith('fallback-');
+
+  const schedulePayload = useMemo(
+    () =>
+      examSchedule?.id
+        ? {
+            scheduleId: examSchedule.id,
+            slotNumber: examSchedule.slot_number ?? null,
+            attemptRound: examSchedule.attempt_round ?? 1,
+          }
+        : {},
+    [examSchedule],
+  );
 
   const {
     violationCount,
@@ -246,6 +262,7 @@ export default function TestInterface({
             elapsedSec: Math.max(0, test.duration * 60 - snap.timeRemaining),
             attemptId: liveAttemptIdRef.current,
             startedAtIso,
+            ...schedulePayload,
           }),
         });
         if (!res.ok) return;
@@ -331,6 +348,7 @@ export default function TestInterface({
                 snap.startedAtMs && snap.startedAtMs > 0
                   ? new Date(snap.startedAtMs).toISOString()
                   : new Date().toISOString(),
+              ...schedulePayload,
             }),
           });
           if (!res.ok) return;
@@ -611,6 +629,7 @@ export default function TestInterface({
             proctorViolations: proctorSummary?.violationCount ?? 0,
             proctorAutoSubmit: proctorSummary?.autoSubmitted ?? false,
             submitReason,
+            ...schedulePayload,
           }),
         }),
       );

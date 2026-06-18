@@ -124,7 +124,27 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
           state.kind !== 'technical' ||
           !state.coding?.problems?.length ||
           codingCasesMissing);
-      if (!needsMcq && !needsCoding && state?.kind === 'technical') continue;
+      const formatMismatch =
+        state?.kind === 'technical' && state.format !== format;
+      const wrongPools =
+        state?.kind === 'technical' &&
+        ((format === 'coding' &&
+          !needsCoding &&
+          Boolean(state.mcq?.questions?.length) &&
+          !state.coding?.problems?.length) ||
+          (format === 'mcq' &&
+            !needsMcq &&
+            Boolean(state.coding?.problems?.length) &&
+            !state.mcq?.questions?.length));
+      if (
+        !needsMcq &&
+        !needsCoding &&
+        state?.kind === 'technical' &&
+        !formatMismatch &&
+        !wrongPools
+      ) {
+        continue;
+      }
 
       sectionStates.technical = buildTechnicalState(format, banks, state);
       changed = true;
@@ -136,11 +156,14 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
     changed = true;
   }
 
-  const candidate = session.candidate.technicalFormat
-    ? session.candidate
-    : { ...session.candidate, technicalFormat: format };
+  const candidate =
+    session.candidate.technicalFormat === format
+      ? session.candidate
+      : { ...session.candidate, technicalFormat: format };
 
-  return changed ? { ...session, candidate, sectionStates } : session;
+  return changed || candidate !== session.candidate
+    ? { ...session, candidate, sectionStates }
+    : session;
 }
 
 export const PLACEMENT_DRAFT_CANDIDATE_KEY = 'placement:candidate';

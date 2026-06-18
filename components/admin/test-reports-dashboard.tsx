@@ -179,6 +179,7 @@ export function TestReportsDashboard() {
     if (payload?.schedule) {
       return formatScheduleSlotLabel({
         slot_number: payload.schedule.slot_number,
+        attempt_round: payload.schedule.attempt_round ?? 1,
         title: payload.schedule.title,
         starts_at: payload.schedule.starts_at,
         ends_at: payload.schedule.ends_at,

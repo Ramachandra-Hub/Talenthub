@@ -35,7 +35,7 @@ function submitErrorResponse(error: unknown, testId = ''): NextResponse {
       {
         error: isElevateXTestId(testId)
           ? 'You have already submitted ElevateX. Each roll number may attempt this exam only once.'
-          : 'You have already submitted this test and cannot take it again.',
+          : 'You have already submitted this exam sitting and cannot take it again.',
         code: 'already_submitted',
         attemptId: error.attemptId,
       },
@@ -117,6 +117,15 @@ export async function POST(request: Request) {
     const testId = String(body.testId ?? '').trim();
     submittedTestId = testId;
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
+    const scheduleId = typeof body.scheduleId === 'string' ? body.scheduleId.trim() : '';
+    const slotNumber =
+      body.slotNumber != null && Number.isFinite(Number(body.slotNumber))
+        ? Math.floor(Number(body.slotNumber))
+        : null;
+    const attemptRound =
+      body.attemptRound != null && Number.isFinite(Number(body.attemptRound))
+        ? Math.floor(Number(body.attemptRound))
+        : null;
     const clientElapsedSec = Number(body.elapsedSec) || 0;
     const proctorSessionId =
       typeof body.proctorSessionId === 'string' ? body.proctorSessionId : undefined;
@@ -202,6 +211,9 @@ export async function POST(request: Request) {
       proctorSessionId,
       proctorViolations,
       proctorAutoSubmit,
+      scheduleId: scheduleId || undefined,
+      slotNumber,
+      attemptRound,
     });
 
     const id = finalized.id;

@@ -32,6 +32,7 @@ export type ExamScheduleRow = {
   target_departments: string[];
   target_years: string[];
   slot_number?: number | null;
+  attempt_round?: number | null;
   slot_capacity?: number | null;
   created_by: string | null;
   created_at: string;

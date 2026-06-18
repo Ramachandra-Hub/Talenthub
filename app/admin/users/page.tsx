@@ -233,6 +233,7 @@ export default function UsersManagementPage() {
             id: string;
             label: string;
             slot_number: number | null;
+            attempt_round?: number;
             roster_count: number;
           }>;
         };
@@ -259,6 +260,7 @@ export default function UsersManagementPage() {
         return (await res.json()) as {
           schedule_title?: string;
           slot_number?: number | null;
+          attempt_round?: number;
           roster_count?: number;
           matched_user_ids?: string[];
           roster_rolls?: string[];
@@ -268,7 +270,7 @@ export default function UsersManagementPage() {
         if (cancelled || !json) return;
         const label =
           json.slot_number != null
-            ? `${json.schedule_title ?? 'Exam'} · Slot ${json.slot_number}`
+            ? `${json.schedule_title ?? 'Exam'} · Slot ${json.slot_number} · Attempt ${json.attempt_round ?? 1}`
             : (json.schedule_title ?? 'Exam schedule');
         setSlotUserIds(new Set(json.matched_user_ids ?? []));
         setSlotRosterRolls(new Set(json.roster_rolls ?? []));
@@ -712,7 +714,7 @@ export default function UsersManagementPage() {
     <div className="w-full min-w-0">
       <AdminPageHeader
         title="Users"
-        description="Filter by year, score, exam slot, or auto-submitted exams. Bulk-delete a slot to let students re-attempt."
+        description="Filter by slot + attempt round, score, or auto-submitted exams. Open the next attempt round on Exam Schedules instead of deleting students to allow re-attempts."
       />
       <div>
         {/* Stats */}

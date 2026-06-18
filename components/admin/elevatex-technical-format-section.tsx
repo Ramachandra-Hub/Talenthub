@@ -14,6 +14,7 @@ type Props = {
   groupDepartmentNames?: string[];
   groupLabel?: string | null;
   onFormatsSaved?: () => void;
+  onFormatsChange?: (formats: ElevateXTechnicalFormatsMap) => void;
 };
 
 export function ElevateXTechnicalFormatSection({
@@ -21,6 +22,7 @@ export function ElevateXTechnicalFormatSection({
   groupDepartmentNames,
   groupLabel,
   onFormatsSaved,
+  onFormatsChange,
 }: Props) {
   const [requestId, setRequestId] = useState<string | null>(state?.requestId ?? null);
   const [formats, setFormats] = useState<ElevateXTechnicalFormatsMap>(
@@ -63,6 +65,7 @@ export function ElevateXTechnicalFormatSection({
       groupDepartmentNames={groupDepartmentNames}
       groupLabel={groupLabel}
       onSaved={onFormatsSaved}
+      onFormatsChange={onFormatsChange}
     />
   );
 }

@@ -13,6 +13,7 @@ import {
   PLACEMENT_TOTAL_MARKS,
   PLACEMENT_TOTAL_SEC,
   SPEAKING_TASKS,
+  defaultTechnicalFormatForDepartment,
   describeTechnicalSection,
   findDepartment,
 } from '@/lib/placement/config';
@@ -28,6 +29,7 @@ import {
   loadCandidateDraft,
   loadPlacementProctorSessionId,
   loadSession,
+  repairPlacementSession,
   deriveGlobalTimeLeftSec,
   markPlacementCompleted,
   saveScorecardForAttempt,
@@ -175,10 +177,19 @@ export default function PlacementTakePage() {
         return;
       }
 
+      const authoritativeFormat =
+        status.technicalFormat ??
+        loaded.candidate.technicalFormat ??
+        defaultTechnicalFormatForDepartment(loaded.candidate.departmentId);
+      const syncedSession = repairPlacementSession({
+        ...loaded,
+        candidate: { ...loaded.candidate, technicalFormat: authoritativeFormat },
+      });
+
       consumePlacementSessionHandoff();
 
-      if (deriveGlobalTimeLeftSec(loaded) <= 0) {
-        setSession(loaded);
+      if (deriveGlobalTimeLeftSec(syncedSession) <= 0) {
+        setSession(syncedSession);
         setHydrated(true);
         setSubmitOnLoad(true);
         const storedProctor = loadPlacementProctorSessionId();
@@ -190,7 +201,7 @@ export default function PlacementTakePage() {
         return;
       }
 
-      setSession(loaded);
+      setSession(syncedSession);
       setHydrated(true);
       const storedProctor = loadPlacementProctorSessionId();
       if (storedProctor) {

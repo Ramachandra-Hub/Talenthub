@@ -764,6 +764,7 @@ async function createOneSlotSchedule(
         targetYears: input.targetYears as Prisma.InputJsonValue,
         createdBy: input.createdBy,
         slotNumber: input.slot.slot_number,
+        attemptRound: 1,
         slotCapacity: input.slot.capacity,
       },
     });
@@ -786,6 +787,7 @@ async function createOneSlotSchedule(
     created_by: input.createdBy,
     updated_at: new Date().toISOString(),
     slot_number: input.slot.slot_number,
+    attempt_round: 1,
     slot_capacity: input.slot.capacity,
   };
 

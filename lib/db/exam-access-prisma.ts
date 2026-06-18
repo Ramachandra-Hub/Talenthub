@@ -47,6 +47,7 @@ function mapSchedule(row: {
   targetDepartments: unknown;
   targetYears: unknown;
   slotNumber: number | null;
+  attemptRound?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }): ExamScheduleRow {
@@ -66,6 +67,7 @@ function mapSchedule(row: {
     target_departments: Array.isArray(row.targetDepartments) ? (row.targetDepartments as string[]) : [],
     target_years: Array.isArray(row.targetYears) ? (row.targetYears as string[]) : [],
     slot_number: row.slotNumber,
+    attempt_round: row.attemptRound ?? 1,
     slot_capacity: null,
     created_by: null,
     created_at: row.createdAt.toISOString(),

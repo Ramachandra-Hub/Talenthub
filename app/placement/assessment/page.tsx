@@ -131,10 +131,15 @@ export default function PlacementAssessmentStartPage() {
     void loadStudent();
   }, [loadStudent]);
 
-  const continueToExam = () => {
+  const continueToExam = async () => {
     if (!profile) return;
     clearPlacementDrafts(profile.hallTicket);
-    const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat });
+    const status = await fetchElevateXAttemptStatus(profile.hallTicket);
+    const fmt =
+      status.technicalFormat ??
+      technicalFormat ??
+      defaultTechnicalFormatForDepartment(profile.departmentId);
+    const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat: fmt });
     const session = buildPlacementSession(candidate);
     saveCandidateDraft(candidate);
     saveSession(session);
@@ -151,7 +156,7 @@ export default function PlacementAssessmentStartPage() {
     const proctorId = createProctorSessionId(getElevateXTestId(), authUserId ?? undefined);
     savePlacementProctorSessionId(proctorId);
     setShowProctorGate(false);
-    continueToExam();
+    void continueToExam();
   };
 
   const handleStart = () => {

@@ -385,7 +385,16 @@ export async function saveElevateXTechnicalFormats(
   requestId: string,
   formats: ElevateXTechnicalFormatsMap,
 ): Promise<{ message: string }> {
-  const merged = mergeElevateXTechnicalFormats(formats);
+  const { data: existing } = await admin
+    .from('faculty_exam_requests')
+    .select('topic')
+    .eq('id', requestId)
+    .maybeSingle();
+
+  const merged = mergeElevateXTechnicalFormats({
+    ...parseElevateXTechnicalConfig(existing?.topic as string | null | undefined),
+    ...formats,
+  });
   for (const value of Object.values(merged)) {
     if (value !== 'mcq' && value !== 'coding' && value !== 'both') {
       throw new Error('Invalid technical format in configuration.');
@@ -407,12 +416,22 @@ export async function saveElevateXTechnicalFormats(
   };
 }
 
-/** Resolve format for a student branch from the published ElevateX request (server-authoritative). */
-export async function fetchElevateXTechnicalFormatForDepartment(
+async function fetchLatestElevateXRequestTopic(
   admin: DbServiceClient,
-  departmentId: string,
-): Promise<PlacementTechnicalFormat> {
-  const { data: request } = await admin
+): Promise<string | null | undefined> {
+  const { data: published } = await admin
+    .from('faculty_exam_requests')
+    .select('topic')
+    .eq('test_type', ELEVATEX_BUILDER_TEST_TYPE_ID)
+    .eq('status', 'approved')
+    .not('published_test_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (published?.topic) return published.topic as string;
+
+  const { data: fallback } = await admin
     .from('faculty_exam_requests')
     .select('topic')
     .eq('test_type', ELEVATEX_BUILDER_TEST_TYPE_ID)
@@ -421,9 +440,19 @@ export async function fetchElevateXTechnicalFormatForDepartment(
     .limit(1)
     .maybeSingle();
 
+  return fallback?.topic as string | null | undefined;
+}
+
+/** Resolve format for a student branch from the published ElevateX request (server-authoritative). */
+export async function fetchElevateXTechnicalFormatForDepartment(
+  admin: DbServiceClient,
+  departmentId: string,
+): Promise<PlacementTechnicalFormat> {
+  const topic = await fetchLatestElevateXRequestTopic(admin);
+
   return resolveTechnicalFormatForDepartment(
     departmentId,
-    parseElevateXTechnicalConfig(request?.topic as string | null | undefined),
+    parseElevateXTechnicalConfig(topic),
   );
 }
 

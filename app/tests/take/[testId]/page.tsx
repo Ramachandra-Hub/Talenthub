@@ -33,6 +33,7 @@ import { clearExamDraft } from '@/lib/exam-v2/autosave';
 import { RmsetExamIntro } from '@/components/rmset/rmset-exam-intro';
 import { isRmsetTestCategorySlug } from '@/lib/rmset/student-exam-intro';
 import { getAttemptIndexForUser } from '@/lib/local-test-attempts';
+import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { sanitizeQuestionsForStudent } from '@/lib/questions/sanitize-for-student';
 import { testIdsMatch, type CompletedAttemptSummary } from '@/lib/test-attempts';
 import { getClientUser, isAwsClientMode } from '@/lib/client-auth';
@@ -64,6 +65,7 @@ export default function TakeTestPage({
   const [examSections, setExamSections] = useState<TestSectionConfig[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [priorAttempt, setPriorAttempt] = useState<CompletedAttemptSummary | null>(null);
+  const [examSchedule, setExamSchedule] = useState<ExamScheduleRow | null>(null);
   const [accessLocked, setAccessLocked] = useState<string | null>(null);
 
   useLayoutEffect(() => {
@@ -134,6 +136,7 @@ export default function TakeTestPage({
             locked?: boolean;
             alreadySubmitted?: boolean;
             priorAttempt?: CompletedAttemptSummary | null;
+            schedule?: ExamScheduleRow | null;
           };
           if (res.status === 403 && json.locked) {
             setAccessLocked(
@@ -144,6 +147,9 @@ export default function TakeTestPage({
           }
           if (json.priorAttempt) {
             detectedPrior = json.priorAttempt;
+          }
+          if (json.schedule) {
+            setExamSchedule(json.schedule);
           }
           if (json.test) {
             setTest(json.test);
@@ -302,7 +308,9 @@ export default function TakeTestPage({
         <Card className="p-8 text-center max-w-md">
           <h1 className="text-lg font-semibold text-[#0c2340] mb-2">{test.name}</h1>
           <p className="text-muted-foreground mb-2">
-            You have already submitted this test. Each student may attempt it only once.
+            You have already submitted this exam sitting
+            {examSchedule?.attempt_round ? ` (Attempt ${examSchedule.attempt_round})` : ''}. Each
+            sitting allows one official submission.
           </p>
           <p className="text-sm font-medium text-emerald-800 mb-6">
             Score: {formatScorePercentLabel(priorAttempt.score)}
@@ -464,6 +472,7 @@ export default function TakeTestPage({
         examSections={examSections}
         proctorEnabled={practiceAccess === 'full'}
         proctorSessionId={proctorSessionId}
+        examSchedule={examSchedule}
       />
     </TestProvider>
   );

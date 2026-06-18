@@ -3,6 +3,7 @@ import {
   parseScheduleSlotsJson,
   scheduleSlotNumber,
 } from '@/lib/exam-schedule-slots';
+import { formatSlotAttemptLabel, normalizeAttemptRound } from '@/lib/exam-attempt-round';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { prisma } from '@/lib/prisma';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
@@ -18,6 +19,7 @@ export type SlotRosterResolution = {
   schedule_id: string;
   schedule_title: string;
   slot_number: number | null;
+  attempt_round: number;
   faculty_exam_request_id: string | null;
   roster_count: number;
   matched_user_ids: string[];
@@ -175,6 +177,7 @@ export async function resolveSlotRosterUsers(
       id: true,
       title: true,
       slotNumber: true,
+      attemptRound: true,
       facultyExamRequestId: true,
     },
   });
@@ -205,6 +208,7 @@ export async function resolveSlotRosterUsers(
     schedule_id: schedule.id,
     schedule_title: schedule.title ?? 'Exam schedule',
     slot_number: slotNum,
+    attempt_round: normalizeAttemptRound(schedule.attemptRound),
     faculty_exam_request_id: schedule.facultyExamRequestId,
     roster_count: roster.length,
     matched_user_ids: [...matchedIds],
@@ -228,6 +232,7 @@ export async function listExamSlotScheduleOptions(): Promise<
     id: string;
     label: string;
     slot_number: number | null;
+    attempt_round: number;
     status: string;
     starts_at: string | null;
     roster_count: number;
@@ -240,6 +245,7 @@ export async function listExamSlotScheduleOptions(): Promise<
       id: true,
       title: true,
       slotNumber: true,
+      attemptRound: true,
       status: true,
       startsAt: true,
       facultyExamRequestId: true,
@@ -260,7 +266,11 @@ export async function listExamSlotScheduleOptions(): Promise<
     )
     .map(({ schedule, count }) => {
       const slotNum = inferSlotNumber(schedule.slotNumber, schedule.title);
-      const slotLabel = slotNum != null ? `Slot ${slotNum}` : 'Schedule';
+      const attemptRound = normalizeAttemptRound(schedule.attemptRound);
+      const slotLabel =
+        slotNum != null
+          ? formatSlotAttemptLabel(slotNum, attemptRound)
+          : formatSlotAttemptLabel(null, attemptRound, schedule.title ?? 'Exam');
       const dateLabel = schedule.startsAt
         ? schedule.startsAt.toLocaleDateString('en-IN', {
             day: '2-digit',
@@ -272,6 +282,7 @@ export async function listExamSlotScheduleOptions(): Promise<
         id: schedule.id,
         label: [schedule.title ?? 'Exam', slotLabel, dateLabel].filter(Boolean).join(' · '),
         slot_number: slotNum,
+        attempt_round: attemptRound,
         status: schedule.status,
         starts_at: schedule.startsAt?.toISOString() ?? null,
         roster_count: count,

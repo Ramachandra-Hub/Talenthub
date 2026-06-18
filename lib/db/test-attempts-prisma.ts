@@ -29,6 +29,11 @@ import {
 } from '@/lib/placement/scorecard-payload';
 import { findCompletedElevateXAttemptForUser } from '@/lib/elevatex/completed-attempt';
 import { isCompletedAttemptStatus } from '@/lib/attempt-status';
+import {
+  findCompletedAttemptForSchedulePrisma,
+  loadScheduleAttemptContext,
+  normalizeAttemptRound,
+} from '@/lib/exam-attempt-round';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 
 function elevateXTitleWhere(): PrismaTypes.TestAttemptWhereInput {
@@ -139,10 +144,16 @@ export async function ensureAttemptConstraintsPrisma(): Promise<void> {
   attemptConstraintGlobal.attemptConstraintsAttempted = true;
   try {
     await prisma.$executeRawUnsafe(`
+      DROP INDEX IF EXISTS test_attempts_one_completed_per_user_test_idx;
+      CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_schedule_idx
+      ON test_attempts (user_id, schedule_id)
+      WHERE schedule_id IS NOT NULL
+        AND status IN ('completed', 'submitted');
       CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_user_test_idx
       ON test_attempts (user_id, test_id)
-      WHERE test_id IS NOT NULL
-        AND status IN ('completed', 'submitted')
+      WHERE schedule_id IS NULL
+        AND test_id IS NOT NULL
+        AND status IN ('completed', 'submitted');
     `);
     attemptConstraintGlobal.attemptConstraintsEnsured = true;
   } catch (err) {
@@ -558,23 +569,30 @@ async function submitTestAttemptOneShotPrisma(
     }
     if (isPrismaUniqueViolation(err)) {
       const prior = await prisma.testAttempt.findFirst({
-        where: isElevateXTestId(input.testId)
+        where: input.scheduleId?.trim()
           ? {
               userId: input.userId,
+              scheduleId: input.scheduleId.trim(),
               status: { in: ['completed', 'submitted'] },
-              ...elevateXTitleWhere(),
             }
-          : resolvedTestId
+          : isElevateXTestId(input.testId)
             ? {
                 userId: input.userId,
-                testId: resolvedTestId,
                 status: { in: ['completed', 'submitted'] },
+                ...elevateXTitleWhere(),
               }
-            : {
-                userId: input.userId,
-                status: { in: ['completed', 'submitted'] },
-                testTitle: title,
-              },
+            : resolvedTestId
+              ? {
+                  userId: input.userId,
+                  testId: resolvedTestId,
+                  scheduleId: null,
+                  status: { in: ['completed', 'submitted'] },
+                }
+              : {
+                  userId: input.userId,
+                  status: { in: ['completed', 'submitted'] },
+                  testTitle: title,
+                },
         orderBy: { completedAt: 'desc' },
         select: { id: true },
       });
@@ -718,7 +736,12 @@ export async function queryAttemptsPrisma(userId: string): Promise<AttemptRow[]>
 export async function findCompletedAttemptForTestPrisma(
   userId: string,
   testId: string,
+  scheduleId?: string | null,
 ): Promise<CompletedAttemptSummary | null> {
+  if (scheduleId?.trim()) {
+    return findCompletedAttemptForSchedulePrisma(userId, scheduleId.trim());
+  }
+
   const rows = await queryAttemptsPrisma(userId);
   for (const row of rows) {
     if (!testIdsMatch(row.test_id, testId)) continue;
@@ -808,6 +831,9 @@ type FinalizeAttemptInput = {
   proctorSessionId?: string;
   proctorViolations?: number;
   proctorAutoSubmit?: boolean;
+  scheduleId?: string | null;
+  slotNumber?: number | null;
+  attemptRound?: number | null;
 };
 
 function resolveElapsedForFinalize(input: {
@@ -858,6 +884,72 @@ function buildProctorMetadata(input: FinalizeAttemptInput): Prisma.InputJsonValu
     proctor_violations: input.proctorViolations ?? 0,
     proctor_auto_submit: input.proctorAutoSubmit ?? false,
   } as Prisma.InputJsonValue;
+}
+
+function scheduleFieldsFromInput(
+  input: Pick<FinalizeAttemptInput, 'scheduleId' | 'slotNumber' | 'attemptRound'>,
+): { scheduleId?: string; slotNumber?: number | null; attemptRound?: number } {
+  if (!input.scheduleId?.trim()) return {};
+  return {
+    scheduleId: input.scheduleId.trim(),
+    slotNumber: input.slotNumber ?? null,
+    attemptRound: normalizeAttemptRound(input.attemptRound ?? 1),
+  };
+}
+
+function priorCompletedWhereForFinalize(
+  input: FinalizeAttemptInput,
+  resolvedTestId: string | null,
+  excludeAttemptId?: string,
+): PrismaTypes.TestAttemptWhereInput {
+  const exclude = excludeAttemptId ? { id: { not: excludeAttemptId } } : {};
+  if (input.scheduleId?.trim()) {
+    return {
+      userId: input.userId,
+      scheduleId: input.scheduleId.trim(),
+      status: { in: ['completed', 'submitted'] },
+      ...exclude,
+    };
+  }
+  if (isElevateXTestId(input.testId)) {
+    return {
+      userId: input.userId,
+      status: { in: ['completed', 'submitted'] },
+      ...elevateXTitleWhere(),
+      ...exclude,
+    };
+  }
+  if (resolvedTestId) {
+    return {
+      userId: input.userId,
+      testId: resolvedTestId,
+      scheduleId: null,
+      status: { in: ['completed', 'submitted'] },
+      ...exclude,
+    };
+  }
+  return {
+    userId: input.userId,
+    status: { in: ['completed', 'submitted'] },
+    ...exclude,
+  };
+}
+
+async function resolveScheduleFieldsForAttempt(
+  input: Pick<FinalizeAttemptInput, 'scheduleId' | 'slotNumber' | 'attemptRound'>,
+): Promise<{ scheduleId?: string; slotNumber?: number | null; attemptRound?: number }> {
+  if (input.scheduleId?.trim()) {
+    const ctx = await loadScheduleAttemptContext(input.scheduleId.trim());
+    if (ctx) {
+      return {
+        scheduleId: ctx.scheduleId,
+        slotNumber: input.slotNumber ?? ctx.slotNumber,
+        attemptRound: normalizeAttemptRound(input.attemptRound ?? ctx.attemptRound),
+      };
+    }
+    return scheduleFieldsFromInput(input);
+  }
+  return {};
 }
 
 function clampScorePercent(value: number): number {
@@ -919,24 +1011,7 @@ async function completeOpenAttemptRow(
   candidate: { id: string; startedAt: Date | null },
   answers: Record<string, unknown>,
 ): Promise<{ id: string; elapsedSec: number }> {
-  const priorWhere: PrismaTypes.TestAttemptWhereInput = isElevateXTestId(input.testId)
-    ? {
-        userId: input.userId,
-        status: { in: ['completed', 'submitted'] },
-        id: { not: candidate.id },
-        ...elevateXTitleWhere(),
-      }
-    : resolvedTestId
-      ? {
-          userId: input.userId,
-          testId: resolvedTestId,
-          status: { in: ['completed', 'submitted'] },
-        }
-      : {
-          userId: input.userId,
-          status: { in: ['completed', 'submitted'] },
-          id: { not: candidate.id },
-        };
+  const priorWhere = priorCompletedWhereForFinalize(input, resolvedTestId, candidate.id);
   const prior = await prisma.testAttempt.findFirst({
     where: priorWhere,
     orderBy: { completedAt: 'desc' },
@@ -957,6 +1032,7 @@ async function completeOpenAttemptRow(
   const scorePercent = clampScorePercent(input.scorePercent);
   const rawNetScore = clampRawNetScore(input.rawNetScore);
   const proctorMetadata = buildProctorMetadata(input);
+  const scheduleFields = await resolveScheduleFieldsForAttempt(input);
 
   const updated = await prisma.testAttempt.update({
     where: { id: candidate.id },
@@ -972,6 +1048,7 @@ async function completeOpenAttemptRow(
       answers: answers as Prisma.InputJsonValue,
       timeTaken: elapsedForPersist,
       proctorMetadata,
+      ...scheduleFields,
     },
     select: { id: true, timeTaken: true },
   });
@@ -1385,10 +1462,25 @@ export async function upsertExamProgressPrisma(input: {
   startedAtIso?: string;
   proctorSessionId?: string;
   proctorViolationCount?: number;
+  scheduleId?: string | null;
+  slotNumber?: number | null;
+  attemptRound?: number | null;
 }): Promise<{ id: string; startedAtIso: string }> {
   await ensureAttemptConstraintsPrisma();
 
-  if (isElevateXTestId(input.testId)) {
+  if (input.scheduleId?.trim()) {
+    const prior = await findCompletedAttemptForSchedulePrisma(input.userId, input.scheduleId.trim());
+    if (prior) {
+      const row = await prisma.testAttempt.findFirst({
+        where: { id: prior.id },
+        select: { startedAt: true },
+      });
+      return {
+        id: prior.id,
+        startedAtIso: row?.startedAt?.toISOString() ?? new Date().toISOString(),
+      };
+    }
+  } else if (isElevateXTestId(input.testId)) {
     const done = await findCompletedElevateXAttemptForUser(input.userId);
     if (done) {
       const row = await prisma.testAttempt.findFirst({
@@ -1401,7 +1493,11 @@ export async function upsertExamProgressPrisma(input: {
       };
     }
   } else {
-    const prior = await findCompletedAttemptForTestPrisma(input.userId, input.testId);
+    const prior = await findCompletedAttemptForTestPrisma(
+      input.userId,
+      input.testId,
+      input.scheduleId,
+    );
     if (prior) {
       const row = await prisma.testAttempt.findFirst({
         where: { id: prior.id },
@@ -1440,6 +1536,8 @@ export async function upsertExamProgressPrisma(input: {
         }
       : undefined;
 
+  const scheduleFields = await resolveScheduleFieldsForAttempt(input);
+
   const patch = {
     userId: input.userId,
     testId: resolvedTestId,
@@ -1451,6 +1549,7 @@ export async function upsertExamProgressPrisma(input: {
     timeTaken: input.elapsedSec,
     completedAt: null,
     proctorMetadata: proctorMeta as Prisma.InputJsonValue | undefined,
+    ...scheduleFields,
   };
 
   if (input.attemptId) {

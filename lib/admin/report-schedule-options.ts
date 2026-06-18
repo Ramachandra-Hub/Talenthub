@@ -2,6 +2,7 @@ import type { DbServiceClient } from '@/lib/db/get-db-service';
 import type { AdminExamType } from '@/lib/admin/exam-type';
 import { classifyExamAttempt, matchesAdminExamType } from '@/lib/admin/exam-type';
 import { getDateKeyInTimeZone, isScheduleStartInDateRange } from '@/lib/admin/report-date-filter';
+import { formatSlotAttemptLabel, normalizeAttemptRound } from '@/lib/exam-attempt-round';
 import { formatCollegeDateTime } from '@/lib/college-timezone';
 import { isElevateXModule } from '@/lib/elevatex';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
@@ -13,6 +14,7 @@ export type ReportScheduleOption = {
   test_id: string | null;
   title: string;
   slot_number: number | null;
+  attempt_round: number;
   starts_at: string;
   ends_at: string | null;
   exam_type: Exclude<AdminExamType, 'all'>;
@@ -29,9 +31,12 @@ export function scheduleStartsOnDateKey(
 }
 
 export function formatScheduleSlotLabel(
-  opt: Pick<ReportScheduleOption, 'slot_number' | 'title' | 'starts_at' | 'ends_at'>,
+  opt: Pick<ReportScheduleOption, 'slot_number' | 'attempt_round' | 'title' | 'starts_at' | 'ends_at'>,
 ): string {
-  const label = opt.slot_number ? `Slot ${opt.slot_number}` : opt.title.trim() || 'Exam session';
+  const label =
+    opt.slot_number != null
+      ? formatSlotAttemptLabel(opt.slot_number, opt.attempt_round ?? 1)
+      : formatSlotAttemptLabel(null, opt.attempt_round ?? 1, opt.title.trim() || 'Exam session');
   const start = formatCollegeDateTime(opt.starts_at);
   if (!opt.ends_at) return `${label} · ${start}`;
   return `${label} · ${start} → ${formatCollegeDateTime(opt.ends_at)}`;
@@ -75,7 +80,7 @@ export async function loadReportScheduleOptions(
   const [examRes, evaloraRes] = await Promise.all([
     admin
       .from('exam_schedules')
-      .select('id, title, test_id, slot_number, starts_at, ends_at, faculty_exam_request_id')
+      .select('id, title, test_id, slot_number, attempt_round, starts_at, ends_at, faculty_exam_request_id')
       .order('starts_at', { ascending: false }),
     admin
       .from('evalora_module_schedules')
@@ -96,6 +101,7 @@ export async function loadReportScheduleOptions(
       test_id: testId,
       title,
       slot_number: row.slot_number ?? null,
+      attempt_round: normalizeAttemptRound((row as { attempt_round?: number }).attempt_round),
       starts_at: row.starts_at,
       ends_at: row.ends_at,
       exam_type,
@@ -112,6 +118,7 @@ export async function loadReportScheduleOptions(
       test_id: testId,
       title,
       slot_number: null,
+      attempt_round: 1,
       starts_at: row.starts_at,
       ends_at: row.ends_at,
       exam_type: examTypeForScheduleTest(testId, title),

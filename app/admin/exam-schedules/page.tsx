@@ -21,6 +21,7 @@ import {
   isoToDatetimeLocalInput,
   parseDatetimeLocalAsIst,
 } from '@/lib/college-timezone';
+import { formatAttemptRoundLabel } from '@/lib/exam-attempt-round';
 
 type ApprovedExam = {
   id: string;
@@ -138,6 +139,37 @@ export default function AdminExamSchedulesPage() {
         alert('Go live did not persist. Refresh the page and try again.');
         return;
       }
+      await load();
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const openNextAttempt = async (schedule: ExamScheduleRow) => {
+    if (schedule.slot_number == null) {
+      alert('Re-attempt rounds are only available for slot-based schedules.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Open the next attempt round for Slot ${schedule.slot_number}?\n\nPrior attempt scores stay in reports. Students who already submitted this sitting can write again when you go live.`,
+    );
+    if (!confirmed) return;
+
+    setActing(schedule.id);
+    try {
+      const res = await fetch(`/api/admin/exam-schedules/${schedule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'open_next_attempt', goLiveNow: false }),
+      });
+      const json = (await res.json()) as { error?: string; message?: string; schedule?: ExamScheduleRow };
+      if (!res.ok) {
+        alert(json.error ?? 'Could not open next attempt round');
+        return;
+      }
+      alert(json.message ?? 'Next attempt round created. Go live when ready.');
+      if (json.schedule?.id) setActiveScheduleId(json.schedule.id);
       await load();
     } finally {
       setActing(null);
@@ -487,6 +519,7 @@ export default function AdminExamSchedulesPage() {
               <thead>
                 <tr>
                   <th>Title</th>
+                  <th>Slot / attempt</th>
                   <th>Status</th>
                   <th>Starts</th>
                   <th>Ends</th>
@@ -510,6 +543,11 @@ export default function AdminExamSchedulesPage() {
                       )}
                     >
                       <td className="font-medium">{s.title}</td>
+                      <td className="text-slate-600 whitespace-nowrap">
+                        {s.slot_number != null
+                          ? `Slot ${s.slot_number} · ${formatAttemptRoundLabel(s.attempt_round ?? 1)}`
+                          : formatAttemptRoundLabel(s.attempt_round ?? 1)}
+                      </td>
                       <td>
                         <Badge tone={statusBadgeTone(resolved.display)}>{resolved.label}</Badge>
                       </td>
@@ -550,6 +588,16 @@ export default function AdminExamSchedulesPage() {
                               onClick={() => void act(s.id, 'end')}
                             >
                               End
+                            </Button>
+                          ) : null}
+                          {s.slot_number != null ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={acting === s.id}
+                              onClick={() => void openNextAttempt(s)}
+                            >
+                              Next attempt
                             </Button>
                           ) : null}
                           <Button
