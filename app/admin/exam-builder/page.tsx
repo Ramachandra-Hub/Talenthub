@@ -407,13 +407,6 @@ export default function AdminExamBuilderPage() {
 
         {isElevateX ? (
           <ElevateXExamConfigSection
-            state={{
-              requestId: null,
-              technicalFormats: examConfig.technicalFormats,
-              enabledSections: examConfig.enabledSections,
-              programmingProblems: examConfig.programmingProblems,
-              programmingDefaultLanguage: examConfig.programmingDefaultLanguage,
-            }}
             groupDepartmentNames={selectedDepartmentGroup?.departments ?? []}
             groupLabel={selectedDepartmentGroup?.name ?? null}
             onExamConfigChange={(cfg) => {

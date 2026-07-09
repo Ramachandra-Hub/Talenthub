@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ElevateXTechnicalFormatSection } from '@/components/admin/elevatex-technical-format-section';
 import { ElevateXSectionsPanel } from '@/components/admin/elevatex-sections-panel';
 import { ElevateXProgrammingUploadPanel } from '@/components/admin/elevatex-programming-upload-panel';
@@ -35,7 +35,7 @@ export function ElevateXExamConfigSection({
   groupLabel,
   onExamConfigChange,
 }: Props) {
-  const defaults = defaultElevateXExamConfig();
+  const defaults = useMemo(() => defaultElevateXExamConfig(), []);
   const [enabledSections, setEnabledSections] = useState<PlacementSectionId[]>(
     state?.enabledSections ?? defaults.enabledSections,
   );
@@ -47,14 +47,18 @@ export function ElevateXExamConfigSection({
       state?.programmingDefaultLanguage ?? defaults.programmingDefaultLanguage,
     );
 
+  const stateRequestId = state?.requestId ?? null;
+
   useEffect(() => {
-    if (!state) return;
+    if (!state?.requestId) return;
     setEnabledSections(state.enabledSections ?? defaults.enabledSections);
     setProgrammingProblems(state.programmingProblems ?? []);
     setProgrammingDefaultLanguage(
       state.programmingDefaultLanguage ?? defaults.programmingDefaultLanguage,
     );
-  }, [state, defaults.enabledSections, defaults.programmingDefaultLanguage]);
+    // Sync only when the ElevateX exam request identity changes (server-loaded config).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateRequestId]);
 
   const emit = useCallback(
     (

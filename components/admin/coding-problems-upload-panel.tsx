@@ -43,13 +43,13 @@ export function CodingProblemsUploadPanel({
   const [bankSearch, setBankSearch] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const syncProblems = useCallback(
-    (next: ProgrammingProblem[]) => {
-      setProblems(next);
-      onProblemsChange?.(next);
-    },
-    [onProblemsChange],
-  );
+  const onProblemsChangeRef = useRef(onProblemsChange);
+  onProblemsChangeRef.current = onProblemsChange;
+
+  const syncProblems = useCallback((next: ProgrammingProblem[], notifyParent = false) => {
+    setProblems(next);
+    if (notifyParent) onProblemsChangeRef.current?.(next);
+  }, []);
 
   const loadBank = useCallback(async (search?: string) => {
     setLoadingBank(true);
@@ -64,17 +64,17 @@ export function CodingProblemsUploadPanel({
         problems?: ProgrammingProblem[];
       };
       if (!res.ok) throw new Error(json.error ?? 'Could not load coding bank');
-      syncProblems(json.problems ?? []);
+      setProblems(json.problems ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load coding bank');
     } finally {
       setLoadingBank(false);
     }
-  }, [syncProblems]);
+  }, []);
 
   useEffect(() => {
     if (initialProblems.length) {
-      syncProblems(initialProblems);
+      setProblems(initialProblems);
     } else {
       void loadBank();
     }
@@ -117,7 +117,7 @@ export function CodingProblemsUploadPanel({
       if (!res.ok) throw new Error(json.error ?? 'Upload failed');
 
       const bankProblems = json.problems ?? problems;
-      syncProblems(bankProblems);
+      syncProblems(bankProblems, true);
       setWarnings(json.warnings ?? []);
 
       if (requestId) {
@@ -173,7 +173,7 @@ export function CodingProblemsUploadPanel({
   const useBankInExam = async () => {
     if (!requestId) {
       setSuccess('Problems are in the bank. Publish ElevateX to include them in the exam.');
-      syncProblems(problems);
+      syncProblems(problems, true);
       return;
     }
     setUploading(true);
