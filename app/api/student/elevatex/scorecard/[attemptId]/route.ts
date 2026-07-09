@@ -1,39 +1,54 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
-import { fetchElevateXScorecardForAttempt } from '@/lib/placement/fetch-elevatex-scorecard';
+import { attachElevateXScorecardToAttemptPrisma } from '@/lib/placement/elevatex-scorecard-recovery';
+import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
+import { isUuidAttemptId } from '@/lib/db/resolve-test-id-for-insert';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
-export async function GET(
-  _request: Request,
+/** POST — student saves ElevateX scorecard after submit (section-wise admin report). */
+export async function POST(
+  request: Request,
   { params }: { params: Promise<{ attemptId: string }> },
 ) {
-  const auth = await requireAuth(undefined, _request);
+  const auth = await requireAuth(['student'], request);
   if ('response' in auth) return auth.response;
 
-  const role = String(auth.ctx.resolved.role ?? 'student').toLowerCase();
-  if (role !== 'admin') {
-    return NextResponse.json(
-      { error: 'Scorecards are available only to admin users.' },
-      { status: 403 },
-    );
-  }
-
   const { attemptId } = await params;
-  const service = getDbService();
-  if (!service) {
-    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  if (!isUuidAttemptId(attemptId)) {
+    return NextResponse.json({ error: 'Invalid attempt id' }, { status: 400 });
   }
 
-  const result = await fetchElevateXScorecardForAttempt(service, attemptId);
-  if (!('scorecard' in result)) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  return NextResponse.json({
-    scorecard: result.scorecard,
-    attemptId: result.attemptId,
-    userId: result.userId,
-  });
+  const answers =
+    body.answers != null && typeof body.answers === 'object'
+      ? (body.answers as Record<string, unknown>)
+      : body.scorecard != null && typeof body.scorecard === 'object'
+        ? ({
+            _type: 'elevatex_scorecard_v1',
+            scorecard: body.scorecard,
+          } as Record<string, unknown>)
+        : null;
+
+  if (!answers || !parseElevateXScorecardFromAnswers(answers)) {
+    return NextResponse.json({ error: 'scorecard or answers payload required' }, { status: 400 });
+  }
+
+  const ok = await attachElevateXScorecardToAttemptPrisma(
+    auth.ctx.user.id,
+    attemptId,
+    answers,
+  );
+  if (!ok) {
+    return NextResponse.json({ error: 'Could not attach scorecard to attempt' }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, attemptId });
 }

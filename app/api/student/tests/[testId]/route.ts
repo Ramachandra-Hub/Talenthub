@@ -52,7 +52,11 @@ export async function GET(_request: Request, context: RouteContext) {
       );
     }
 
-    const priorAttempt = await findCompletedAttemptForTestPrisma(userId, trimmedId);
+    const priorAttempt = await findCompletedAttemptForTestPrisma(
+      userId,
+      trimmedId,
+      access.schedule?.id,
+    );
     const questions = await loadQuestionsForTakePrisma(trimmedId);
     const sections = await loadTestSectionsPrisma(trimmedId);
 
