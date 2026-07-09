@@ -25,6 +25,7 @@ import {
   type ElevateXExamConfig,
 } from '@/lib/placement/elevatex-exam-config';
 import type { ElevateXTechnicalFormatsMap } from '@/lib/placement/elevatex-technical-config';
+import { loadCodingBankFromDb } from '@/lib/coding/coding-bank-store';
 
 /** Publishing + roster provision can exceed the default 10s on Vercel. */
 export const maxDuration = 120;
@@ -127,18 +128,30 @@ export async function POST(request: NextRequest) {
       ? primaryDepartment
       : DEPARTMENTS[0];
 
+  const enabledSections = Array.isArray(body.enabledSections)
+    ? (body.enabledSections as ElevateXExamConfig['enabledSections'])
+    : undefined;
+
+  let programmingProblems = Array.isArray(body.programmingProblems)
+    ? (body.programmingProblems as ElevateXExamConfig['programmingProblems'])
+    : undefined;
+
+  if (
+    isElevateX &&
+    enabledSections?.includes('programming') &&
+    !(programmingProblems?.length ?? 0)
+  ) {
+    programmingProblems = await loadCodingBankFromDb({ language: 'all' });
+  }
+
   const elevateXExamConfig = isElevateX
     ? mergeElevateXExamConfig({
         technicalFormats:
           body.technicalFormats && typeof body.technicalFormats === 'object'
             ? (body.technicalFormats as ElevateXTechnicalFormatsMap)
             : undefined,
-        enabledSections: Array.isArray(body.enabledSections)
-          ? (body.enabledSections as ElevateXExamConfig['enabledSections'])
-          : undefined,
-        programmingProblems: Array.isArray(body.programmingProblems)
-          ? (body.programmingProblems as ElevateXExamConfig['programmingProblems'])
-          : undefined,
+        enabledSections,
+        programmingProblems,
         programmingDefaultLanguage:
           body.programmingDefaultLanguage === 'python' ? 'python' : 'c',
       })

@@ -13,7 +13,7 @@ import { looksLikeUuid, normalizeQuestionId } from '@/lib/exam-builder/id-utils'
 
 const QUESTION_PAGE = 200;
 
-export type QuestionBankSectionKey = SyllabusGroupKey | 'other' | 'uncategorized';
+export type QuestionBankSectionKey = SyllabusGroupKey | 'coding' | 'other' | 'uncategorized';
 
 export const QUESTION_BANK_SECTION_LABELS: Record<QuestionBankSectionKey, string> = {
   aptitude: 'Aptitude',
@@ -21,6 +21,7 @@ export const QUESTION_BANK_SECTION_LABELS: Record<QuestionBankSectionKey, string
   technical: 'Technical / CS',
   verbal: 'Verbal & English',
   rmset: 'RMSET & eligibility',
+  coding: 'Coding (C / Python)',
   other: 'Other topics',
   uncategorized: 'Uncategorized',
 };
@@ -129,6 +130,14 @@ const slugToSection = (() => {
 })();
 
 export function sectionKeyForTopicSlug(slug: string): QuestionBankSectionKey {
+  if (
+    slug === 'coding-problems' ||
+    slug === 'coding-c' ||
+    slug === 'coding-python' ||
+    slug.startsWith('coding-')
+  ) {
+    return 'coding';
+  }
   return slugToSection.get(slug) ?? 'other';
 }
 
@@ -283,6 +292,7 @@ export async function loadQuestionBankOverview(
     'aptitude',
     'logical',
     'technical',
+    'coding',
     'verbal',
     'rmset',
     'other',

@@ -114,6 +114,7 @@ export async function loadQuestionBankOverviewPrisma(): Promise<QuestionBankOver
     'aptitude',
     'logical',
     'technical',
+    'coding',
     'verbal',
     'rmset',
     'other',

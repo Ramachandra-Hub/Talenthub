@@ -26,6 +26,8 @@ import {
   fetchFullQuestionBankExport,
   fetchTopicQuestionBankExport,
 } from '@/lib/admin/fetch-question-bank-export';
+import { CodingProblemsUploadPanel } from '@/components/admin/coding-problems-upload-panel';
+import { parseStoredCodingProblem } from '@/lib/coding/coding-bank-persist';
 
 type TopicPayload = {
   topic: { id: string; slug: string; name: string };
@@ -150,6 +152,11 @@ export default function QuestionsManagementPage() {
     if (selectedTopicSlug) setPdfTopicSelect(selectedTopicSlug);
   }, [selectedTopicSlug]);
 
+  const isCodingTopic =
+    selectedTopicSlug === 'coding-problems' ||
+    selectedTopicSlug === 'coding-c' ||
+    selectedTopicSlug === 'coding-python' ||
+    selectedTopicSlug.startsWith('coding-');
   const activeSection = overview?.sections.find((s) => s.key === selectedSection);
   const filteredTopics =
     activeSection?.topics.filter((t) =>
@@ -386,8 +393,8 @@ export default function QuestionsManagementPage() {
         <div>
           <h2 className="text-2xl font-bold text-[#0c2340]">Question bank</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Syllabus-wise MCQ bank — download every question per topic as PDF, Word (.doc), or CSV.
-            Use the ZIP buttons to get all topics at once.
+            Syllabus-wise MCQ bank plus <strong>C / Python coding problems</strong> — download per topic
+            as PDF, Word (.doc), or CSV. Paste coding problems under Add / import.
           </p>
           {overview ? (
             <p className="text-sm text-gray-500 mt-2">
@@ -412,7 +419,7 @@ export default function QuestionsManagementPage() {
             <Link href="/admin/exam-builder">Exam builder</Link>
           </Button>
           <Button variant="outline" onClick={() => setShowManage((v) => !v)}>
-            {showManage ? 'Hide add/import' : 'Add / import'}
+            {showManage ? 'Hide MCQ add/import' : 'Add MCQ / import CSV'}
           </Button>
           <Button
             className="bg-[#0c2340] hover:bg-[#16304f]"
@@ -444,6 +451,17 @@ export default function QuestionsManagementPage() {
           </Button>
         </div>
       </div>
+
+      <Card className="p-4 mb-6 border-violet-200/80 bg-violet-50/40">
+        <CodingProblemsUploadPanel
+          compact
+          title="Coding problems (C / Python)"
+          onSaved={() => {
+            void loadOverview();
+            if (selectedTopicSlug) void loadTopic(selectedTopicSlug, 0);
+          }}
+        />
+      </Card>
 
       <Card className="p-4 mb-6 border-[#0c2340]/15 bg-slate-50/60">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -511,18 +529,19 @@ export default function QuestionsManagementPage() {
       </Card>
 
       {showManage ? (
-        <Card className="p-4 mb-6 border-blue-100 bg-blue-50/40">
-          <div className="flex flex-wrap gap-2 mb-4">
+        <Card className="p-4 mb-6 border-blue-100 bg-blue-50/40 space-y-4">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => setShowAddForm(!showAddForm)}>
-              {showAddForm ? 'Cancel' : 'Add question'}
+              {showAddForm ? 'Cancel MCQ' : 'Add MCQ'}
             </Button>
             <label>
               <Button size="sm" variant="outline" className="cursor-pointer" asChild>
-                <span>Import CSV</span>
+                <span>Import MCQ CSV</span>
               </Button>
               <input type="file" accept=".csv" onChange={handleFileUpload} disabled={uploading} className="hidden" />
             </label>
           </div>
+
           {showAddForm ? (
             <form onSubmit={handleAddQuestion} className="space-y-3 text-sm">
               <textarea
@@ -713,11 +732,53 @@ export default function QuestionsManagementPage() {
 
               {filteredQuestions.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">
-                  No questions in this topic. Upload MCQs in Exam builder or use Add / import.
+                  {isCodingTopic
+                    ? 'No coding problems yet. Use Add / import above to paste problems like “add two arrays”.'
+                    : 'No questions in this topic. Upload MCQs in Exam builder or use Add / import.'}
                 </p>
               ) : (
                 <ul className="space-y-3 overflow-y-auto flex-1 pr-1">
                   {filteredQuestions.map((q, idx) => {
+                    const storedCoding = parseStoredCodingProblem(q.explanation);
+                    if (q.type === 'CODING' || storedCoding) {
+                      const problem = storedCoding?.problem;
+                      return (
+                        <li
+                          key={q.id}
+                          className="rounded-lg border border-violet-200 p-3 hover:border-violet-300 bg-violet-50/30"
+                        >
+                          <p className="text-xs text-violet-700 mb-1 font-semibold uppercase tracking-wide">
+                            #{topicOffset + idx + 1} · Coding · {storedCoding?.defaultLanguage?.toUpperCase() ?? 'C/Python'}
+                          </p>
+                          <p className="text-sm text-gray-900 font-semibold">
+                            {problem?.title ?? 'Coding problem'}
+                          </p>
+                          <p className="text-sm text-gray-700 mt-1">{problem?.statement ?? q.question_text}</p>
+                          {problem ? (
+                            <div className="grid sm:grid-cols-2 gap-2 mt-2 text-xs">
+                              <div>
+                                <p className="font-semibold text-gray-600">Sample input</p>
+                                <pre className="bg-white border rounded p-2 mt-1 whitespace-pre-wrap font-mono">
+                                  {problem.sampleInput}
+                                </pre>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-600">Expected output</p>
+                                <pre className="bg-white border rounded p-2 mt-1 whitespace-pre-wrap font-mono">
+                                  {problem.sampleOutput}
+                                </pre>
+                              </div>
+                            </div>
+                          ) : null}
+                          {problem?.testCases?.length ? (
+                            <p className="text-xs text-gray-500 mt-2">
+                              {problem.testCases.length} test case(s) for grading
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    }
+
                     const letters = ['A', 'B', 'C', 'D'] as const;
                     const fromColumns = letters
                       .map((L) => {
