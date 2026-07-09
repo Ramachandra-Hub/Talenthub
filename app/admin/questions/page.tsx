@@ -371,6 +371,23 @@ export default function QuestionsManagementPage() {
     }
   };
 
+  const fixCLanguageTopicLinks = async () => {
+    try {
+      const res = await fetchWithAuth('/api/admin/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backfillTagLinks: true, tagSlug: 'technical-c-language' }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; count?: number };
+      if (!res.ok) throw new Error(json.error ?? 'Could not repair C Language topic links');
+      await loadOverview();
+      if (selectedTopicSlug) await loadTopic(selectedTopicSlug, topicOffset);
+      alert(`C Language topic links repaired for ${json.count ?? 0} question(s).`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Topic-link repair failed');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
@@ -420,6 +437,9 @@ export default function QuestionsManagementPage() {
           </Button>
           <Button variant="outline" onClick={() => setShowManage((v) => !v)}>
             {showManage ? 'Hide MCQ add/import' : 'Add MCQ / import CSV'}
+          </Button>
+          <Button variant="outline" onClick={() => void fixCLanguageTopicLinks()}>
+            Fix C-language topic links
           </Button>
           <Button
             className="bg-[#0c2340] hover:bg-[#16304f]"
