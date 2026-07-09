@@ -38,8 +38,8 @@ export function ElevateXSectionsPanel({
   const initialKey = initialEnabled.join(',');
 
   useEffect(() => {
-    setEnabled(initialEnabled.length ? initialEnabled : defaultEnabledPlacementSectionIds());
-    // Only re-sync when the enabled section list actually changes (e.g. server load).
+    const next = initialEnabled.length ? initialEnabled : defaultEnabledPlacementSectionIds();
+    setEnabled((prev) => (prev.join(',') === next.join(',') ? prev : next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialKey]);
 

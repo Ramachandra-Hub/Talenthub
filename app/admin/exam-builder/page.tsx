@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,6 +96,22 @@ export default function AdminExamBuilderPage() {
         validateOptionalConfiguredSlots(scheduleSlots)
       : validateScheduleSlots(scheduleSlots)
     : null;
+
+  const handleExamConfigChange = useCallback(
+    (cfg: {
+      enabledSections: typeof examConfig.enabledSections;
+      programmingProblems: typeof examConfig.programmingProblems;
+      programmingDefaultLanguage: typeof examConfig.programmingDefaultLanguage;
+      technicalFormats?: typeof examConfig.technicalFormats;
+    }) => {
+      setExamConfig((prev) => ({
+        ...prev,
+        ...cfg,
+        technicalFormats: cfg.technicalFormats ?? prev.technicalFormats,
+      }));
+    },
+    [],
+  );
 
   const toggleYear = (year: string) =>
     setTargetYears((prev) =>
@@ -409,13 +425,7 @@ export default function AdminExamBuilderPage() {
           <ElevateXExamConfigSection
             groupDepartmentNames={selectedDepartmentGroup?.departments ?? []}
             groupLabel={selectedDepartmentGroup?.name ?? null}
-            onExamConfigChange={(cfg) => {
-              setExamConfig((prev) => ({
-                ...prev,
-                ...cfg,
-                technicalFormats: cfg.technicalFormats ?? prev.technicalFormats,
-              }));
-            }}
+            onExamConfigChange={handleExamConfigChange}
           />
         ) : null}
 

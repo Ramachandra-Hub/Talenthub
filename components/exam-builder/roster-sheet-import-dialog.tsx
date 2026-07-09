@@ -50,6 +50,21 @@ type Props = {
 
 const NONE_VALUE = '__none__';
 
+function alignMappingToHeaders(
+  mapping: RosterColumnMapping,
+  headers: string[],
+): RosterColumnMapping {
+  const headerSet = new Set(headers);
+  const aligned: RosterColumnMapping = {};
+  for (const field of ROSTER_COLUMN_FIELDS) {
+    const value = mapping[field.key];
+    if (value && headerSet.has(value)) {
+      aligned[field.key] = value;
+    }
+  }
+  return aligned;
+}
+
 export function RosterSheetImportDialog({
   open,
   onOpenChange,
@@ -101,7 +116,7 @@ export function RosterSheetImportDialog({
         throw new Error('The sheet is empty or has no data rows.');
       }
       setSheet(parsed);
-      setMapping(guessRosterColumnMapping(parsed.headers));
+      setMapping(alignMappingToHeaders(guessRosterColumnMapping(parsed.headers), parsed.headers));
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read spreadsheet.');

@@ -41,12 +41,15 @@ export function ElevateXTechnicalFormatSection({
   }, []);
 
   useEffect(() => {
-    if (state) {
-      setRequestId(state.requestId ?? null);
-      setFormats(state.technicalFormats ?? defaultElevateXTechnicalFormats());
-      setLoading(false);
-      return;
-    }
+    if (!state) return;
+    setRequestId(state.requestId ?? null);
+    setFormats(state.technicalFormats ?? defaultElevateXTechnicalFormats());
+    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.requestId]);
+
+  useEffect(() => {
+    if (state) return;
     void load();
   }, [state, load]);
 

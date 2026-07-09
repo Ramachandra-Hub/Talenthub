@@ -69,15 +69,51 @@ export function ElevateXExamConfigSection({
         technicalFormats: ElevateXTechnicalFormatsMap;
       }> = {},
     ) => {
-      const next = {
+      onExamConfigChange?.({
         enabledSections: patch.enabledSections ?? enabledSections,
         programmingProblems: patch.programmingProblems ?? programmingProblems,
         programmingDefaultLanguage:
           patch.programmingDefaultLanguage ?? programmingDefaultLanguage,
-      };
-      onExamConfigChange?.(next);
+        technicalFormats: patch.technicalFormats,
+      });
     },
-    [enabledSections, programmingProblems, programmingDefaultLanguage, onExamConfigChange],
+    [
+      enabledSections,
+      programmingProblems,
+      programmingDefaultLanguage,
+      onExamConfigChange,
+    ],
+  );
+
+  const handleSectionsChange = useCallback(
+    (next: PlacementSectionId[]) => {
+      setEnabledSections(next);
+      emit({ enabledSections: next });
+    },
+    [emit],
+  );
+
+  const handleProblemsChange = useCallback(
+    (next: ProgrammingProblem[]) => {
+      setProgrammingProblems(next);
+      emit({ programmingProblems: next });
+    },
+    [emit],
+  );
+
+  const handleDefaultLanguageChange = useCallback(
+    (lang: ElevateXExamConfig['programmingDefaultLanguage']) => {
+      setProgrammingDefaultLanguage(lang);
+      emit({ programmingDefaultLanguage: lang });
+    },
+    [emit],
+  );
+
+  const handleFormatsChange = useCallback(
+    (formats: ElevateXTechnicalFormatsMap) => {
+      emit({ technicalFormats: formats });
+    },
+    [emit],
   );
 
   return (
@@ -86,23 +122,14 @@ export function ElevateXExamConfigSection({
         requestId={state?.requestId ?? null}
         initialEnabled={enabledSections}
         programmingProblemCount={programmingProblems.length}
-        onChange={(next) => {
-          setEnabledSections(next);
-          emit({ enabledSections: next });
-        }}
+        onChange={handleSectionsChange}
       />
       <ElevateXProgrammingUploadPanel
         requestId={state?.requestId ?? null}
         initialProblems={programmingProblems}
         initialDefaultLanguage={programmingDefaultLanguage}
-        onProblemsChange={(next) => {
-          setProgrammingProblems(next);
-          emit({ programmingProblems: next });
-        }}
-        onDefaultLanguageChange={(lang) => {
-          setProgrammingDefaultLanguage(lang);
-          emit({ programmingDefaultLanguage: lang });
-        }}
+        onProblemsChange={handleProblemsChange}
+        onDefaultLanguageChange={handleDefaultLanguageChange}
       />
       <ElevateXTechnicalFormatSection
         state={
@@ -112,7 +139,7 @@ export function ElevateXExamConfigSection({
         }
         groupDepartmentNames={groupDepartmentNames}
         groupLabel={groupLabel}
-        onFormatsChange={(formats) => emit({ technicalFormats: formats })}
+        onFormatsChange={handleFormatsChange}
       />
     </div>
   );

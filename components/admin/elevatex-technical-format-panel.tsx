@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { StatusAlert } from '@/components/ui/status-alert';
 import {
@@ -43,6 +43,17 @@ export function ElevateXTechnicalFormatPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const onFormatsChangeRef = useRef(onFormatsChange);
+  onFormatsChangeRef.current = onFormatsChange;
+
+  const initialFormatsKey = useMemo(
+    () => JSON.stringify(normalizeElevateXTechnicalFormats(initialFormats)),
+    [initialFormats],
+  );
+
+  const notifyFormatsChange = (next: ElevateXTechnicalFormatsMap) => {
+    onFormatsChangeRef.current?.(next);
+  };
 
   const groupDeptIds = useMemo(
     () => placementDeptIdsFromCollegeDepartments(groupDepartmentNames),
@@ -61,14 +72,14 @@ export function ElevateXTechnicalFormatPanel({
 
   useEffect(() => {
     setFormats(normalizeElevateXTechnicalFormats(initialFormats));
-  }, [initialFormats]);
-
-  useEffect(() => {
-    onFormatsChange?.(formats);
-  }, [formats, onFormatsChange]);
+  }, [initialFormatsKey]);
 
   const setDeptFormat = (deptId: string, fmt: PlacementTechnicalFormat) => {
-    setFormats((prev) => ({ ...prev, [deptId]: fmt }));
+    setFormats((prev) => {
+      const next = { ...prev, [deptId]: fmt };
+      notifyFormatsChange(next);
+      return next;
+    });
   };
 
   const applyFormatToDeptIds = (deptIds: string[], fmt: PlacementTechnicalFormat) => {
@@ -78,6 +89,7 @@ export function ElevateXTechnicalFormatPanel({
       for (const id of deptIds) {
         next[id] = fmt;
       }
+      notifyFormatsChange(next);
       return next;
     });
   };
