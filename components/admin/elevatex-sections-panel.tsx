@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { StatusAlert } from '@/components/ui/status-alert';
 import {
@@ -33,22 +33,31 @@ export function ElevateXSectionsPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const initialKey = initialEnabled.join(',');
 
   useEffect(() => {
     setEnabled(initialEnabled.length ? initialEnabled : defaultEnabledPlacementSectionIds());
-  }, [initialEnabled]);
+    // Only re-sync when the enabled section list actually changes (e.g. server load).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey]);
 
-  useEffect(() => {
-    onChange?.(enabled);
-  }, [enabled, onChange]);
+  const notifyChange = (next: PlacementSectionId[]) => {
+    onChangeRef.current?.(next);
+  };
 
   const toggle = (id: PlacementSectionId) => {
     setEnabled((prev) => {
       if (prev.includes(id)) {
         const next = prev.filter((x) => x !== id);
-        return next.length ? next : prev;
+        if (!next.length) return prev;
+        notifyChange(next);
+        return next;
       }
-      return PLACEMENT_SECTIONS.filter((s) => [...prev, id].includes(s.id)).map((s) => s.id);
+      const next = PLACEMENT_SECTIONS.filter((s) => [...prev, id].includes(s.id)).map((s) => s.id);
+      notifyChange(next);
+      return next;
     });
   };
 
@@ -142,7 +151,11 @@ export function ElevateXSectionsPanel({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => setEnabled(defaultEnabledPlacementSectionIds())}
+          onClick={() => {
+            const next = defaultEnabledPlacementSectionIds();
+            setEnabled(next);
+            notifyChange(next);
+          }}
         >
           Classic 6 sections
         </Button>
@@ -150,9 +163,11 @@ export function ElevateXSectionsPanel({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() =>
-            setEnabled(PLACEMENT_SECTIONS.map((s) => s.id))
-          }
+          onClick={() => {
+            const next = PLACEMENT_SECTIONS.map((s) => s.id);
+            setEnabled(next);
+            notifyChange(next);
+          }}
         >
           Select all
         </Button>

@@ -62,6 +62,16 @@ function headerIndex(headers: string[], selected: string | undefined): number {
   return headers.indexOf(selected);
 }
 
+function uniquifyHeaders(headers: string[]): string[] {
+  const seen = new Map<string, number>();
+  return headers.map((raw, index) => {
+    const base = raw.trim() || `Column ${index + 1}`;
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base} (${count + 1})`;
+  });
+}
+
 export function guessRosterColumnMapping(headers: string[]): RosterColumnMapping {
   const mapping: RosterColumnMapping = {};
   const used = new Set<string>();
@@ -107,12 +117,12 @@ export function parseCsvText(text: string, fileName = 'upload.csv'): ParsedRoste
   const hasHeader = Object.keys(guessed).length > 0;
 
   if (hasHeader) {
-    const headers = first.map((value, index) => value || `Column ${index + 1}`);
+    const headers = uniquifyHeaders(first.map((value, index) => value || `Column ${index + 1}`));
     const rows = parsedLines.slice(1).filter((row) => row.some((cell) => cell.trim()));
     return { headers, rows, fileName };
   }
 
-  const headers = first.map((_, index) => `Column ${index + 1}`);
+  const headers = uniquifyHeaders(first.map((_, index) => `Column ${index + 1}`));
   return { headers, rows: parsedLines.filter((row) => row.some((cell) => cell.trim())), fileName };
 }
 
@@ -143,13 +153,13 @@ export function parseWorkbookArrayBuffer(buffer: ArrayBuffer, fileName: string):
   const hasHeader = Object.keys(guessed).length > 0;
 
   if (hasHeader) {
-    const headers = first.map((value, index) => value || `Column ${index + 1}`);
+    const headers = uniquifyHeaders(first.map((value, index) => value || `Column ${index + 1}`));
     const rows = normalized.slice(1);
     return { headers, rows, fileName };
   }
 
   const width = Math.max(...normalized.map((row) => row.length));
-  const headers = Array.from({ length: width }, (_, index) => `Column ${index + 1}`);
+  const headers = uniquifyHeaders(Array.from({ length: width }, (_, index) => `Column ${index + 1}`));
   return { headers, rows: normalized, fileName };
 }
 

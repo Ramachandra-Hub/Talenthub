@@ -407,7 +407,7 @@ export function ExamSlotSchedulePanel({
         defaultPassword={defaultPassword}
         onImport={(nextSlots, message) => {
           onSlotsChange(enrichSlotsWithPasswords(nextSlots, defaultPassword));
-          setImportNote(`${message} · Credentials CSV downloaded if enabled.`);
+          setImportNote(message);
         }}
       />
     </div>

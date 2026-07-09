@@ -233,8 +233,8 @@ export function RosterSheetImportDialog({
                       </SelectTrigger>
                       <SelectContent position="popper" className="z-[260] max-h-60">
                         <SelectItem value={NONE_VALUE}>Not mapped</SelectItem>
-                        {sheet.headers.map((header) => (
-                          <SelectItem key={header} value={header}>
+                        {sheet.headers.map((header, headerIndex) => (
+                          <SelectItem key={`${header}-${headerIndex}`} value={header}>
                             {header}
                           </SelectItem>
                         ))}
