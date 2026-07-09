@@ -1,5 +1,6 @@
 import { ELEVATEX_TEST_ID } from '@/lib/elevatex';
-import type { PlacementTechnicalFormat } from '@/lib/placement/types';
+import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
+import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 
 export type ElevateXAttemptStatus = {
   completed: boolean;
@@ -12,6 +13,12 @@ export type ElevateXAttemptStatus = {
   statusError?: boolean;
   /** Server-resolved from admin config (students cannot override). */
   technicalFormat?: PlacementTechnicalFormat;
+  enabledSections?: PlacementSectionId[];
+  examTotalMarks?: number;
+  examDurationSec?: number;
+  programmingDefaultLanguage?: 'c' | 'python';
+  programmingProblemCount?: number;
+  programmingProblems?: ProgrammingProblem[];
   departmentId?: string;
 };
 

@@ -10,8 +10,11 @@ import {
   goLiveElevateXSlot,
   reprovisionElevateXRoster,
   saveElevateXTechnicalFormats,
+  saveElevateXExamConfig,
 } from '@/lib/elevatex-admin';
+import type { ElevateXExamConfig } from '@/lib/placement/elevatex-exam-config';
 import type { ElevateXTechnicalFormatsMap } from '@/lib/placement/elevatex-technical-config';
+import type { PlacementSectionId } from '@/lib/placement/types';
 import { parseScheduleSlotsJson } from '@/lib/exam-schedule-slots';
 import { ELEVATEX_EXAM_NAME } from '@/lib/elevatex';
 
@@ -77,6 +80,50 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'requestId required' }, { status: 400 });
       }
       const result = await reprovisionElevateXRoster(admin, requestId);
+      return NextResponse.json(result);
+    }
+
+    if (action === 'save_exam_config') {
+      const requestId = String(body.requestId ?? '');
+      if (!requestId) {
+        return NextResponse.json({ error: 'requestId required' }, { status: 400 });
+      }
+      const patch: Partial<ElevateXExamConfig> = {};
+      if (Array.isArray(body.enabledSections)) {
+        patch.enabledSections = (body.enabledSections as PlacementSectionId[]).filter(Boolean);
+      }
+      if (Array.isArray(body.programmingProblems)) {
+        patch.programmingProblems = body.programmingProblems as ElevateXExamConfig['programmingProblems'];
+      }
+      if (body.programmingDefaultLanguage === 'python' || body.programmingDefaultLanguage === 'c') {
+        patch.programmingDefaultLanguage = body.programmingDefaultLanguage;
+      }
+      if (body.technicalFormats && typeof body.technicalFormats === 'object') {
+        patch.technicalFormats = body.technicalFormats as ElevateXTechnicalFormatsMap;
+      }
+      const result = await saveElevateXExamConfig(admin, requestId, patch);
+      return NextResponse.json(result);
+    }
+
+    if (action === 'save_exam_config') {
+      const requestId = String(body.requestId ?? '');
+      if (!requestId) {
+        return NextResponse.json({ error: 'requestId required' }, { status: 400 });
+      }
+      const patch: Partial<ElevateXExamConfig> = {};
+      if (Array.isArray(body.enabledSections)) {
+        patch.enabledSections = (body.enabledSections as PlacementSectionId[]).filter(Boolean);
+      }
+      if (Array.isArray(body.programmingProblems)) {
+        patch.programmingProblems = body.programmingProblems as ElevateXExamConfig['programmingProblems'];
+      }
+      if (body.programmingDefaultLanguage === 'python' || body.programmingDefaultLanguage === 'c') {
+        patch.programmingDefaultLanguage = body.programmingDefaultLanguage;
+      }
+      if (body.technicalFormats && typeof body.technicalFormats === 'object') {
+        patch.technicalFormats = body.technicalFormats as ElevateXTechnicalFormatsMap;
+      }
+      const result = await saveElevateXExamConfig(admin, requestId, patch);
       return NextResponse.json(result);
     }
 

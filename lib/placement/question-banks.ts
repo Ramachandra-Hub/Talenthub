@@ -19,9 +19,11 @@ import {
 import { placementPsychometricBank } from '@/lib/placement/psychometric-bank';
 import { pickUniqueMcqs, questionStemKey } from '@/lib/placement/question-pick';
 import { technicalBankForDepartment } from '@/lib/placement/technical-banks';
+import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
+import { pickProgrammingProblemsForExam } from '@/lib/exam-builder/parse-coding-upload';
+import { PROGRAMMING_SECTION_PROBLEM_COUNT } from '@/lib/placement/elevatex-exam-config';
 import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 import { buildTechnicalCodingProblems } from '@/lib/placement/technical-coding-problems';
-import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
 
 /** Pool size multiplier — generates many unique stems per student seed (supports 1000+ writers). */
 const GENERATED_POOL_MULTIPLIER = 16;
@@ -194,56 +196,84 @@ function buildIntelligence(
 }
 
 /** Build question pools for one placement session (unique per student across all sections). */
-export function buildPlacementQuestions(
-  seed: string,
-  departmentId: string,
-  technicalFormat: PlacementTechnicalFormat,
-): {
+export function buildPlacementQuestions(input: {
+  seed: string;
+  departmentId: string;
+  technicalFormat: PlacementTechnicalFormat;
+  enabledSections?: PlacementSectionId[];
+  programmingProblems?: ProgrammingProblem[];
+}): {
   technicalMcq: Question[];
   technicalCoding: ProgrammingProblem[];
+  programming: ProgrammingProblem[];
   psychometric: Question[];
   aptitude: Question[];
   logic: Question[];
   intelligence: Question[];
 } {
+  const { seed, departmentId, technicalFormat } = input;
+  const enabled = new Set(input.enabledSections ?? []);
+  const buildAll = enabled.size === 0;
   const globalSeen = new Set<string>();
   const mcqCount =
     technicalFormat === 'mcq' || technicalFormat === 'both' ? TECHNICAL_MCQ_COUNT : 0;
   const codingCount =
     technicalFormat === 'coding' || technicalFormat === 'both' ? TECHNICAL_CODING_COUNT : 0;
 
-  const psychometric = buildPsychometric(
-    seed,
-    departmentId,
-    getPlacementSection('psychometric').questionCount ?? 15,
-    globalSeen,
-  );
-  const aptitude = buildAptitude(
-    seed,
-    departmentId,
-    getPlacementSection('aptitude').questionCount ?? 20,
-    globalSeen,
-  );
-  const logic = buildLogic(
-    seed,
-    departmentId,
-    getPlacementSection('logic').questionCount ?? 15,
-    globalSeen,
-  );
-  const intelligence = buildIntelligence(
-    seed,
-    departmentId,
-    getPlacementSection('intelligence').questionCount ?? 15,
-    globalSeen,
-  );
+  const psychometric =
+    buildAll || enabled.has('psychometric')
+      ? buildPsychometric(
+          seed,
+          departmentId,
+          getPlacementSection('psychometric').questionCount ?? 15,
+          globalSeen,
+        )
+      : [];
+  const aptitude =
+    buildAll || enabled.has('aptitude')
+      ? buildAptitude(
+          seed,
+          departmentId,
+          getPlacementSection('aptitude').questionCount ?? 20,
+          globalSeen,
+        )
+      : [];
+  const logic =
+    buildAll || enabled.has('logic')
+      ? buildLogic(
+          seed,
+          departmentId,
+          getPlacementSection('logic').questionCount ?? 15,
+          globalSeen,
+        )
+      : [];
+  const intelligence =
+    buildAll || enabled.has('intelligence')
+      ? buildIntelligence(
+          seed,
+          departmentId,
+          getPlacementSection('intelligence').questionCount ?? 15,
+          globalSeen,
+        )
+      : [];
   const technicalMcq =
-    mcqCount > 0 ? buildTechnicalMcq(seed, departmentId, mcqCount, globalSeen) : [];
+    (buildAll || enabled.has('technical')) && mcqCount > 0
+      ? buildTechnicalMcq(seed, departmentId, mcqCount, globalSeen)
+      : [];
   const technicalCoding =
-    codingCount > 0 ? buildTechnicalCodingProblems(seed, departmentId) : [];
+    (buildAll || enabled.has('technical')) && codingCount > 0
+      ? buildTechnicalCodingProblems(seed, departmentId)
+      : [];
+  const programmingCount = getPlacementSection('programming').questionCount ?? PROGRAMMING_SECTION_PROBLEM_COUNT;
+  const programming =
+    enabled.has('programming') && input.programmingProblems?.length
+      ? pickProgrammingProblemsForExam(seed, input.programmingProblems, programmingCount)
+      : [];
 
   return {
     technicalMcq,
     technicalCoding,
+    programming,
     psychometric,
     aptitude,
     logic,

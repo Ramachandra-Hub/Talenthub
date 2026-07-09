@@ -94,7 +94,40 @@ export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
     questionCount: 15,
     negativeMarking: 0,
   },
+  {
+    id: 'programming',
+    name: 'Programming (C / Python)',
+    short: 'Programming',
+    description:
+      'Admin-uploaded coding problems — solve in C or Python using the in-browser compiler.',
+    icon: '💻',
+    kind: 'coding',
+    marks: 20,
+    durationSec: 20 * 60,
+    questionCount: 3,
+  },
 ];
+
+/** Default ElevateX paper — all classic sections (programming is opt-in). */
+export function defaultEnabledPlacementSectionIds(): PlacementSectionId[] {
+  return PLACEMENT_SECTIONS.filter((s) => s.id !== 'programming').map((s) => s.id);
+}
+
+export function getActivePlacementSections(
+  enabledIds?: PlacementSectionId[] | null,
+): PlacementSectionConfig[] {
+  const set = new Set(enabledIds ?? defaultEnabledPlacementSectionIds());
+  return PLACEMENT_SECTIONS.filter((s) => set.has(s.id));
+}
+
+export function computePlacementExamTotals(
+  sections: PlacementSectionConfig[],
+): { totalMarks: number; totalSec: number } {
+  return {
+    totalMarks: sections.reduce((sum, s) => sum + s.marks, 0),
+    totalSec: sections.reduce((sum, s) => sum + s.durationSec, 0),
+  };
+}
 
 export function getPlacementSection(id: PlacementSectionId): PlacementSectionConfig {
   const found = PLACEMENT_SECTIONS.find((s) => s.id === id);

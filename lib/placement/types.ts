@@ -1,5 +1,5 @@
-import type { Question } from '@/lib/types';
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
+import type { Question } from '@/lib/types';
 import type { CodingLanguageId } from '@/lib/coding/languages';
 
 export type PlacementSectionId =
@@ -8,7 +8,8 @@ export type PlacementSectionId =
   | 'psychometric'
   | 'aptitude'
   | 'logic'
-  | 'intelligence';
+  | 'intelligence'
+  | 'programming';
 
 export type PlacementSectionKind = 'mcq' | 'speaking' | 'coding' | 'technical';
 
@@ -75,6 +76,14 @@ export type PlacementCandidate = {
   seed: string;
   /** Technical section mode chosen for this attempt (branch + admin default). */
   technicalFormat: PlacementTechnicalFormat;
+  /** Admin-selected sections for this ElevateX attempt. */
+  enabledSections?: PlacementSectionId[];
+  /** Total marks for this paper (sum of enabled sections). */
+  examTotalMarks?: number;
+  /** Total duration in seconds for this paper. */
+  examDurationSec?: number;
+  /** Default language for the Programming section (admin). */
+  programmingDefaultLanguage?: 'c' | 'python';
 };
 
 export type PlacementMcqAnswerMap = Record<string, string | null>;
@@ -126,8 +135,12 @@ export type PlacementSectionState =
 export type PlacementSession = {
   version: 1;
   candidate: PlacementCandidate;
-  sectionStates: Record<PlacementSectionId, PlacementSectionState>;
-  /** Index in PLACEMENT_SECTIONS that is currently active. */
+  sectionStates: Partial<Record<PlacementSectionId, PlacementSectionState>>;
+  /** Ordered section ids for this attempt (admin-selected). */
+  activeSectionIds: PlacementSectionId[];
+  /** Uploaded programming bank snapshot for this attempt. */
+  programmingProblemBank?: ProgrammingProblem[];
+  /** Index in activeSectionIds that is currently active. */
   currentSectionIndex: number;
   /** Section-local time remaining (seconds). */
   sectionTimeLeftSec: number;

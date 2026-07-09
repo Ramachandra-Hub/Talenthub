@@ -21,6 +21,8 @@ type Props = {
   problems: ProgrammingProblem[];
   submissions: Record<string, PlacementCodingSubmission>;
   onSubmissionChange: (next: PlacementCodingSubmission) => void;
+  /** Admin default for programming section (C or Python). */
+  defaultLanguage?: CodingLanguageId;
 };
 
 type EditorState = {
@@ -31,14 +33,23 @@ type EditorState = {
 function initialEditorState(
   problem: ProgrammingProblem,
   saved?: PlacementCodingSubmission,
+  defaultLanguage?: CodingLanguageId,
 ): EditorState {
-  const lang = saved?.language ?? CODING_LANGUAGES[0].id;
+  const lang =
+    saved?.language ??
+    defaultLanguage ??
+    CODING_LANGUAGES[0].id;
   const stub = CODING_LANGUAGES.find((l) => l.id === lang)?.stub ?? CODING_LANGUAGES[0].stub;
   const source = saved?.sourceCode?.trim() ? saved.sourceCode : stub;
   return { language: lang, sourceCode: source };
 }
 
-export function PlacementCodingSection({ problems, submissions, onSubmissionChange }: Props) {
+export function PlacementCodingSection({
+  problems,
+  submissions,
+  onSubmissionChange,
+  defaultLanguage,
+}: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [running, setRunning] = useState(false);
   const [customInput, setCustomInput] = useState('');
@@ -58,7 +69,7 @@ export function PlacementCodingSection({ problems, submissions, onSubmissionChan
     initKeyRef.current = problemIds;
     const next: Record<string, EditorState> = {};
     for (const p of problems) {
-      next[p.id] = initialEditorState(p, submissions[p.id]);
+      next[p.id] = initialEditorState(p, submissions[p.id], defaultLanguage);
     }
     setEditors(next);
   }, [problemIds, problems, submissions]);

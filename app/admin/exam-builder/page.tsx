@@ -19,9 +19,9 @@ import {
   emptySlots,
 } from '@/components/exam-builder/exam-slot-schedule-panel';
 import { McqUploadFormatGuide } from '@/components/exam-builder/mcq-upload-format-guide';
-import { ElevateXTechnicalFormatSection } from '@/components/admin/elevatex-technical-format-section';
-import { defaultElevateXTechnicalFormats } from '@/lib/placement/elevatex-technical-config';
-import type { ElevateXTechnicalFormatsMap } from '@/lib/placement/elevatex-technical-config';
+import { ElevateXExamConfigSection } from '@/components/admin/elevatex-exam-config-section';
+import { defaultElevateXExamConfig } from '@/lib/placement/elevatex-exam-config';
+import type { ElevateXExamConfig } from '@/lib/placement/elevatex-exam-config';
 import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
 import { getExamBuilderTestType } from '@/lib/exam-builder/test-catalog';
 import { isElevateXBuilderTestType } from '@/lib/exam-builder/elevatex-exam';
@@ -66,9 +66,7 @@ export default function AdminExamBuilderPage() {
   const [manualPaste, setManualPaste] = useState('');
   const [parsingManual, setParsingManual] = useState(false);
   const [departmentGroups, setDepartmentGroups] = useState<DepartmentGroupOption[]>([]);
-  const [technicalFormats, setTechnicalFormats] = useState<ElevateXTechnicalFormatsMap>(() =>
-    defaultElevateXTechnicalFormats(),
-  );
+  const [examConfig, setExamConfig] = useState<ElevateXExamConfig>(() => defaultElevateXExamConfig());
 
   useEffect(() => {
     void fetch('/api/department-groups', { credentials: 'include' })
@@ -213,7 +211,10 @@ export default function AdminExamBuilderPage() {
           usesSlotScheduling: isElevateX || usesSlotScheduling,
           scheduleSlots: isElevateX || usesSlotScheduling ? scheduleSlots : undefined,
           questions: questions.length ? questions : undefined,
-          technicalFormats: isElevateX ? technicalFormats : undefined,
+          technicalFormats: isElevateX ? examConfig.technicalFormats : undefined,
+          enabledSections: isElevateX ? examConfig.enabledSections : undefined,
+          programmingProblems: isElevateX ? examConfig.programmingProblems : undefined,
+          programmingDefaultLanguage: isElevateX ? examConfig.programmingDefaultLanguage : undefined,
         }),
       });
       const json = (await res.json()) as {
@@ -405,10 +406,16 @@ export default function AdminExamBuilderPage() {
         />
 
         {isElevateX ? (
-          <ElevateXTechnicalFormatSection
+          <ElevateXExamConfigSection
             groupDepartmentNames={selectedDepartmentGroup?.departments ?? []}
             groupLabel={selectedDepartmentGroup?.name ?? null}
-            onFormatsChange={setTechnicalFormats}
+            onExamConfigChange={(cfg) => {
+              setExamConfig((prev) => ({
+                ...prev,
+                ...cfg,
+                technicalFormats: cfg.technicalFormats ?? prev.technicalFormats,
+              }));
+            }}
           />
         ) : null}
 
@@ -483,7 +490,7 @@ export default function AdminExamBuilderPage() {
           </p>
         ) : isElevateX ? (
           <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-            ElevateX uses the fixed 6-section placement paper. Configure Slot 1 (and optional Slots 2–8), then publish — students take the exam only in their roster slot window.
+            ElevateX paper — select sections/modules below (Aptitude, Programming, etc.), configure technical formats, then publish.
           </p>
         ) : isManual ? (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

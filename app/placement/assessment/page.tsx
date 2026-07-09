@@ -13,14 +13,14 @@ import { COLLEGE } from '@/lib/college-brand';
 import {
   PLACEMENT_EXAM_NAME,
   PLACEMENT_EXAM_TAGLINE,
-  PLACEMENT_SECTIONS,
   PLACEMENT_TOTAL_MARKS,
   PLACEMENT_TOTAL_SEC,
   defaultTechnicalFormatForDepartment,
   describeTechnicalSection,
+  getActivePlacementSections,
   technicalSectionSummary,
 } from '@/lib/placement/config';
-import type { PlacementTechnicalFormat } from '@/lib/placement/types';
+import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 import { formatScorePercentLabel } from '@/lib/format-score';
 import {
   buildElevateXCandidateFromStudent,
@@ -51,10 +51,19 @@ export default function PlacementAssessmentStartPage() {
   const [showProctorGate, setShowProctorGate] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [technicalFormat, setTechnicalFormat] = useState<PlacementTechnicalFormat>('mcq');
+  const [enabledSections, setEnabledSections] = useState<PlacementSectionId[]>([]);
+  const [examTotalMarks, setExamTotalMarks] = useState(PLACEMENT_TOTAL_MARKS);
+  const [examDurationSec, setExamDurationSec] = useState(PLACEMENT_TOTAL_SEC);
+  const [programmingDefaultLanguage, setProgrammingDefaultLanguage] = useState<'c' | 'python'>('c');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [examWindowOpen, setExamWindowOpen] = useState<boolean | null>(null);
 
-  const totalMinutes = Math.round(PLACEMENT_TOTAL_SEC / 60);
+  const totalMinutes = Math.round(
+    (examDurationSec > 0 ? examDurationSec : PLACEMENT_TOTAL_SEC) / 60,
+  );
+  const displaySections = getActivePlacementSections(
+    enabledSections.length ? enabledSections : undefined,
+  );
 
   const loadStudent = useCallback(async () => {
     setLoadError(null);
@@ -100,6 +109,12 @@ export default function PlacementAssessmentStartPage() {
         status.technicalFormat ??
         defaultTechnicalFormatForDepartment(studentProfile.departmentId);
       setTechnicalFormat(fmt);
+      if (status.enabledSections?.length) setEnabledSections(status.enabledSections);
+      if (status.examTotalMarks) setExamTotalMarks(status.examTotalMarks);
+      if (status.examDurationSec) setExamDurationSec(status.examDurationSec);
+      if (status.programmingDefaultLanguage) {
+        setProgrammingDefaultLanguage(status.programmingDefaultLanguage);
+      }
       const completedAttemptId =
         status.completed && status.attemptId
           ? status.attemptId
@@ -139,8 +154,18 @@ export default function PlacementAssessmentStartPage() {
       status.technicalFormat ??
       technicalFormat ??
       defaultTechnicalFormatForDepartment(profile.departmentId);
-    const candidate = buildElevateXCandidateFromStudent(profile, { technicalFormat: fmt });
-    const session = buildPlacementSession(candidate);
+    const candidate = buildElevateXCandidateFromStudent(profile, {
+      technicalFormat: fmt,
+      enabledSections: status.enabledSections,
+      examTotalMarks: status.examTotalMarks,
+      examDurationSec: status.examDurationSec,
+      programmingDefaultLanguage: status.programmingDefaultLanguage,
+    });
+    const session = buildPlacementSession(candidate, {
+      enabledSections: status.enabledSections,
+      examDurationSec: status.examDurationSec,
+      programmingProblems: status.programmingProblems ?? [],
+    });
     saveCandidateDraft(candidate);
     saveSession(session);
     router.push('/placement/take');
@@ -220,7 +245,7 @@ export default function PlacementAssessmentStartPage() {
                 {PLACEMENT_EXAM_NAME} · Instructions
               </h1>
               <p className="text-sm text-white/85 mt-1">
-                {PLACEMENT_EXAM_TAGLINE} · {PLACEMENT_SECTIONS.length} sections · {PLACEMENT_TOTAL_MARKS}{' '}
+                {PLACEMENT_EXAM_TAGLINE} · {displaySections.length} sections · {examTotalMarks}{' '}
                 marks · {totalMinutes} minutes
               </p>
             </div>
@@ -343,7 +368,7 @@ export default function PlacementAssessmentStartPage() {
         <Card className="md:col-span-2 p-6 sm:p-8 shadow-sm border-slate-200 bg-slate-50">
           <h2 className="text-lg font-bold text-slate-900 mb-3">Section breakdown</h2>
           <ul className="space-y-3 text-sm">
-            {PLACEMENT_SECTIONS.map((s) => (
+            {displaySections.map((s) => (
               <li
                 key={s.id}
                 className="flex items-center justify-between gap-3 rounded-md bg-white border border-slate-200 p-3"

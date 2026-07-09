@@ -64,10 +64,16 @@ export function studentElevateXProfileFromAuth(
   };
 }
 
-/** technicalFormat must come from admin config (API), not from student UI. */
+/** technicalFormat and sections must come from admin config (API), not from student UI. */
 export function buildElevateXCandidateFromStudent(
   profile: StudentElevateXProfile,
-  options: { technicalFormat: PlacementTechnicalFormat },
+  options: {
+    technicalFormat: PlacementTechnicalFormat;
+    enabledSections?: PlacementCandidate['enabledSections'];
+    examTotalMarks?: number;
+    examDurationSec?: number;
+    programmingDefaultLanguage?: PlacementCandidate['programmingDefaultLanguage'];
+  },
 ): PlacementCandidate {
   return buildCandidate({
     fullName: profile.fullName,
@@ -76,5 +82,9 @@ export function buildElevateXCandidateFromStudent(
     collegeName: profile.collegeName,
     examName: PLACEMENT_EXAM_NAME,
     technicalFormat: options.technicalFormat,
+    enabledSections: options.enabledSections,
+    examTotalMarks: options.examTotalMarks,
+    examDurationSec: options.examDurationSec,
+    programmingDefaultLanguage: options.programmingDefaultLanguage,
   });
 }

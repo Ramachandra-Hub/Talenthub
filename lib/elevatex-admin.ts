@@ -26,14 +26,18 @@ import {
 } from '@/lib/roster-student-provision';
 import { enrichSlotsWithPasswords } from '@/lib/roster-credentials-export';
 import {
-  defaultElevateXTechnicalFormats,
+  defaultElevateXExamConfig,
+  mergeElevateXExamConfig,
+  parseElevateXExamConfig,
+  resolveElevateXExamConfigForStudent,
+  serializeElevateXExamConfig,
+  type ElevateXExamConfig,
+} from '@/lib/placement/elevatex-exam-config';
+import {
   mergeElevateXTechnicalFormats,
-  parseElevateXTechnicalConfig,
-  resolveTechnicalFormatForDepartment,
-  serializeElevateXTechnicalConfig,
   type ElevateXTechnicalFormatsMap,
 } from '@/lib/placement/elevatex-technical-config';
-import type { PlacementTechnicalFormat } from '@/lib/placement/types';
+import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 
 export type ElevateXAdminSlotStatus = {
   slot_number: number;
@@ -56,6 +60,10 @@ export type ElevateXAdminState = {
   scheduleSlots: ExamScheduleSlotInput[];
   /** Admin-only: technical section format per branch (students cannot change). */
   technicalFormats: ElevateXTechnicalFormatsMap;
+  /** Admin-selected ElevateX sections/modules. */
+  enabledSections: PlacementSectionId[];
+  programmingProblems: ElevateXExamConfig['programmingProblems'];
+  programmingDefaultLanguage: ElevateXExamConfig['programmingDefaultLanguage'];
 };
 
 export async function fetchElevateXAdminState(admin: DbServiceClient): Promise<ElevateXAdminState> {
@@ -97,8 +105,8 @@ export async function fetchElevateXAdminState(admin: DbServiceClient): Promise<E
     };
   });
 
-  const technicalFormats = mergeElevateXTechnicalFormats(
-    parseElevateXTechnicalConfig(request?.topic as string | null | undefined),
+  const examConfig = mergeElevateXExamConfig(
+    parseElevateXExamConfig(request?.topic as string | null | undefined),
   );
 
   return {
@@ -106,7 +114,10 @@ export async function fetchElevateXAdminState(admin: DbServiceClient): Promise<E
     requestId,
     testId: ELEVATEX_TEST_ID,
     title: String(request?.title ?? ELEVATEX_EXAM_NAME),
-    technicalFormats,
+    technicalFormats: examConfig.technicalFormats,
+    enabledSections: examConfig.enabledSections,
+    programmingProblems: examConfig.programmingProblems,
+    programmingDefaultLanguage: examConfig.programmingDefaultLanguage,
     slots,
     scheduleSlots: scheduleSlots.length
       ? scheduleSlots
@@ -195,7 +206,7 @@ export async function publishElevateXFromAdmin(
     creatorUserId: input.creatorUserId,
     primaryDepartment: 'All departments',
     title: input.title.trim() || ELEVATEX_EXAM_NAME,
-    topic: serializeElevateXTechnicalConfig(defaultElevateXTechnicalFormats()),
+    topic: serializeElevateXExamConfig(defaultElevateXExamConfig()),
     description: input.description ?? null,
     targetYears: input.targetYears,
     durationMinutes: 60,
@@ -379,11 +390,11 @@ export async function goLiveElevateXSlot(
   return liveRow;
 }
 
-/** Re-create / reset AWS RDS logins from the published ElevateX roster (fixes CSV login issues). */
-export async function saveElevateXTechnicalFormats(
+/** Persist full ElevateX exam config (sections, technical formats, programming bank). */
+export async function saveElevateXExamConfig(
   admin: DbServiceClient,
   requestId: string,
-  formats: ElevateXTechnicalFormatsMap,
+  patch: Partial<ElevateXExamConfig>,
 ): Promise<{ message: string }> {
   const { data: existing } = await admin
     .from('faculty_exam_requests')
@@ -391,20 +402,28 @@ export async function saveElevateXTechnicalFormats(
     .eq('id', requestId)
     .maybeSingle();
 
-  const merged = mergeElevateXTechnicalFormats({
-    ...parseElevateXTechnicalConfig(existing?.topic as string | null | undefined),
-    ...formats,
+  const merged = mergeElevateXExamConfig({
+    ...parseElevateXExamConfig(existing?.topic as string | null | undefined),
+    ...patch,
+    ...(patch.technicalFormats
+      ? { technicalFormats: mergeElevateXTechnicalFormats(patch.technicalFormats) }
+      : {}),
   });
-  for (const value of Object.values(merged)) {
+
+  for (const value of Object.values(merged.technicalFormats)) {
     if (value !== 'mcq' && value !== 'coding' && value !== 'both') {
       throw new Error('Invalid technical format in configuration.');
     }
   }
 
+  if (!merged.enabledSections.length) {
+    throw new Error('Select at least one ElevateX section.');
+  }
+
   const { error } = await admin
     .from('faculty_exam_requests')
     .update({
-      topic: serializeElevateXTechnicalConfig(merged),
+      topic: serializeElevateXExamConfig(merged),
       updated_at: new Date().toISOString(),
     })
     .eq('id', requestId);
@@ -412,8 +431,17 @@ export async function saveElevateXTechnicalFormats(
   if (error) throw new Error(error.message);
 
   return {
-    message: 'Technical section formats saved. Students will use these settings for their branch.',
+    message: 'ElevateX exam configuration saved. Students will see the selected sections.',
   };
+}
+
+/** Re-create / reset AWS RDS logins from the published ElevateX roster (fixes CSV login issues). */
+export async function saveElevateXTechnicalFormats(
+  admin: DbServiceClient,
+  requestId: string,
+  formats: ElevateXTechnicalFormatsMap,
+): Promise<{ message: string }> {
+  return saveElevateXExamConfig(admin, requestId, { technicalFormats: formats });
 }
 
 async function fetchLatestElevateXRequestTopic(
@@ -443,17 +471,22 @@ async function fetchLatestElevateXRequestTopic(
   return fallback?.topic as string | null | undefined;
 }
 
+/** Resolve student ElevateX config from the published request (server-authoritative). */
+export async function fetchElevateXExamConfigForDepartment(
+  admin: DbServiceClient,
+  departmentId: string,
+): Promise<ReturnType<typeof resolveElevateXExamConfigForStudent>> {
+  const topic = await fetchLatestElevateXRequestTopic(admin);
+  return resolveElevateXExamConfigForStudent(departmentId, topic);
+}
+
 /** Resolve format for a student branch from the published ElevateX request (server-authoritative). */
 export async function fetchElevateXTechnicalFormatForDepartment(
   admin: DbServiceClient,
   departmentId: string,
 ): Promise<PlacementTechnicalFormat> {
-  const topic = await fetchLatestElevateXRequestTopic(admin);
-
-  return resolveTechnicalFormatForDepartment(
-    departmentId,
-    parseElevateXTechnicalConfig(topic),
-  );
+  const resolved = await fetchElevateXExamConfigForDepartment(admin, departmentId);
+  return resolved.technicalFormat;
 }
 
 export async function reprovisionElevateXRoster(

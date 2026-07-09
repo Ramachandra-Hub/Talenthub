@@ -9,13 +9,14 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import {
   PLACEMENT_EXAM_NAME,
-  PLACEMENT_SECTIONS,
   PLACEMENT_TOTAL_MARKS,
   PLACEMENT_TOTAL_SEC,
   SPEAKING_TASKS,
   defaultTechnicalFormatForDepartment,
   describeTechnicalSection,
   findDepartment,
+  computePlacementExamTotals,
+  getActivePlacementSections,
 } from '@/lib/placement/config';
 import { computePlacementScorecard } from '@/lib/placement/scoring';
 import { fetchElevateXAttemptStatus, getElevateXTestId } from '@/lib/placement/elevatex-attempt';
@@ -30,6 +31,7 @@ import {
   loadPlacementProctorSessionId,
   loadSession,
   repairPlacementSession,
+  activePlacementSectionsForSession,
   deriveGlobalTimeLeftSec,
   markPlacementCompleted,
   saveScorecardForAttempt,
@@ -45,6 +47,7 @@ import type {
 } from '@/lib/placement/types';
 import SpeakingSection from '@/components/placement/speaking-section';
 import { PlacementMcqRunner } from '@/components/placement/placement-mcq-runner';
+import { PlacementCodingSection } from '@/components/placement/placement-coding-section';
 import { PlacementTechnicalSection } from '@/components/placement/placement-technical-section';
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
@@ -183,7 +186,21 @@ export default function PlacementTakePage() {
         defaultTechnicalFormatForDepartment(loaded.candidate.departmentId);
       const syncedSession = repairPlacementSession({
         ...loaded,
-        candidate: { ...loaded.candidate, technicalFormat: authoritativeFormat },
+        programmingProblemBank:
+          status.programmingProblems?.length
+            ? status.programmingProblems
+            : loaded.programmingProblemBank,
+        activeSectionIds:
+          status.enabledSections?.length ? status.enabledSections : loaded.activeSectionIds,
+        candidate: {
+          ...loaded.candidate,
+          technicalFormat: authoritativeFormat,
+          enabledSections: status.enabledSections ?? loaded.candidate.enabledSections,
+          examTotalMarks: status.examTotalMarks ?? loaded.candidate.examTotalMarks,
+          examDurationSec: status.examDurationSec ?? loaded.candidate.examDurationSec,
+          programmingDefaultLanguage:
+            status.programmingDefaultLanguage ?? loaded.candidate.programmingDefaultLanguage,
+        },
       });
 
       consumePlacementSessionHandoff();
@@ -335,10 +352,18 @@ export default function PlacementTakePage() {
     };
   }, [hydrated]);
 
+  const activeSections = useMemo(
+    () => (session ? activePlacementSectionsForSession(session) : []),
+    [session],
+  );
+
+  const examTotalMarks = session?.candidate.examTotalMarks ?? PLACEMENT_TOTAL_MARKS;
+  const examDurationSec = session?.candidate.examDurationSec ?? PLACEMENT_TOTAL_SEC;
+
   const currentSection = useMemo(() => {
-    if (!session) return null;
-    return PLACEMENT_SECTIONS[session.currentSectionIndex] ?? null;
-  }, [session]);
+    if (!session || !activeSections.length) return null;
+    return activeSections[session.currentSectionIndex] ?? null;
+  }, [session, activeSections]);
 
   const restoreSubmitAfterFailure = useCallback((message: string) => {
     submitGuardRef.current = false;
@@ -388,8 +413,8 @@ export default function PlacementTakePage() {
             : undefined);
 
         const elapsedForSubmit = Math.min(
-          PLACEMENT_TOTAL_SEC,
-          Math.max(0, PLACEMENT_TOTAL_SEC - deriveGlobalTimeLeftSec(session)),
+          examDurationSec,
+          Math.max(0, examDurationSec - deriveGlobalTimeLeftSec(session)),
         );
 
         const submitRes = await recordDashboardAttempt({
@@ -415,7 +440,7 @@ export default function PlacementTakePage() {
             name: testName,
             category_id: 'placement',
             duration: 60,
-            total_questions: PLACEMENT_TOTAL_MARKS,
+            total_questions: examTotalMarks,
           },
         });
 
@@ -521,7 +546,7 @@ export default function PlacementTakePage() {
     setSession((prev) => {
       if (!prev) return prev;
       if (newIndex === prev.currentSectionIndex) return prev;
-      if (!PLACEMENT_SECTIONS[newIndex]) return prev;
+      if (!activeSections[newIndex]) return prev;
       return {
         ...prev,
         currentSectionIndex: newIndex,
@@ -529,14 +554,18 @@ export default function PlacementTakePage() {
     });
   };
 
-  const allSectionsComplete = (states: PlacementSession['sectionStates']) =>
-    PLACEMENT_SECTIONS.every((s) => states[s.id as PlacementSectionId]?.completed);
+  const allSectionsComplete = (
+    states: PlacementSession['sectionStates'],
+    sections = activeSections,
+  ) => sections.every((s) => states[s.id as PlacementSectionId]?.completed);
 
   const handleMarkSectionDone = () => {
     let shouldPromptSubmit = false;
     setSession((prev) => {
       if (!prev) return prev;
-      const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
+      const sections = activePlacementSectionsForSession(prev);
+      const cfg = sections[prev.currentSectionIndex];
+      if (!cfg) return prev;
       const state = prev.sectionStates[cfg.id as PlacementSectionId];
       if (!state) return prev;
       const updatedStates = {
@@ -551,13 +580,13 @@ export default function PlacementTakePage() {
 
       let nextIndex = prev.currentSectionIndex + 1;
       while (
-        nextIndex < PLACEMENT_SECTIONS.length &&
-        updatedStates[PLACEMENT_SECTIONS[nextIndex].id as PlacementSectionId]?.completed
+        nextIndex < sections.length &&
+        updatedStates[sections[nextIndex].id as PlacementSectionId]?.completed
       ) {
         nextIndex += 1;
       }
 
-      if (nextIndex >= PLACEMENT_SECTIONS.length) {
+      if (nextIndex >= sections.length) {
         shouldPromptSubmit = true;
         return { ...prev, sectionStates: updatedStates };
       }
@@ -576,7 +605,8 @@ export default function PlacementTakePage() {
   const setMcqAnswer = (questionId: string, value: string | null) => {
     setSession((prev) => {
       if (!prev) return prev;
-      const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
+      const cfg = activePlacementSectionsForSession(prev)[prev.currentSectionIndex];
+      if (!cfg) return prev;
       const state = prev.sectionStates[cfg.id as PlacementSectionId];
       if (state?.kind === 'mcq') {
         const nextAnswers = { ...state.answers };
@@ -609,7 +639,8 @@ export default function PlacementTakePage() {
   const saveSpeakingResponse = (response: PlacementSpeakingResponse) => {
     setSession((prev) => {
       if (!prev) return prev;
-      const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
+      const cfg = activePlacementSectionsForSession(prev)[prev.currentSectionIndex];
+      if (!cfg) return prev;
       const state = prev.sectionStates[cfg.id as PlacementSectionId];
       if (!state || state.kind !== 'speaking') return prev;
       const others = state.responses.filter((r) => r.taskId !== response.taskId);
@@ -629,7 +660,8 @@ export default function PlacementTakePage() {
   const saveCodingSubmission = (submission: PlacementCodingSubmission) => {
     setSession((prev) => {
       if (!prev) return prev;
-      const cfg = PLACEMENT_SECTIONS[prev.currentSectionIndex];
+      const cfg = activePlacementSectionsForSession(prev)[prev.currentSectionIndex];
+      if (!cfg) return prev;
       const state = prev.sectionStates[cfg.id as PlacementSectionId];
       if (state?.kind === 'coding') {
         return {
@@ -672,7 +704,7 @@ export default function PlacementTakePage() {
     if (!session) return 0;
     let answered = 0;
     let total = 0;
-    for (const cfg of PLACEMENT_SECTIONS) {
+    for (const cfg of activeSections) {
       const state = session.sectionStates[cfg.id as PlacementSectionId];
       if (cfg.kind === 'mcq' && state?.kind === 'mcq') {
         total += state.questions.length;
@@ -695,7 +727,7 @@ export default function PlacementTakePage() {
       }
     }
     return total > 0 ? Math.round((answered / total) * 100) : 0;
-  }, [session]);
+  }, [session, activeSections]);
 
   if (loadError) {
     return (
@@ -746,7 +778,7 @@ export default function PlacementTakePage() {
   }
 
   const dept = findDepartment(session.candidate.departmentId);
-  const sectionsDoneCount = PLACEMENT_SECTIONS.filter(
+  const sectionsDoneCount = activeSections.filter(
     (s) => session.sectionStates[s.id as PlacementSectionId]?.completed,
   ).length;
   const sectionState = session.sectionStates[currentSection.id as PlacementSectionId];
@@ -824,7 +856,7 @@ export default function PlacementTakePage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
             Sections
           </p>
-          {PLACEMENT_SECTIONS.map((s, i) => {
+          {activeSections.map((s, i) => {
             const state = session.sectionStates[s.id as PlacementSectionId];
             const isCurrent = i === session.currentSectionIndex;
             const isDone = state?.completed;
@@ -876,7 +908,7 @@ export default function PlacementTakePage() {
             );
           })}
           <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
-            Move between sections freely. Only the overall {Math.round(PLACEMENT_TOTAL_SEC / 60)}-minute exam timer
+            Move between sections freely. Only the overall {Math.round(examDurationSec / 60)}-minute exam timer
             applies; submit before it reaches zero.
           </p>
         </aside>
@@ -886,7 +918,7 @@ export default function PlacementTakePage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Section {session.currentSectionIndex + 1} of {PLACEMENT_SECTIONS.length}
+                  Section {session.currentSectionIndex + 1} of {activeSections.length}
                 </p>
                 <h2 className="text-xl font-bold text-slate-900 mt-1">{currentSection.name}</h2>
                 <p className="text-sm text-slate-600 mt-1">
@@ -922,14 +954,11 @@ export default function PlacementTakePage() {
               onAnswerChange={setMcqAnswer}
             />
           ) : sectionState?.kind === 'coding' ? (
-            <PlacementTechnicalSection
-              format="coding"
-              coding={{
-                problems: sectionState.problems,
-                submissions: sectionState.submissions,
-              }}
-              onMcqAnswerChange={setMcqAnswer}
-              onCodingSubmissionChange={saveCodingSubmission}
+            <PlacementCodingSection
+              problems={sectionState.problems}
+              submissions={sectionState.submissions}
+              defaultLanguage={session.candidate.programmingDefaultLanguage ?? 'c'}
+              onSubmissionChange={saveCodingSubmission}
             />
           ) : sectionState?.kind === 'speaking' ? (
             <SpeakingSection
@@ -953,14 +982,14 @@ export default function PlacementTakePage() {
             </Button>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={handleMarkSectionDone}>
-                {session.currentSectionIndex >= PLACEMENT_SECTIONS.length - 1
+                {session.currentSectionIndex >= activeSections.length - 1
                   ? 'Mark as done'
                   : 'Save & next section →'}
               </Button>
               <Button
                 className="bg-[#1e3a5f] hover:bg-[#16304f] text-white"
                 onClick={() => switchSection(session.currentSectionIndex + 1)}
-                disabled={session.currentSectionIndex >= PLACEMENT_SECTIONS.length - 1}
+                disabled={session.currentSectionIndex >= activeSections.length - 1}
               >
                 Skip to next →
               </Button>
@@ -983,7 +1012,7 @@ export default function PlacementTakePage() {
                 <p>
                   Sections completed:{' '}
                   <span className="font-semibold text-gray-900">
-                    {sectionsDoneCount}/{PLACEMENT_SECTIONS.length}
+                    {sectionsDoneCount}/{activeSections.length}
                   </span>
                 </p>
                 <p>Once submitted, you cannot change your answers. Your scorecard will be shown immediately.</p>

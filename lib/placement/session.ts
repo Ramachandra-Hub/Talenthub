@@ -1,9 +1,12 @@
+import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
 import {
-  PLACEMENT_SECTIONS,
   PLACEMENT_TOTAL_SEC,
+  defaultEnabledPlacementSectionIds,
   defaultTechnicalFormatForDepartment,
+  getActivePlacementSections,
   getPlacementSection,
 } from '@/lib/placement/config';
+import { PROGRAMMING_SECTION_PROBLEM_COUNT } from '@/lib/placement/elevatex-exam-config';
 import { buildPlacementQuestions } from '@/lib/placement/question-banks';
 import type {
   PlacementCandidate,
@@ -13,7 +16,25 @@ import type {
   PlacementTechnicalFormat,
 } from '@/lib/placement/types';
 
-type McqSectionId = Exclude<PlacementSectionId, 'speaking' | 'technical'>;
+type McqSectionId = Exclude<PlacementSectionId, 'speaking' | 'technical' | 'programming'>;
+
+export type BuildPlacementSessionOptions = {
+  enabledSections?: PlacementSectionId[];
+  examDurationSec?: number;
+  programmingProblems?: ProgrammingProblem[];
+};
+
+function resolveActiveSectionIds(candidate: PlacementCandidate): PlacementSectionId[] {
+  return candidate.enabledSections?.length
+    ? candidate.enabledSections
+    : defaultEnabledPlacementSectionIds();
+}
+
+function resolveExamDurationSec(candidate: PlacementCandidate): number {
+  return candidate.examDurationSec && candidate.examDurationSec > 0
+    ? candidate.examDurationSec
+    : PLACEMENT_TOTAL_SEC;
+}
 
 function buildTechnicalState(
   format: PlacementTechnicalFormat,
@@ -64,46 +85,71 @@ function buildTechnicalState(
   return state;
 }
 
+function buildSectionStateForConfig(
+  cfg: ReturnType<typeof getActivePlacementSections>[number],
+  format: PlacementTechnicalFormat,
+  banks: ReturnType<typeof buildPlacementQuestions>,
+  existing?: PlacementSectionState,
+): PlacementSectionState {
+  if (cfg.kind === 'mcq') {
+    const prev = existing?.kind === 'mcq' ? existing : undefined;
+    return {
+      kind: 'mcq',
+      questions: banks[cfg.id as McqSectionId] ?? [],
+      answers: prev?.answers ?? {},
+      completed: prev?.completed ?? false,
+    };
+  }
+  if (cfg.kind === 'technical') {
+    return buildTechnicalState(format, banks, existing);
+  }
+  if (cfg.kind === 'coding') {
+    const prev = existing?.kind === 'coding' ? existing : undefined;
+    return {
+      kind: 'coding',
+      problems: banks.programming,
+      submissions: prev?.submissions ?? {},
+      completed: prev?.completed ?? false,
+    };
+  }
+  const prev = existing?.kind === 'speaking' ? existing : undefined;
+  return {
+    kind: 'speaking',
+    responses: prev?.responses ?? [],
+    completed: prev?.completed ?? false,
+  };
+}
+
 /** Fill missing/empty section pools (e.g. resumed sessions or older drafts). */
 export function repairPlacementSession(session: PlacementSession): PlacementSession {
+  const activeSectionIds =
+    session.activeSectionIds?.length ? session.activeSectionIds : resolveActiveSectionIds(session.candidate);
+  const activeSections = getActivePlacementSections(activeSectionIds);
   const format =
     session.candidate.technicalFormat ??
     defaultTechnicalFormatForDepartment(session.candidate.departmentId);
-  const banks = buildPlacementQuestions(
-    session.candidate.seed,
-    session.candidate.departmentId,
-    format,
-  );
+  const banks = buildPlacementQuestions({
+    seed: session.candidate.seed,
+    departmentId: session.candidate.departmentId,
+    technicalFormat: format,
+    enabledSections: activeSectionIds,
+    programmingProblems: session.programmingProblemBank ?? [],
+  });
   const sectionStates = { ...session.sectionStates };
   let changed = false;
 
-  for (const cfg of PLACEMENT_SECTIONS) {
+  for (const cfg of activeSections) {
+    const sectionId = cfg.id;
+    const state = sectionStates[sectionId];
+    let needsRepair = false;
+
     if (cfg.kind === 'mcq') {
-      const sectionId = cfg.id as McqSectionId;
-      const expected = getPlacementSection(sectionId).questionCount ?? 0;
-      const state = sectionStates[sectionId];
-      const needsRepair =
+      needsRepair =
         !state ||
         state.kind !== 'mcq' ||
         !Array.isArray(state.questions) ||
         state.questions.length === 0;
-
-      if (!needsRepair) continue;
-
-      const existingAnswers = state?.kind === 'mcq' ? state.answers : {};
-      const completed = state?.kind === 'mcq' ? state.completed : false;
-      sectionStates[sectionId] = {
-        kind: 'mcq',
-        questions: banks[sectionId] ?? [],
-        answers: existingAnswers,
-        completed,
-      };
-      changed = true;
-      continue;
-    }
-
-    if (cfg.id === 'technical' && cfg.kind === 'technical') {
-      const state = sectionStates.technical;
+    } else if (cfg.kind === 'technical') {
       const needsMcq =
         (format === 'mcq' || format === 'both') &&
         (!state ||
@@ -124,46 +170,54 @@ export function repairPlacementSession(session: PlacementSession): PlacementSess
           state.kind !== 'technical' ||
           !state.coding?.problems?.length ||
           codingCasesMissing);
-      const formatMismatch =
-        state?.kind === 'technical' && state.format !== format;
-      const wrongPools =
-        state?.kind === 'technical' &&
-        ((format === 'coding' &&
-          !needsCoding &&
-          Boolean(state.mcq?.questions?.length) &&
-          !state.coding?.problems?.length) ||
-          (format === 'mcq' &&
-            !needsMcq &&
-            Boolean(state.coding?.problems?.length) &&
-            !state.mcq?.questions?.length));
-      if (
-        !needsMcq &&
-        !needsCoding &&
-        state?.kind === 'technical' &&
-        !formatMismatch &&
-        !wrongPools
-      ) {
-        continue;
-      }
-
-      sectionStates.technical = buildTechnicalState(format, banks, state);
-      changed = true;
+      const formatMismatch = state?.kind === 'technical' && state.format !== format;
+      needsRepair = needsMcq || needsCoding || formatMismatch;
+    } else if (cfg.kind === 'coding') {
+      needsRepair =
+        !state ||
+        state.kind !== 'coding' ||
+        !Array.isArray(state.problems) ||
+        state.problems.length === 0;
+    } else {
+      needsRepair = !state || state.kind !== 'speaking';
     }
-  }
 
-  if (!sectionStates.speaking || sectionStates.speaking.kind !== 'speaking') {
-    sectionStates.speaking = { kind: 'speaking', responses: [], completed: false };
+    if (!needsRepair) continue;
+
+    sectionStates[sectionId] = buildSectionStateForConfig(cfg, format, banks, state);
     changed = true;
   }
 
   const candidate =
-    session.candidate.technicalFormat === format
+    session.candidate.technicalFormat === format &&
+    session.candidate.enabledSections?.join() === activeSectionIds.join()
       ? session.candidate
-      : { ...session.candidate, technicalFormat: format };
+      : {
+          ...session.candidate,
+          technicalFormat: format,
+          enabledSections: activeSectionIds,
+        };
 
-  return changed || candidate !== session.candidate
-    ? { ...session, candidate, sectionStates }
-    : session;
+  const currentIndex = Math.min(
+    session.currentSectionIndex,
+    Math.max(0, activeSectionIds.length - 1),
+  );
+
+  if (
+    changed ||
+    candidate !== session.candidate ||
+    session.activeSectionIds?.join() !== activeSectionIds.join() ||
+    currentIndex !== session.currentSectionIndex
+  ) {
+    return {
+      ...session,
+      candidate,
+      activeSectionIds,
+      currentSectionIndex: currentIndex,
+      sectionStates,
+    };
+  }
+  return session;
 }
 
 export const PLACEMENT_DRAFT_CANDIDATE_KEY = 'placement:candidate';
@@ -223,39 +277,44 @@ export function getPlacementCompletedAttemptId(hallTicket: string): string | nul
   }
 }
 
-/** Build the initial session given a candidate. Resets if storage already has one. */
-export function buildPlacementSession(candidate: PlacementCandidate): PlacementSession {
+/** Build the initial session given a candidate. */
+export function buildPlacementSession(
+  candidate: PlacementCandidate,
+  options: BuildPlacementSessionOptions = {},
+): PlacementSession {
+  const activeSectionIds =
+    options.enabledSections ?? resolveActiveSectionIds(candidate);
+  const activeSections = getActivePlacementSections(activeSectionIds);
   const format = candidate.technicalFormat;
-  const banks = buildPlacementQuestions(candidate.seed, candidate.departmentId, format);
-  const sectionStates = {} as Record<PlacementSectionId, PlacementSectionState>;
+  const programmingBank = options.programmingProblems ?? [];
+  const banks = buildPlacementQuestions({
+    seed: candidate.seed,
+    departmentId: candidate.departmentId,
+    technicalFormat: format,
+    enabledSections: activeSectionIds,
+    programmingProblems: programmingBank,
+  });
+  const sectionStates: Partial<Record<PlacementSectionId, PlacementSectionState>> = {};
 
-  for (const cfg of PLACEMENT_SECTIONS) {
-    if (cfg.kind === 'mcq') {
-      const questions = banks[cfg.id as McqSectionId] ?? [];
-      sectionStates[cfg.id] = {
-        kind: 'mcq',
-        questions,
-        answers: {},
-        completed: false,
-      };
-    } else if (cfg.kind === 'technical') {
-      sectionStates[cfg.id] = buildTechnicalState(format, banks);
-    } else {
-      sectionStates[cfg.id] = {
-        kind: 'speaking',
-        responses: [],
-        completed: false,
-      };
-    }
+  for (const cfg of activeSections) {
+    sectionStates[cfg.id] = buildSectionStateForConfig(cfg, format, banks);
   }
+
+  const examDurationSec = resolveExamDurationSec(candidate);
 
   return {
     version: 1,
-    candidate,
+    candidate: {
+      ...candidate,
+      enabledSections: activeSectionIds,
+      examDurationSec,
+    },
+    activeSectionIds,
+    programmingProblemBank: programmingBank.length ? programmingBank : undefined,
     sectionStates,
     currentSectionIndex: 0,
     sectionTimeLeftSec: 0,
-    globalTimeLeftSec: PLACEMENT_TOTAL_SEC,
+    globalTimeLeftSec: examDurationSec,
     submitted: false,
   };
 }
@@ -285,12 +344,13 @@ export function deriveGlobalTimeLeftSec(
   session: PlacementSession,
   nowMs = Date.now(),
 ): number {
+  const totalSec = resolveExamDurationSec(session.candidate);
   const startedMs = new Date(session.candidate.startedAt).getTime();
   if (Number.isFinite(startedMs) && startedMs > 0) {
     const elapsedSec = Math.floor((nowMs - startedMs) / 1000);
-    return Math.max(0, PLACEMENT_TOTAL_SEC - elapsedSec);
+    return Math.max(0, totalSec - elapsedSec);
   }
-  return Math.max(0, Math.min(PLACEMENT_TOTAL_SEC, session.globalTimeLeftSec));
+  return Math.max(0, Math.min(totalSec, session.globalTimeLeftSec));
 }
 
 export function syncSessionTimer(session: PlacementSession): PlacementSession {
@@ -324,6 +384,9 @@ function parseStoredSession(raw: string | null): PlacementSession | null {
   try {
     const parsed = JSON.parse(raw) as PlacementSession;
     if (parsed?.version !== 1) return null;
+    if (!parsed.activeSectionIds?.length) {
+      parsed.activeSectionIds = resolveActiveSectionIds(parsed.candidate);
+    }
     const repaired = repairPlacementSession(parsed);
     if (repaired.submitted) return repaired;
     return syncSessionTimer(repaired);
@@ -393,4 +456,14 @@ export function loadScorecardForAttempt<T>(attemptId: string): T | null {
   } catch {
     return null;
   }
+}
+
+export function activePlacementSectionsForSession(session: PlacementSession) {
+  const ids =
+    session.activeSectionIds?.length
+      ? session.activeSectionIds
+      : session.candidate.enabledSections?.length
+        ? session.candidate.enabledSections
+        : defaultEnabledPlacementSectionIds();
+  return getActivePlacementSections(ids);
 }

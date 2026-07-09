@@ -4,7 +4,7 @@ import {
   findCompletedElevateXAttempt,
   normalizeRollNumber,
 } from '@/lib/elevatex/completed-attempt';
-import { fetchElevateXTechnicalFormatForDepartment } from '@/lib/elevatex-admin';
+import { fetchElevateXExamConfigForDepartment } from '@/lib/elevatex-admin';
 import { getDbService } from '@/lib/db/get-db-service';
 import { placementDepartmentIdFromBranch } from '@/lib/placement/student-candidate';
 import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
@@ -31,11 +31,11 @@ export async function GET(request: Request) {
     const departmentId = placementDepartmentIdFromBranch(profile.branch);
 
     const admin = getDbService();
-    let technicalFormat = undefined as Awaited<
-      ReturnType<typeof fetchElevateXTechnicalFormatForDepartment>
-    > | undefined;
+    let examConfig:
+      | Awaited<ReturnType<typeof fetchElevateXExamConfigForDepartment>>
+      | undefined;
     if (admin) {
-      technicalFormat = await fetchElevateXTechnicalFormatForDepartment(admin, departmentId);
+      examConfig = await fetchElevateXExamConfigForDepartment(admin, departmentId);
     }
 
     const examWindowOpen = await isElevateXExamWindowOpenPrisma();
@@ -45,23 +45,33 @@ export async function GET(request: Request) {
       rollNumber: rollNumber || undefined,
     });
 
+    const payload = {
+      examWindowOpen,
+      departmentId,
+      technicalFormat: examConfig?.technicalFormat,
+      enabledSections: examConfig?.enabledSections,
+      examTotalMarks: examConfig?.examTotalMarks,
+      examDurationSec: examConfig?.examDurationSec,
+      programmingDefaultLanguage: examConfig?.programmingDefaultLanguage,
+      programmingProblemCount: examConfig?.programmingProblems.length ?? 0,
+      programmingProblems: examConfig?.enabledSections.includes('programming')
+        ? examConfig?.programmingProblems ?? []
+        : [],
+    };
+
     if (!prior) {
       return NextResponse.json({
         completed: false,
-        examWindowOpen,
-        departmentId,
-        technicalFormat,
+        ...payload,
       });
     }
 
     return NextResponse.json({
       completed: true,
-      examWindowOpen,
       attemptId: prior.id,
       score: prior.score,
       completedAt: prior.completed_at,
-      departmentId,
-      technicalFormat,
+      ...payload,
     });
   } catch (err) {
     console.error('[elevatex/attempt-status]', err);

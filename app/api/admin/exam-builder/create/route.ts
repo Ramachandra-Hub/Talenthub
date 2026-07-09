@@ -20,10 +20,11 @@ import {
 } from '@/lib/exam-schedule-slots';
 import { syncElevateXEvaloraModuleFromSchedule } from '@/lib/elevatex-admin';
 import {
-  mergeElevateXTechnicalFormats,
-  serializeElevateXTechnicalConfig,
-  type ElevateXTechnicalFormatsMap,
-} from '@/lib/placement/elevatex-technical-config';
+  mergeElevateXExamConfig,
+  serializeElevateXExamConfig,
+  type ElevateXExamConfig,
+} from '@/lib/placement/elevatex-exam-config';
+import type { ElevateXTechnicalFormatsMap } from '@/lib/placement/elevatex-technical-config';
 
 /** Publishing + roster provision can exceed the default 10s on Vercel. */
 export const maxDuration = 120;
@@ -126,12 +127,21 @@ export async function POST(request: NextRequest) {
       ? primaryDepartment
       : DEPARTMENTS[0];
 
-  const elevateXTechnicalFormats = isElevateX
-    ? mergeElevateXTechnicalFormats(
-        body.technicalFormats && typeof body.technicalFormats === 'object'
-          ? (body.technicalFormats as ElevateXTechnicalFormatsMap)
-          : null,
-      )
+  const elevateXExamConfig = isElevateX
+    ? mergeElevateXExamConfig({
+        technicalFormats:
+          body.technicalFormats && typeof body.technicalFormats === 'object'
+            ? (body.technicalFormats as ElevateXTechnicalFormatsMap)
+            : undefined,
+        enabledSections: Array.isArray(body.enabledSections)
+          ? (body.enabledSections as ElevateXExamConfig['enabledSections'])
+          : undefined,
+        programmingProblems: Array.isArray(body.programmingProblems)
+          ? (body.programmingProblems as ElevateXExamConfig['programmingProblems'])
+          : undefined,
+        programmingDefaultLanguage:
+          body.programmingDefaultLanguage === 'python' ? 'python' : 'c',
+      })
     : null;
 
   try {
@@ -144,7 +154,7 @@ export async function POST(request: NextRequest) {
           ? body.description
           : `${def.name} · ${slotKey}`,
       topic: isElevateX
-        ? serializeElevateXTechnicalConfig(elevateXTechnicalFormats!)
+        ? serializeElevateXExamConfig(elevateXExamConfig!)
         : def.name,
       targetYears,
       extraBranches,

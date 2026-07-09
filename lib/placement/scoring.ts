@@ -4,6 +4,8 @@ import type { Question } from '@/lib/types';
 import {
   PLACEMENT_SECTIONS,
   SPEAKING_TASKS,
+  defaultEnabledPlacementSectionIds,
+  getActivePlacementSections,
   technicalMarkSplit,
 } from '@/lib/placement/config';
 import type {
@@ -194,13 +196,20 @@ export function computePlacementScorecard(
   generatedAt: string = new Date().toISOString(),
 ): PlacementScorecard {
   const sections: PlacementSectionScore[] = [];
+  const activeIds =
+    session.activeSectionIds?.length
+      ? session.activeSectionIds
+      : session.candidate.enabledSections?.length
+        ? session.candidate.enabledSections
+        : defaultEnabledPlacementSectionIds();
+  const activeSections = getActivePlacementSections(activeIds);
 
   let earnedMarks = 0;
   let totalMarks = 0;
   let technicalRating = 0;
   let communicationRating = 0;
 
-  for (const cfg of PLACEMENT_SECTIONS) {
+  for (const cfg of activeSections) {
     totalMarks += cfg.marks;
     const state = session.sectionStates[cfg.id as PlacementSectionId];
 
@@ -266,7 +275,9 @@ export function computePlacementScorecard(
         wrong: Math.max(0, res.totalProblems - res.solved),
         total: res.totalProblems,
       });
-      if (cfg.id === 'technical') technicalRating = res.percent;
+      if (cfg.id === 'technical' || cfg.id === 'programming') {
+        technicalRating = Math.max(technicalRating, res.percent);
+      }
     } else if (cfg.kind === 'speaking' && state?.kind === 'speaking') {
       const res = scoreSpeakingSection(state.responses, cfg.marks);
       earnedMarks += res.earned;
@@ -346,6 +357,10 @@ export function buildCandidate(input: {
   collegeName?: string | null;
   examName?: string | null;
   technicalFormat: PlacementCandidate['technicalFormat'];
+  enabledSections?: PlacementCandidate['enabledSections'];
+  examTotalMarks?: number;
+  examDurationSec?: number;
+  programmingDefaultLanguage?: PlacementCandidate['programmingDefaultLanguage'];
 }): PlacementCandidate {
   const startedAt = new Date().toISOString();
   const seedSource = `${input.hallTicket || 'no-ht'}|${input.fullName || 'anon'}|${input.departmentId}|${startedAt}`;
@@ -358,5 +373,9 @@ export function buildCandidate(input: {
     startedAt,
     seed: seedSource,
     technicalFormat: input.technicalFormat,
+    enabledSections: input.enabledSections,
+    examTotalMarks: input.examTotalMarks,
+    examDurationSec: input.examDurationSec,
+    programmingDefaultLanguage: input.programmingDefaultLanguage,
   };
 }
