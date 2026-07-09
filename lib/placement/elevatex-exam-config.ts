@@ -3,7 +3,7 @@ import type { CodingLanguageId } from '@/lib/coding/languages';
 import {
   PLACEMENT_SECTIONS,
   computePlacementExamTotals,
-  defaultEnabledPlacementSectionIds,
+  defaultElevateXEnabledSectionIds,
   getActivePlacementSections,
 } from '@/lib/placement/config';
 import type { PlacementSectionId } from '@/lib/placement/types';
@@ -31,7 +31,7 @@ export type ElevateXExamConfig = {
 export function defaultElevateXExamConfig(): ElevateXExamConfig {
   return {
     technicalFormats: defaultElevateXTechnicalFormats(),
-    enabledSections: defaultEnabledPlacementSectionIds(),
+    enabledSections: defaultElevateXEnabledSectionIds(),
     programmingProblems: [],
     programmingDefaultLanguage: 'c',
   };

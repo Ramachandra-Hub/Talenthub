@@ -22,14 +22,15 @@ export const PLACEMENT_TOTAL_SEC = 60 * 60; // 1 hour
 export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
   {
     id: 'technical',
-    name: 'Technical Assessment',
-    short: 'Technical',
+    name: 'C Language Assessment (MCQs)',
+    short: 'C Language',
     description:
-      'Branch-specific technical skills — MCQs only or coding only (set by admin for your branch).',
+      '20 multiple-choice questions on C programming fundamentals — variables, operators, control flow, functions, arrays, strings, pointers, structures, and file handling.',
     icon: '🛠️',
     kind: 'technical',
     marks: 20,
     durationSec: 20 * 60,
+    questionCount: TECHNICAL_MCQ_COUNT,
   },
   {
     id: 'speaking',
@@ -96,10 +97,10 @@ export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
   },
   {
     id: 'programming',
-    name: 'Programming (C / Python)',
-    short: 'Programming',
+    name: 'C Language Coding',
+    short: 'Coding',
     description:
-      'Admin-uploaded coding problems — solve in C or Python using the in-browser compiler.',
+      'Three C programming problems from the admin-uploaded bank — solve in C using the in-browser compiler.',
     icon: '💻',
     kind: 'coding',
     marks: 20,
@@ -108,7 +109,12 @@ export const PLACEMENT_SECTIONS: PlacementSectionConfig[] = [
   },
 ];
 
-/** Default ElevateX paper — all classic sections (programming is opt-in). */
+/** Default ElevateX paper — C language MCQs + programming coding section. */
+export function defaultElevateXEnabledSectionIds(): PlacementSectionId[] {
+  return ['technical', 'programming'];
+}
+
+/** Default placement paper — all classic sections (programming is opt-in). */
 export function defaultEnabledPlacementSectionIds(): PlacementSectionId[] {
   return PLACEMENT_SECTIONS.filter((s) => s.id !== 'programming').map((s) => s.id);
 }
@@ -202,24 +208,25 @@ export function describeTechnicalSection(
   format: PlacementTechnicalFormat,
   departmentName: string,
 ): string {
+  void departmentName;
   switch (format) {
     case 'mcq':
-      return `${departmentName} — ${TECHNICAL_MCQ_COUNT} unique department MCQs (no repeats within your paper). Negative marking may apply.`;
+      return `${TECHNICAL_MCQ_COUNT} C language MCQs (1 mark each) covering fundamentals, control flow, pointers, structures, and file handling.`;
     case 'coding':
-      return `${departmentName} — exactly ${TECHNICAL_CODING_COUNT} unique coding problems from a large bank. Each problem has the sample case when you click Run sample. Use the in-browser compiler.`;
+      return `Exactly ${TECHNICAL_CODING_COUNT} C programming problems. Solve each in C using the in-browser compiler.`;
     case 'both':
-      return `${departmentName} — ${TECHNICAL_MCQ_COUNT} unique department MCQs plus ${TECHNICAL_CODING_COUNT} unique coding problems (non-repeating). Complete both parts in this section.`;
+      return `${TECHNICAL_MCQ_COUNT} C language MCQs plus ${TECHNICAL_CODING_COUNT} C programming problems in this section.`;
   }
 }
 
 export function technicalSectionSummary(format: PlacementTechnicalFormat): string {
   switch (format) {
     case 'mcq':
-      return `${TECHNICAL_MCQ_COUNT} MCQs only (no coding)`;
+      return `${TECHNICAL_MCQ_COUNT} C language MCQs (20 marks)`;
     case 'coding':
-      return `${TECHNICAL_CODING_COUNT} coding only (no technical MCQs)`;
+      return `${TECHNICAL_CODING_COUNT} C coding problems`;
     case 'both':
-      return `${TECHNICAL_MCQ_COUNT} MCQs + ${TECHNICAL_CODING_COUNT} coding`;
+      return `${TECHNICAL_MCQ_COUNT} C MCQs + ${TECHNICAL_CODING_COUNT} coding`;
   }
 }
 

@@ -7,18 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ElevateXLiveInfo } from '@/components/elevatex/elevatex-live-info';
 import { ProctorConsentGate } from '@/components/proctor/proctor-consent-gate';
+import { ELEVATEX_CHALLENGE_TITLE, ELEVATEX_REGISTRATION, ELEVATEX_TEST_COMPONENTS } from '@/lib/elevatex';
 import { createProctorSessionId } from '@/lib/exam-v2/proctoring';
 import { getElevateXTestId } from '@/lib/placement/elevatex-attempt';
 import { COLLEGE } from '@/lib/college-brand';
 import {
-  PLACEMENT_EXAM_NAME,
-  PLACEMENT_EXAM_TAGLINE,
-  PLACEMENT_TOTAL_MARKS,
   PLACEMENT_TOTAL_SEC,
   defaultTechnicalFormatForDepartment,
-  describeTechnicalSection,
-  getActivePlacementSections,
-  technicalSectionSummary,
 } from '@/lib/placement/config';
 import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 import { formatScorePercentLabel } from '@/lib/format-score';
@@ -52,17 +47,12 @@ export default function PlacementAssessmentStartPage() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [technicalFormat, setTechnicalFormat] = useState<PlacementTechnicalFormat>('mcq');
   const [enabledSections, setEnabledSections] = useState<PlacementSectionId[]>([]);
-  const [examTotalMarks, setExamTotalMarks] = useState(PLACEMENT_TOTAL_MARKS);
   const [examDurationSec, setExamDurationSec] = useState(PLACEMENT_TOTAL_SEC);
-  const [programmingDefaultLanguage, setProgrammingDefaultLanguage] = useState<'c' | 'python'>('c');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [examWindowOpen, setExamWindowOpen] = useState<boolean | null>(null);
 
   const totalMinutes = Math.round(
     (examDurationSec > 0 ? examDurationSec : PLACEMENT_TOTAL_SEC) / 60,
-  );
-  const displaySections = getActivePlacementSections(
-    enabledSections.length ? enabledSections : undefined,
   );
 
   const loadStudent = useCallback(async () => {
@@ -110,11 +100,7 @@ export default function PlacementAssessmentStartPage() {
         defaultTechnicalFormatForDepartment(studentProfile.departmentId);
       setTechnicalFormat(fmt);
       if (status.enabledSections?.length) setEnabledSections(status.enabledSections);
-      if (status.examTotalMarks) setExamTotalMarks(status.examTotalMarks);
       if (status.examDurationSec) setExamDurationSec(status.examDurationSec);
-      if (status.programmingDefaultLanguage) {
-        setProgrammingDefaultLanguage(status.programmingDefaultLanguage);
-      }
       const completedAttemptId =
         status.completed && status.attemptId
           ? status.attemptId
@@ -159,7 +145,7 @@ export default function PlacementAssessmentStartPage() {
       enabledSections: status.enabledSections,
       examTotalMarks: status.examTotalMarks,
       examDurationSec: status.examDurationSec,
-      programmingDefaultLanguage: status.programmingDefaultLanguage,
+      programmingDefaultLanguage: 'c',
     });
     const session = buildPlacementSession(candidate, {
       enabledSections: status.enabledSections,
@@ -242,11 +228,10 @@ export default function PlacementAssessmentStartPage() {
                 {profile.collegeName ?? COLLEGE.shortName}
               </p>
               <h1 className="text-3xl sm:text-4xl font-black tracking-tight bg-gradient-to-r from-white via-fuchsia-100 to-cyan-200 bg-clip-text text-transparent">
-                {PLACEMENT_EXAM_NAME} · Instructions
+                {ELEVATEX_CHALLENGE_TITLE}
               </h1>
               <p className="text-sm text-white/85 mt-1">
-                {PLACEMENT_EXAM_TAGLINE} · {displaySections.length} sections · {examTotalMarks}{' '}
-                marks · {totalMinutes} minutes
+                Examination instructions · {ELEVATEX_REGISTRATION.mode} · {ELEVATEX_REGISTRATION.duration}
               </p>
             </div>
           </div>
@@ -269,40 +254,12 @@ export default function PlacementAssessmentStartPage() {
             <p className="text-slate-600">
               Branch: <span className="font-medium text-slate-800">{profile.departmentName}</span>
             </p>
-            <p className="text-slate-600">
-              Technical section (set by admin):{' '}
-              <span className="font-medium text-slate-800">
-                {technicalSectionSummary(technicalFormat)}
-              </span>
-            </p>
             <p className="text-xs text-slate-500 leading-relaxed pt-1 border-t border-slate-200">
-              {describeTechnicalSection(technicalFormat, profile.departmentName)}
+              Language for coding questions: <span className="font-medium text-slate-700">C only</span>
             </p>
           </div>
 
-          <ElevateXLiveInfo className="mb-6" />
-
-          <ul className="list-disc pl-5 text-sm text-slate-700 space-y-2 mb-6">
-            <li>
-              <strong>One attempt only</strong> — each student may submit ElevateX exactly once while it is
-              live.
-            </li>
-            <li>One {totalMinutes}-minute timer covers all six sections.</li>
-            <li>You may switch sections freely until time runs out or you submit.</li>
-            <li>Speaking section uses your microphone — allow access when prompted.</li>
-            <li>
-              <strong>Proctoring</strong> — camera and tab monitoring (same as RMSET); violations may
-              auto-submit your paper.
-            </li>
-            <li>
-              <strong>No resume</strong> — if you leave, refresh, or close the tab, you cannot continue
-              this attempt. Finish in one sitting or submit before exiting.
-            </li>
-            <li>
-              On the last section, tap <strong>Mark as done</strong>, then confirm <strong>Submit test</strong>{' '}
-              in the popup.
-            </li>
-          </ul>
+          <ElevateXLiveInfo className="mb-6" showExamInstructions />
 
           {showProctorGate ? (
             <div className="rounded-lg border border-slate-200 bg-white p-4 mb-6">
@@ -366,35 +323,31 @@ export default function PlacementAssessmentStartPage() {
         </Card>
 
         <Card className="md:col-span-2 p-6 sm:p-8 shadow-sm border-slate-200 bg-slate-50">
-          <h2 className="text-lg font-bold text-slate-900 mb-3">Section breakdown</h2>
+          <h2 className="text-lg font-bold text-slate-900 mb-1">Your exam session</h2>
+          <p className="text-xs text-slate-600 mb-4">
+            Timer: <strong>{totalMinutes} minutes</strong> · Language: <strong>C</strong>
+          </p>
+          <h3 className="text-sm font-semibold text-slate-800 mb-2">Test components</h3>
           <ul className="space-y-3 text-sm">
-            {displaySections.map((s) => (
+            {ELEVATEX_TEST_COMPONENTS.map((component) => (
               <li
-                key={s.id}
+                key={component.name}
                 className="flex items-center justify-between gap-3 rounded-md bg-white border border-slate-200 p-3"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xl shrink-0" aria-hidden>
-                    {s.icon}
+                    💻
                   </span>
                   <div className="min-w-0">
-                    <p className="font-semibold text-slate-900 truncate">{s.name}</p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {s.marks} marks
-                      {s.id === 'technical'
-                        ? ` · ${technicalSectionSummary(technicalFormat)}`
-                        : s.questionCount
-                          ? ` · ${s.questionCount} Q`
-                          : ''}
-                    </p>
+                    <p className="font-semibold text-slate-900">{component.name}</p>
+                    <p className="text-xs text-slate-500">{component.questions}</p>
                   </div>
                 </div>
               </li>
             ))}
           </ul>
           <p className="text-xs text-slate-500 mt-4">
-            All sections use unique questions per student. Your technical format is configured by the
-            examination cell for your branch — you cannot change it here.
+            All coding questions must be solved in <strong>C</strong> using the in-browser compiler.
           </p>
         </Card>
       </div>

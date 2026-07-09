@@ -40,6 +40,7 @@ const BASE_GROUPS = {
     { slug: 'logical-reasoning', name: 'Logical Reasoning (general)' },
   ],
   technical: [
+    { slug: 'technical-c-language', name: 'C Language' },
     { slug: 'technical-programming', name: 'Programming' },
     { slug: 'technical-dbms', name: 'DBMS' },
     { slug: 'technical-os', name: 'Operating Systems' },

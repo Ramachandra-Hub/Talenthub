@@ -6,7 +6,7 @@ import { StatusAlert } from '@/components/ui/status-alert';
 import {
   PLACEMENT_SECTIONS,
   computePlacementExamTotals,
-  defaultEnabledPlacementSectionIds,
+  defaultElevateXEnabledSectionIds,
   getActivePlacementSections,
 } from '@/lib/placement/config';
 import type { PlacementSectionId } from '@/lib/placement/types';
@@ -28,7 +28,7 @@ export function ElevateXSectionsPanel({
   onSaved,
 }: Props) {
   const [enabled, setEnabled] = useState<PlacementSectionId[]>(() =>
-    initialEnabled.length ? initialEnabled : defaultEnabledPlacementSectionIds(),
+    initialEnabled.length ? initialEnabled : defaultElevateXEnabledSectionIds(),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function ElevateXSectionsPanel({
   const initialKey = initialEnabled.join(',');
 
   useEffect(() => {
-    const next = initialEnabled.length ? initialEnabled : defaultEnabledPlacementSectionIds();
+    const next = initialEnabled.length ? initialEnabled : defaultElevateXEnabledSectionIds();
     setEnabled((prev) => (prev.join(',') === next.join(',') ? prev : next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialKey]);
@@ -152,7 +152,7 @@ export function ElevateXSectionsPanel({
           size="sm"
           variant="outline"
           onClick={() => {
-            const next = defaultEnabledPlacementSectionIds();
+            const next = defaultElevateXEnabledSectionIds();
             setEnabled(next);
             notifyChange(next);
           }}

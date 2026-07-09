@@ -3,7 +3,6 @@ import { generateAptitudeQuestions } from '@/lib/competitive-exam/generators';
 import { remixMcqOptions } from '@/lib/competitive-exam/question-factory';
 import { forkRng } from '@/lib/competitive-exam/seed-rng';
 import {
-  findDepartment,
   getPlacementSection,
   TECHNICAL_CODING_COUNT,
   TECHNICAL_MCQ_COUNT,
@@ -14,11 +13,10 @@ import {
   generateIntelligenceQuestions,
   generatePlacementLogicQuestions,
   generatePsychometricQuestions,
-  generateTechnicalQuestions,
 } from '@/lib/placement/placement-generators';
 import { placementPsychometricBank } from '@/lib/placement/psychometric-bank';
+import { cLanguageMcqBank } from '@/lib/placement/c-language-mcq-bank';
 import { pickUniqueMcqs, questionStemKey } from '@/lib/placement/question-pick';
-import { technicalBankForDepartment } from '@/lib/placement/technical-banks';
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
 import { pickProgrammingProblemsForExam } from '@/lib/exam-builder/parse-coding-upload';
 import { PROGRAMMING_SECTION_PROBLEM_COUNT } from '@/lib/placement/elevatex-exam-config';
@@ -38,34 +36,19 @@ function buildTechnicalMcq(
   count: number,
   globalSeen: Set<string>,
 ): Question[] {
-  const dept = findDepartment(departmentId) ?? findDepartment('cse')!;
-  const curated = technicalBankForDepartment(dept).filter((q) => {
+  const curated = cLanguageMcqBank().filter((q) => {
     const key = questionStemKey(q);
     return key && !globalSeen.has(key);
   });
   const seedKey = sectionSeed(seed, 'technical-mcq', departmentId);
-  const genRng = forkRng(seedKey, 'tech-mcq-gen');
-
-  const generateMore = (needed: number) =>
-    generateTechnicalQuestions(
-      dept.technicalCategory,
-      genRng,
-      needed,
-      `placement-tech-${seed.slice(0, 12)}`,
-    );
-
-  const initial = [
-    ...curated,
-    ...generateTechnicalQuestions(
-      dept.technicalCategory,
-      genRng,
-      count * GENERATED_POOL_MULTIPLIER,
-      `placement-tech-${seed.slice(0, 12)}`,
-    ),
-  ];
-
   const rng = forkRng(seedKey, 'tech-mcq-pick');
-  const picked = pickUniqueMcqs(initial, count, rng, generateMore, globalSeen);
+  const picked = pickUniqueMcqs(
+    curated,
+    count,
+    rng,
+    () => [],
+    globalSeen,
+  );
 
   return picked.map((q, i) => {
     const remixed = remixMcqOptions(q, forkRng(seedKey, `tech-remix-${i}`));

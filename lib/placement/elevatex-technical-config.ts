@@ -8,11 +8,11 @@ const TOPIC_PREFIX = 'elevatex_cfg:';
 
 export type ElevateXTechnicalFormatsMap = Record<string, PlacementTechnicalFormat>;
 
-/** Default map — one entry per placement department. */
+/** Default map — ElevateX uses C language MCQs for all branches. */
 export function defaultElevateXTechnicalFormats(): ElevateXTechnicalFormatsMap {
   const out: ElevateXTechnicalFormatsMap = {};
   for (const d of PLACEMENT_DEPARTMENTS) {
-    out[d.id] = d.defaultTechnicalFormat;
+    out[d.id] = 'mcq';
   }
   return out;
 }

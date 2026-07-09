@@ -63,7 +63,7 @@ export function PlacementTechnicalSection({
             )}
             onClick={() => setTab('mcq')}
           >
-            Department MCQs ({mcq.questions.length})
+            C Language MCQs ({mcq.questions.length})
           </button>
           <button
             type="button"

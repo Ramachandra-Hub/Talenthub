@@ -1,6 +1,7 @@
 /** ElevateX — Talent Challenge Exam (placement-readiness). RMSET uses separate branding. */
 
 export const ELEVATEX_EXAM_NAME = 'ElevateX';
+export const ELEVATEX_CHALLENGE_TITLE = 'ElevateX · Talent Challenge';
 export const ELEVATEX_TAGLINE =
   'Industry-aligned talent challenge to identify Day-1-ready candidates for priority placements.';
 
@@ -8,21 +9,31 @@ export const ELEVATEX_SHORT_OBJECTIVE =
   'ElevateX identifies high-potential students for structured industry training and priority access to top job packages, internships, and hackathons — built around what recruiters expect from a Day-1 hire.';
 
 export const ELEVATEX_REGISTRATION = {
-  eligibility: 'All branches · III Year 1st Semester (upcoming batch)',
-  testDates: '25 & 26 May 2026',
+  eligibility: 'All Branches · II Year 1st Semester (upcoming batch)',
   timeSlots: 'As listed in the registration form',
   mode: 'In-campus · Offline',
-  duration: '1 hour · 100 marks',
-  passingNote: 'Cutoff as announced by the examination cell',
+  duration: '1 Hour',
+  passingNote: 'Cutoff as announced by the Examination Cell',
 } as const;
 
 export const ELEVATEX_TEST_COMPONENTS = [
-  { name: 'Technical Assessment', marks: 20, description: 'Branch-specific MCQs' },
-  { name: 'Aptitude', marks: 20, description: 'Quantitative, logical reasoning & data interpretation' },
-  { name: 'Logic Building', marks: 15, description: 'Problem-solving & pattern recognition' },
-  { name: 'Intelligence (IQ)', marks: 15, description: 'Abstract, spatial & analytical reasoning' },
-  { name: 'Psychometric', marks: 15, description: 'Personality, behaviour & situational judgement' },
-  { name: 'Speaking / Communication', marks: 15, description: 'Verbal ability, comprehension & expression' },
+  {
+    name: 'C Language Assessment',
+    questions: '20 MCQs + 3 Coding Questions',
+    description:
+      'Fundamentals of C Programming, Variables, Data Types, Operators, Input/Output, Control Statements, Loops, Functions, Arrays, Strings, Pointers, Structures, File Handling, and Problem-Solving using C Programming',
+  },
+] as const;
+
+/** Shown on the student instructions page after login. */
+export const ELEVATEX_EXAM_INSTRUCTIONS = [
+  'One attempt only — each student may submit ElevateX exactly once while it is live.',
+  'Complete the assessment within the allotted time.',
+  'Read every question carefully before answering.',
+  'There is no negative marking unless otherwise announced by the Examination Cell.',
+  'Proctoring — camera and tab monitoring (same as RMSET); violations may auto-submit your paper.',
+  'If you leave, refresh, or close the assessment, you cannot continue your attempt. Finish the assessment in one sitting or submit before exiting.',
+  'After answering all questions, review your responses and click Submit Test to complete your assessment.',
 ] as const;
 
 export const ELEVATEX_MODULE_KEY = 'placement_full' as const;

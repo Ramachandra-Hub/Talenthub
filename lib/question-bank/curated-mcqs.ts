@@ -1,5 +1,6 @@
 import type { FacultyExamQuestion } from '@/lib/faculty-exams';
 import { allSyllabusUnits } from '@/lib/exam-builder/syllabus';
+import { C_LANGUAGE_MCQS } from '@/lib/placement/c-language-mcq-bank';
 
 export type SyllabusTagDef = { slug: string; name: string };
 
@@ -134,6 +135,15 @@ const BY_SLUG: Partial<Record<string, RawMcq[]>> = {
       correct_answer: 'B',
     },
   ],
+  'technical-c-language': C_LANGUAGE_MCQS.map((item) => ({
+    question_text: item.q,
+    option_a: item.options[0],
+    option_b: item.options[1],
+    option_c: item.options[2],
+    option_d: item.options[3],
+    correct_answer: item.correct,
+    explanation: item.explanation,
+  })),
   'technical-programming': [
     {
       question_text: 'Keyword for a constant in JavaScript?',
