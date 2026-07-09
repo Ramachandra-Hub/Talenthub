@@ -45,6 +45,7 @@ export function PlacementTechnicalSection({
       <PlacementCodingSection
         problems={coding.problems}
         submissions={coding.submissions}
+        sectionTitle="Technical coding"
         onSubmissionChange={onCodingSubmissionChange}
       />
     );
@@ -87,6 +88,7 @@ export function PlacementTechnicalSection({
           <PlacementCodingSection
             problems={coding.problems}
             submissions={coding.submissions}
+            sectionTitle="Technical coding"
             onSubmissionChange={onCodingSubmissionChange}
           />
         </div>

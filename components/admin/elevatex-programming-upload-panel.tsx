@@ -30,6 +30,7 @@ export function ElevateXProgrammingUploadPanel({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [pasteText, setPasteText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const syncProblems = (next: ProgrammingProblem[]) => {
@@ -37,20 +38,18 @@ export function ElevateXProgrammingUploadPanel({
     onProblemsChange?.(next);
   };
 
-  const onFile = async (file: File | null) => {
-    if (!file || !requestId) return;
+  const uploadPayload = async (payload: FormData) => {
+    if (!requestId) return;
     setUploading(true);
     setError(null);
     setSuccess(null);
     setWarnings([]);
     try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('requestId', requestId);
-      form.append('defaultLanguage', defaultLanguage);
+      payload.append('requestId', requestId);
+      payload.append('defaultLanguage', defaultLanguage);
       const res = await fetch('/api/admin/elevatex/coding-upload', {
         method: 'POST',
-        body: form,
+        body: payload,
       });
       const json = (await res.json()) as {
         error?: string;
@@ -68,8 +67,23 @@ export function ElevateXProgrammingUploadPanel({
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
+  };
+
+  const onFile = async (file: File | null) => {
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    await uploadPayload(form);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const onPasteUpload = async () => {
+    if (!pasteText.trim()) return;
+    const form = new FormData();
+    form.append('pasteText', pasteText.trim());
+    await uploadPayload(form);
+    setPasteText('');
   };
 
   const saveLanguage = async () => {
@@ -100,10 +114,12 @@ export function ElevateXProgrammingUploadPanel({
   return (
     <div className="rounded-xl border border-violet-200/70 bg-violet-50/30 p-4 space-y-4">
       <div>
-        <h4 className="font-semibold text-[#0c2340]">Programming section — C / Python bulk upload</h4>
+        <h4 className="font-semibold text-[#0c2340]">Programming section — C / Python coding exam</h4>
         <p className="text-sm text-slate-600 mt-1">
-          Upload coding problems (JSON or CSV). Enable the <strong>Programming</strong> section above
-          to include them in ElevateX. Students compile in C or Python in the browser.
+          This is a <strong>live coding exam</strong> (not MCQs). Paste short problem descriptions —
+          e.g. <em>add two arrays</em> — and the system creates sample I/O and hidden test cases
+          automatically. Enable the <strong>Programming</strong> section above. For C/Python language
+          MCQs, use Aptitude or department technical MCQs separately.
         </p>
       </div>
 
@@ -137,14 +153,38 @@ export function ElevateXProgrammingUploadPanel({
         </Button>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,.csv,application/json,text/csv"
-          disabled={!requestId || uploading}
-          onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
-        />
+      <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-1">Quick paste — one problem per line</p>
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            rows={5}
+            disabled={!requestId || uploading}
+            placeholder={'add two arrays\nsum of two numbers\nreverse a string'}
+            className="w-full rounded border border-slate-200 p-2 text-sm font-mono"
+            spellCheck={false}
+          />
+          <Button
+            type="button"
+            size="sm"
+            className="mt-2"
+            disabled={!requestId || uploading || !pasteText.trim()}
+            onClick={() => void onPasteUpload()}
+          >
+            {uploading ? 'Generating…' : 'Add problems from paste'}
+          </Button>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-1">Or upload file (.txt, .json, .csv)</p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,.csv,.txt,text/plain,application/json,text/csv"
+            disabled={!requestId || uploading}
+            onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
         <p className="text-[11px] text-slate-500 whitespace-pre-wrap">{CODING_UPLOAD_FORMAT_HINT}</p>
       </div>
 

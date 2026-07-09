@@ -958,6 +958,7 @@ export default function PlacementTakePage() {
               problems={sectionState.problems}
               submissions={sectionState.submissions}
               defaultLanguage={session.candidate.programmingDefaultLanguage ?? 'c'}
+              sectionTitle="Programming (C / Python)"
               onSubmissionChange={saveCodingSubmission}
             />
           ) : sectionState?.kind === 'speaking' ? (

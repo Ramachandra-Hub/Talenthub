@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
 import {
-  parseCodingProblemsCsv,
-  parseCodingProblemsJson,
+  parseCodingProblemsPlainText,
+  parseCodingUploadText,
   CODING_UPLOAD_FORMAT_HINT,
 } from '@/lib/exam-builder/parse-coding-upload';
+import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
 import { saveElevateXExamConfig } from '@/lib/elevatex-admin';
 import { mergeElevateXExamConfig, parseElevateXExamConfig } from '@/lib/placement/elevatex-exam-config';
 
@@ -30,25 +31,30 @@ export async function POST(request: NextRequest) {
   }
 
   const file = form.get('file');
+  const pasteText = String(form.get('pasteText') ?? '').trim();
   const requestId = String(form.get('requestId') ?? '').trim();
   const defaultLanguage = String(form.get('defaultLanguage') ?? 'c').trim() === 'python' ? 'python' : 'c';
 
   if (!requestId) {
     return NextResponse.json({ error: 'requestId required' }, { status: 400 });
   }
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'Choose a JSON or CSV file.' }, { status: 400 });
-  }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: 'File must be under 4 MB.' }, { status: 400 });
-  }
 
-  const name = file.name.toLowerCase();
-  const text = await file.text();
-  const parsed =
-    name.endsWith('.csv') || file.type === 'text/csv'
-      ? parseCodingProblemsCsv(text)
-      : parseCodingProblemsJson(text);
+  let parsed: { problems: ProgrammingProblem[]; warnings: string[] };
+
+  if (pasteText) {
+    if (pasteText.length > MAX_BYTES) {
+      return NextResponse.json({ error: 'Paste text must be under 4 MB.' }, { status: 400 });
+    }
+    parsed = parseCodingProblemsPlainText(pasteText, defaultLanguage);
+  } else if (file instanceof File) {
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json({ error: 'File must be under 4 MB.' }, { status: 400 });
+    }
+    const text = await file.text();
+    parsed = parseCodingUploadText(text, file.name, defaultLanguage);
+  } else {
+    return NextResponse.json({ error: 'Paste problem descriptions or choose a file.' }, { status: 400 });
+  }
 
   if (!parsed.problems.length) {
     return NextResponse.json(

@@ -12,6 +12,7 @@ import {
 import {
   formatCodingRunOutput,
   gradeCodingTestCase,
+  runCodingBatchOnServer,
   runCodingOnServer,
 } from '@/lib/coding/run-client';
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
@@ -23,6 +24,8 @@ type Props = {
   onSubmissionChange: (next: PlacementCodingSubmission) => void;
   /** Admin default for programming section (C or Python). */
   defaultLanguage?: CodingLanguageId;
+  /** Sidebar heading (e.g. Programming vs Technical coding). */
+  sectionTitle?: string;
 };
 
 type EditorState = {
@@ -49,6 +52,7 @@ export function PlacementCodingSection({
   submissions,
   onSubmissionChange,
   defaultLanguage,
+  sectionTitle = 'Coding problems',
 }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [running, setRunning] = useState(false);
@@ -124,7 +128,7 @@ export function PlacementCodingSection({
     });
   };
 
-  const runCode = async (stdin: string) => {
+  const runCode = async (stdin: string, mode: 'custom' | 'sample' | 'all' = 'custom') => {
     const state = editorsRef.current[active.id];
     if (!state) return;
 
@@ -135,19 +139,58 @@ export function PlacementCodingSection({
     }
 
     setRunning(true);
-    setOutput('Compiling and running…');
+    setOutput(mode === 'all' ? 'Running all test cases…' : 'Compiling and running…');
 
     try {
+      if (mode === 'all' && active.testCases.length > 0) {
+        const results = await runCodingBatchOnServer(
+          state.language,
+          source,
+          active.testCases.map((t) => t.input),
+        );
+        const lines: string[] = [`=== All test cases (${active.testCases.length}) ===`, ''];
+        let passed = 0;
+
+        active.testCases.forEach((tc, i) => {
+          const data = results[i] ?? { stdout: '', stderr: 'No result', exitCode: 1 };
+          const { pass, actual } = gradeCodingTestCase(data, tc.expectedOutput);
+          if (pass) passed += 1;
+          lines.push(`Test ${i + 1}: ${pass ? 'PASS' : 'FAIL'}`);
+          lines.push(`Input:\n${tc.input}`);
+          lines.push(`Expected:\n${tc.expectedOutput.trim()}`);
+          lines.push(`Your output:\n${actual || '(empty)'}`);
+          if (data.stderr?.trim()) {
+            lines.push(`stderr:\n${data.stderr.trim()}`);
+          }
+          if (tc.explanation) lines.push(`Note: ${tc.explanation}`);
+          lines.push('');
+        });
+
+        lines.push(`Score: ${passed}/${active.testCases.length} test cases passed`);
+
+        onSubmissionChange({
+          problemId: active.id,
+          language: state.language,
+          sourceCode: source,
+          passedCases: passed,
+          totalCases: active.testCases.length,
+          lastRunAt: new Date().toISOString(),
+        });
+
+        setOutput(lines.join('\n'));
+        return;
+      }
+
       const data = await runCodingOnServer(state.language, source, stdin);
       const lines: string[] = [formatCodingRunOutput(data)];
 
       const sampleCase = active.testCases[0];
-      if (sampleCase && stdin.trim() === sampleCase.input.trim()) {
+      if (sampleCase && (mode === 'sample' || stdin.trim() === sampleCase.input.trim())) {
         const { pass, actual } = gradeCodingTestCase(data, sampleCase.expectedOutput);
         lines.push('');
         lines.push('--- Sample check ---');
-        lines.push(`Expected: ${sampleCase.expectedOutput.trim()}`);
-        lines.push(`Got: ${actual || '(empty)'}`);
+        lines.push(`Expected:\n${sampleCase.expectedOutput.trim()}`);
+        lines.push(`Got:\n${actual || '(empty)'}`);
         lines.push(`Result: ${pass ? 'PASS' : 'FAIL'}`);
 
         onSubmissionChange({
@@ -155,7 +198,7 @@ export function PlacementCodingSection({
           language: state.language,
           sourceCode: source,
           passedCases: pass ? 1 : 0,
-          totalCases: 1,
+          totalCases: active.testCases.length,
           lastRunAt: new Date().toISOString(),
         });
       } else {
@@ -164,7 +207,7 @@ export function PlacementCodingSection({
           language: state.language,
           sourceCode: source,
           passedCases: submissions[active.id]?.passedCases ?? 0,
-          totalCases: submissions[active.id]?.totalCases ?? 0,
+          totalCases: active.testCases.length,
           lastRunAt: new Date().toISOString(),
         });
       }
@@ -183,13 +226,13 @@ export function PlacementCodingSection({
   const sub = submissions[active.id];
   const lastScore =
     sub && sub.totalCases > 0
-      ? `${sub.passedCases}/${sub.totalCases} sample passed`
-      : 'Run sample to check your answer';
+      ? `${sub.passedCases}/${sub.totalCases} test cases passed`
+      : 'Run sample or all tests to check your answer';
 
   return (
     <div className="grid lg:grid-cols-4 gap-4">
       <Card className="lg:col-span-1 p-4 border-slate-200">
-        <h3 className="text-sm font-semibold text-slate-900 mb-3">Technical coding (3)</h3>
+        <h3 className="text-sm font-semibold text-slate-900 mb-3">{sectionTitle}</h3>
         <p className="text-xs text-slate-600 mb-3">
           Solved fully: {solvedCount}/{problems.length}
         </p>
@@ -234,20 +277,30 @@ export function PlacementCodingSection({
             </p>
           ) : null}
           <p className="text-xs text-slate-500 mt-2">
-            Run code to compile and see output. Use <strong>Run sample</strong> to check against the
-            sample case. Last result:{' '}
-            <span className="font-semibold text-slate-700">{lastScore}</span>
+            Run code to compile and see output in the panel below. Use <strong>Run sample</strong> for
+            the example case, or <strong>Run all tests</strong> to check every hidden case. Last
+            result: <span className="font-semibold text-slate-700">{lastScore}</span>
           </p>
           <div className="grid sm:grid-cols-2 gap-3 mt-3 text-xs">
             <div>
               <p className="font-semibold">Sample input</p>
-              <pre className="bg-slate-50 border rounded p-2 mt-1">{active.sampleInput}</pre>
+              <pre className="bg-slate-50 border rounded p-2 mt-1 whitespace-pre-wrap">{active.sampleInput}</pre>
             </div>
             <div>
-              <p className="font-semibold">Sample output</p>
-              <pre className="bg-slate-50 border rounded p-2 mt-1">{active.sampleOutput}</pre>
+              <p className="font-semibold">Expected sample output</p>
+              <pre className="bg-slate-50 border rounded p-2 mt-1 whitespace-pre-wrap">{active.sampleOutput}</pre>
             </div>
           </div>
+          {active.inputFormat ? (
+            <p className="text-xs text-slate-500 mt-2">
+              <span className="font-semibold">Input format:</span> {active.inputFormat}
+            </p>
+          ) : null}
+          {active.outputFormat ? (
+            <p className="text-xs text-slate-500 mt-1">
+              <span className="font-semibold">Output format:</span> {active.outputFormat}
+            </p>
+          ) : null}
         </Card>
 
         <Card className="p-4 border-slate-200">
@@ -263,16 +316,24 @@ export function PlacementCodingSection({
                 </option>
               ))}
             </select>
-            <Button size="sm" disabled={running} onClick={() => void runCode(customInput)}>
+            <Button size="sm" disabled={running} onClick={() => void runCode(customInput, 'custom')}>
               {running ? 'Running…' : 'Run code'}
             </Button>
             <Button
               size="sm"
               variant="outline"
               disabled={running}
-              onClick={() => void runCode(active.sampleInput)}
+              onClick={() => void runCode(active.sampleInput, 'sample')}
             >
               Run sample
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={running || active.testCases.length === 0}
+              onClick={() => void runCode('', 'all')}
+            >
+              Run all tests ({active.testCases.length})
             </Button>
           </div>
           <CodeEditor
