@@ -6,6 +6,7 @@ export const ADMIN_NAV_ITEMS = [
     description: 'Per-exam dashboards — filter students and download PDF/CSV reports',
   },
   { href: '/admin/exam-builder', label: 'Exam builder', description: 'Create exams, slot rosters, and publish schedules' },
+  { href: '/admin/exams', label: 'Exam Builder Pro', description: 'Create subject-mapped exams with full CRUD controls' },
   { href: '/admin/rmset', label: 'RMSET', description: 'Select topics and publish the eligibility test paper' },
   { href: '/admin/evalora-modules', label: 'ElevateX & modules', description: 'Go live with ElevateX and other scheduled assessments' },
   { href: '/admin/exam-schedules', label: 'Exam schedules', description: 'Go live per slot for department exams' },

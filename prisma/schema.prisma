@@ -83,10 +83,64 @@ model User {
   testAttempts         TestAttempt[]
   studentActiveSession StudentActiveSession?
   dashboardStats       StudentDashboardStat[]
+  createdExams         Exam[]     @relation("ExamCreatedBy")
 
   @@index([email])
   @@index([rollNumber])
   @@map("users")
+}
+
+model Exam {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String   @unique
+  description String?
+  duration    Int      @default(60)
+  totalMarks  Int      @map("total_marks")
+  passingMarks Int     @map("passing_marks")
+  startTime   DateTime @map("start_time")
+  endTime     DateTime @map("end_time")
+  status      String   @default("draft")
+  createdBy   String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  creator  User?         @relation("ExamCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  subjects ExamSubject[]
+
+  @@index([status, startTime])
+  @@index([createdBy])
+  @@map("exams")
+}
+
+model Subject {
+  id          String   @id @default(uuid()) @db.Uuid
+  subjectName String   @unique @map("subject_name")
+  slug        String   @unique
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  exams ExamSubject[]
+
+  @@index([status])
+  @@map("subjects")
+}
+
+model ExamSubject {
+  id               String   @id @default(uuid()) @db.Uuid
+  examId           String   @map("exam_id") @db.Uuid
+  subjectId        String   @map("subject_id") @db.Uuid
+  /** mcq | coding | both — only meaningful for programming-language subjects. */
+  assessmentFormat String   @default("mcq") @map("assessment_format")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@unique([examId, subjectId])
+  @@index([examId])
+  @@index([subjectId])
+  @@map("exam_subjects")
 }
 
 model AdminUser {
