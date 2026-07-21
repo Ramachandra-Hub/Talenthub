@@ -42,6 +42,8 @@ export type CreateExamRequestInput = {
   goLiveNotice?: string | null;
   usesSlotScheduling?: boolean;
   scheduleSlots?: ExamScheduleSlotInput[];
+  /** Allow publishing with Slot 1 only; remaining slots are added independently later. */
+  incrementalSlotPublishing?: boolean;
   /** Slot numbers (1–8) to mark live immediately after publish. */
   goLiveSlotNumbers?: number[];
 };
@@ -77,7 +79,10 @@ export async function createFacultyExamRequestRecord(
         validateOptionalConfiguredSlots(input.scheduleSlots);
       if (slotErr) throw new Error(slotErr);
     } else {
-      const slotErr = validateScheduleSlots(input.scheduleSlots);
+      const slotErr = input.incrementalSlotPublishing
+        ? validateElevateXPublishSlots(input.scheduleSlots) ??
+          validateOptionalConfiguredSlots(input.scheduleSlots)
+        : validateScheduleSlots(input.scheduleSlots);
       if (slotErr) throw new Error(slotErr);
     }
   }
@@ -244,7 +249,7 @@ export async function createFacultyExamRequestRecord(
     const published = await publishFacultyExamRequest(admin, requestId, input.creatorUserId);
     testId = published.testId;
 
-    if (input.usesSlotScheduling && testId) {
+    if (input.usesSlotScheduling && testId && !input.incrementalSlotPublishing) {
       try {
         await goLiveAllConfiguredSlotSchedules(admin, requestId);
       } catch (goLiveErr) {

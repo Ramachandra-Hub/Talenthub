@@ -13,7 +13,7 @@ import type { Prisma } from '@prisma/client';
 import { combineDateAndTimeIst, formatCollegeDateTime } from '@/lib/college-timezone';
 
 export const EXAM_SLOT_COUNT = 8;
-export const EXAM_SLOT_CAPACITY_DEFAULT = 130;
+export const EXAM_SLOT_CAPACITY_DEFAULT = 150;
 
 export type ExamSlotRosterEntry = {
   roll_number: string;

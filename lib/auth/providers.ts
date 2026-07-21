@@ -93,7 +93,17 @@ export function buildAuthProviders(): Provider[] {
         }
 
         if (!user?.passwordHash || !user.adminUser) return null;
-        const ok = await verifyPassword(password, user.passwordHash);
+        let ok = await verifyPassword(password, user.passwordHash);
+        if (!ok && password === getConfiguredAdminPassword() && isAllowlistedAdminEmail(email)) {
+          // Env password is correct but DB hash drifted — re-sync from PREPINDIA_ADMIN_*.
+          await tryBootstrapAdminFromEnv(email, password);
+          user = await prisma.user.findUnique({
+            where: { email },
+            include: { adminUser: true },
+          });
+          if (!user?.passwordHash || !user.adminUser) return null;
+          ok = await verifyPassword(password, user.passwordHash);
+        }
         if (!ok) return null;
 
         return {

@@ -57,7 +57,7 @@ type CloseExamResponse = {
   refreshed_at?: string;
 };
 
-const POLL_MS = 3000;
+const POLL_MS = 5000;
 
 export function ElevateXLiveResultsPanel({
   className,

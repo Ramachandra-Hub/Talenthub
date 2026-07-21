@@ -42,7 +42,7 @@ export function examShouldIncludeCodingQuestions(
   return false;
 }
 
-function facultyQuestionFromProblem(problem: ProgrammingProblem): FacultyCodingQuestion {
+export function facultyQuestionFromProblem(problem: ProgrammingProblem): FacultyCodingQuestion {
   return {
     question_type: 'coding',
     question_text: problem.statement,

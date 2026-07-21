@@ -13,7 +13,9 @@ import { useElevateXScorecardModal } from '@/hooks/use-elevatex-scorecard-modal'
 import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 
-const POLL_MS = 1500;
+// A 5s refresh keeps the dashboard responsive without competing with 150
+// simultaneous student progress/submission writes every 1.5 seconds.
+const POLL_MS = 5000;
 const AUTO_REPORT_STORAGE_KEY = 'prepindia-auto-slot-reports';
 
 type LiveSchedule = {

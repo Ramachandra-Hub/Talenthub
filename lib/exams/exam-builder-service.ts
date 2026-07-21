@@ -178,6 +178,8 @@ export async function getExamDetails(examId: string): Promise<ExamDetailsDto | n
     created_by: exam.createdBy,
     created_at: exam.createdAt.toISOString(),
     updated_at: exam.updatedAt.toISOString(),
+    faculty_exam_request_id: exam.facultyExamRequestId,
+    published_test_id: exam.publishedTestId,
     subjects: exam.subjects.map((x) => {
       const isProgramming = isProgrammingLanguageSubject({
         slug: x.subject.slug,

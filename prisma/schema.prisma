@@ -101,6 +101,8 @@ model Exam {
   endTime     DateTime @map("end_time")
   status      String   @default("draft")
   createdBy   String?  @map("created_by") @db.Uuid
+  facultyExamRequestId String?  @map("faculty_exam_request_id") @db.Uuid
+  publishedTestId      String?  @map("published_test_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -298,7 +300,7 @@ model ExamSchedule {
   targetYears         Json?     @default("[]") @map("target_years")
   slotNumber          Int?      @map("slot_number")
   attemptRound        Int       @default(1) @map("attempt_round")
-  slotCapacity        Int?      @default(130) @map("slot_capacity")
+  slotCapacity        Int?      @default(150) @map("slot_capacity")
   createdBy           String?   @map("created_by") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")

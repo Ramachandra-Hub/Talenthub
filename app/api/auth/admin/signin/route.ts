@@ -90,6 +90,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const invalidCredentialsHint = () => {
+    const isProd =
+      process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+    return isProd
+      ? 'Contact the examination cell if you forgot your admin credentials.'
+      : `Use ${getConfiguredAdminEmail()} and PREPINDIA_ADMIN_PASSWORD from .env.local (default RCE_T&P). Open http://localhost:3000 — not a Vercel URL.`;
+  };
+
   let result: Awaited<ReturnType<typeof signIn>>;
   try {
     result = await signIn('admin', {
@@ -98,8 +106,23 @@ export async function POST(request: NextRequest) {
       redirect: false,
     });
   } catch (err) {
-    console.error('[admin signin] signIn failed:', err);
     const message = err instanceof Error ? err.message : String(err);
+    const isCredentials =
+      (err as { type?: string; code?: string } | null)?.type === 'CredentialsSignin' ||
+      (err as { code?: string } | null)?.code === 'credentials' ||
+      /credentialssignin/i.test(message);
+
+    if (isCredentials) {
+      return NextResponse.json(
+        {
+          error: 'Invalid email or password.',
+          hint: invalidCredentialsHint(),
+        },
+        { status: 401 },
+      );
+    }
+
+    console.error('[admin signin] signIn failed:', err);
     const { remediation } = classifyDatabaseError(message);
     return NextResponse.json(
       {
@@ -111,15 +134,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (result?.error) {
-    const isProd =
-      process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
-    const hint = isProd
-      ? ' Contact the examination cell if you forgot your admin credentials.'
-      : ' Check PREPINDIA_ADMIN_EMAIL and PREPINDIA_ADMIN_PASSWORD in your environment.';
     return NextResponse.json(
       {
         error: 'Invalid email or password.',
-        hint,
+        hint: invalidCredentialsHint(),
       },
       { status: 401 },
     );

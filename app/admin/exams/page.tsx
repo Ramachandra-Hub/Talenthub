@@ -1,12 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { StatusAlert } from '@/components/ui/status-alert';
+import {
+  DepartmentGroupPicker,
+} from '@/components/exam-builder/department-group-picker';
+import {
+  ExamSlotSchedulePanel,
+  emptySlots,
+} from '@/components/exam-builder/exam-slot-schedule-panel';
+import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
+import type { ExamScheduleSlotInput } from '@/lib/exam-schedule-slots';
+import {
+  filterConfiguredScheduleSlots,
+  validateSingleScheduleSlot,
+} from '@/lib/exam-schedule-slots';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +70,8 @@ type ExamDetails = {
   start_time: string;
   end_time: string;
   status: string;
+  faculty_exam_request_id?: string | null;
+  published_test_id?: string | null;
   subjects: Subject[];
 };
 
@@ -118,6 +134,16 @@ export default function AdminExamsPage() {
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(defaultForm);
   const [dirty, setDirty] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishedTestId, setPublishedTestId] = useState<string | null>(null);
+  const [department, setDepartment] = useState<string>(DEPARTMENTS[0] ?? '');
+  const [departmentGroupId, setDepartmentGroupId] = useState('');
+  const [targetYears, setTargetYears] = useState<string[]>([...ACADEMIC_YEARS]);
+  const [usesSlotScheduling, setUsesSlotScheduling] = useState(false);
+  const [scheduleSlots, setScheduleSlots] = useState<ExamScheduleSlotInput[]>(emptySlots);
+  const [publishedSlotNumbers, setPublishedSlotNumbers] = useState<number[]>([]);
+  const [publishingSlotNumber, setPublishingSlotNumber] = useState<number | null>(null);
+  const [questionsPerSubject, setQuestionsPerSubject] = useState(5);
   const [subjectPage, setSubjectPage] = useState(1);
   const pageSize = 100;
 
@@ -216,13 +242,44 @@ export default function AdminExamsPage() {
     void initialize();
   }, []);
 
+  const slot1 = scheduleSlots.find((slot) => slot.slot_number === 1);
+  const slotsValid =
+    !usesSlotScheduling || (Boolean(slot1) && validateSingleScheduleSlot(slot1!) === null);
+
   const resetForm = () => {
     setSelectedExamId(null);
     setForm(defaultForm());
     setSelectedIds([]);
     setSubjectFormats({});
     setFormatDialogSubject(null);
+    setPublishedTestId(null);
+    setUsesSlotScheduling(false);
+    setScheduleSlots(emptySlots());
+    setPublishedSlotNumbers([]);
     setDirty(false);
+  };
+
+  const loadPublishedSlotState = async (examId: string) => {
+    const res = await fetch(`/api/exams/${examId}/slots`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!res.ok) return;
+    const json = (await res.json()) as {
+      slots?: { slot_number: number }[];
+      uses_slot_scheduling?: boolean;
+      configured_slots?: ExamScheduleSlotInput[];
+    };
+    setPublishedSlotNumbers((json.slots ?? []).map((slot) => slot.slot_number));
+    if (json.uses_slot_scheduling) setUsesSlotScheduling(true);
+    if (json.configured_slots?.length) {
+      const configuredByNumber = new Map(
+        json.configured_slots.map((slot) => [slot.slot_number, slot]),
+      );
+      setScheduleSlots(
+        emptySlots().map((slot) => configuredByNumber.get(slot.slot_number) ?? slot),
+      );
+    }
   };
 
   const loadExamDetails = async (examId: string) => {
@@ -232,6 +289,8 @@ export default function AdminExamsPage() {
     if (!res.ok || !json.exam) throw new Error(json.error ?? 'Could not load exam details');
     const exam = json.exam;
     setSelectedExamId(exam.id);
+    setPublishedTestId(exam.published_test_id ?? null);
+    await loadPublishedSlotState(exam.id);
     setForm({
       title: exam.title,
       description: exam.description ?? '',
@@ -353,13 +412,13 @@ export default function AdminExamsPage() {
     return null;
   };
 
-  const saveExam = async () => {
+  const saveExam = async (): Promise<string | null> => {
     setError(null);
     setSuccess(null);
     const validation = validate();
     if (validation) {
       setError(validation);
-      return;
+      return null;
     }
 
     setSaving(true);
@@ -387,14 +446,130 @@ export default function AdminExamsPage() {
       if (!res.ok) throw new Error(json.error ?? 'Save failed');
 
       const newId = json.examId ?? selectedExamId;
+      if (newId) setSelectedExamId(newId);
       await loadExams();
       if (newId) await loadExamDetails(newId);
       setDirty(false);
       setSuccess(selectedExamId ? 'Exam updated successfully.' : 'Exam created successfully.');
+      return newId ?? null;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
+      return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const publishExam = async () => {
+    setError(null);
+    setSuccess(null);
+    const validation = validate();
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    if (!targetYears.length) {
+      setError('Select at least one target year for scheduling.');
+      return;
+    }
+    if (!departmentGroupId && !department) {
+      setError('Choose a primary department or department group.');
+      return;
+    }
+    if (usesSlotScheduling && !slotsValid) {
+      setError(
+        (slot1 ? validateSingleScheduleSlot(slot1) : null) ??
+          'Complete Slot 1 date, time, and roster. Other slots can be published later.',
+      );
+      return;
+    }
+
+    setPublishing(true);
+    try {
+      let examId = selectedExamId;
+      if (!examId || dirty) {
+        examId = await saveExam();
+      }
+      if (!examId) throw new Error('Save the exam before publishing.');
+
+      const res = await fetch(`/api/exams/${examId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          department,
+          departmentGroupId: departmentGroupId || undefined,
+          targetYears,
+          usesSlotScheduling,
+          scheduleSlots: usesSlotScheduling ? scheduleSlots : undefined,
+          questionsPerSubject,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        takeUrl?: string;
+        testId?: string;
+        warnings?: string[];
+      };
+      if (!res.ok) throw new Error(json.error ?? 'Publish failed');
+
+      setPublishedTestId(json.testId ?? null);
+      if (usesSlotScheduling) {
+        setPublishedSlotNumbers((prev) => [...new Set([...prev, 1])]);
+      }
+      setForm((prev) => ({ ...prev, status: 'published' }));
+      await loadExams();
+      const warn =
+        json.warnings?.length ? ` ${json.warnings.join(' ')}` : '';
+      setSuccess(
+        `${json.message ?? 'Exam published.'}${warn} Use Live Dashboard and Test Reports for individual and consolidated PDFs.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Publish failed');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const publishIndividualSlot = async (slotNumber: number) => {
+    if (!selectedExamId || !publishedTestId) {
+      setError('Publish Slot 1 and the exam first.');
+      return;
+    }
+    const slot = scheduleSlots.find((row) => row.slot_number === slotNumber);
+    if (!slot) return;
+    const validationError = validateSingleScheduleSlot(slot);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setPublishingSlotNumber(slotNumber);
+    try {
+      const res = await fetch(`/api/exams/${selectedExamId}/slots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ slot_number: slotNumber, slot }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? `Could not publish Slot ${slotNumber}.`);
+
+      setPublishedSlotNumbers((prev) => [...new Set([...prev, slotNumber])]);
+      setSuccess(
+        json.message ??
+          `Slot ${slotNumber} published independently. Other slots were not changed.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Slot publish failed');
+    } finally {
+      setPublishingSlotNumber(null);
     }
   };
 
@@ -432,7 +607,7 @@ export default function AdminExamsPage() {
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <AdminPageHeader
         title="Exam Builder"
-        description="Create, edit, and manage subject-mapped exams with full admin control."
+        description="Create exams by name and subjects, schedule for students, then use Live Dashboard and Test Reports for the same individual and consolidated PDF exports as before."
       />
       {error ? <StatusAlert variant="error">{error}</StatusAlert> : null}
       {success ? <StatusAlert variant="success">{success}</StatusAlert> : null}
@@ -659,6 +834,137 @@ export default function AdminExamsPage() {
             ) : null}
           </Card>
 
+          <Card className="p-5 space-y-4">
+            <div>
+              <h3 className="font-semibold text-slate-900">Schedule for students</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Publishing creates the same faculty exam, schedules, and student portal entry as the
+                legacy exam builder. Results appear on{' '}
+                <Link href="/admin/live-dashboard" className="text-[#1e3a5f] font-semibold underline">
+                  Live Dashboard
+                </Link>{' '}
+                and{' '}
+                <Link href="/admin/reports" className="text-[#1e3a5f] font-semibold underline">
+                  Test Reports
+                </Link>{' '}
+                (individual + consolidated PDF downloads).
+              </p>
+              {publishedTestId ? (
+                <p className="text-xs text-emerald-700 mt-2 font-medium">
+                  Published · test id {publishedTestId}
+                </p>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Primary department
+              </label>
+              <select
+                className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+              >
+                {DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <DepartmentGroupPicker
+              value={departmentGroupId}
+              onChange={setDepartmentGroupId}
+              primaryDepartment={department}
+            />
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                Target years
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {ACADEMIC_YEARS.map((year) => (
+                  <label key={year} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={targetYears.includes(year)}
+                      onChange={() => {
+                        setTargetYears((prev) =>
+                          prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year],
+                        );
+                      }}
+                    />
+                    {year}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <NumberField
+              label="MCQs per subject (from question bank)"
+              value={questionsPerSubject}
+              onChange={setQuestionsPerSubject}
+              onDirty={() => undefined}
+            />
+
+            <ExamSlotSchedulePanel
+              enabled={usesSlotScheduling}
+              onEnabledChange={(v) => {
+                setUsesSlotScheduling(v);
+                if (v && scheduleSlots.length === 0) setScheduleSlots(emptySlots());
+              }}
+              slots={scheduleSlots}
+              onSlotsChange={setScheduleSlots}
+              lockedSlotNumbers={publishedSlotNumbers}
+              slotPublishHint="Each slot is independent. Publish Slot 1 when ready; Slots 2–8 can remain empty and be configured and published later."
+            />
+
+            {usesSlotScheduling && publishedTestId ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <p className="text-sm font-semibold text-slate-800">
+                  Publish configured slots individually
+                </p>
+                <p className="text-xs text-slate-500">
+                  Publishing one slot does not require, modify, or publish any other slot.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {filterConfiguredScheduleSlots(scheduleSlots).map((slot) => {
+                    const published = publishedSlotNumbers.includes(slot.slot_number);
+                    return (
+                      <Button
+                        key={slot.slot_number}
+                        type="button"
+                        size="sm"
+                        variant={published ? 'outline' : 'default'}
+                        disabled={published || publishingSlotNumber != null}
+                        onClick={() => void publishIndividualSlot(slot.slot_number)}
+                      >
+                        {published
+                          ? `Slot ${slot.slot_number} published`
+                          : publishingSlotNumber === slot.slot_number
+                            ? `Publishing Slot ${slot.slot_number}…`
+                            : `Publish Slot ${slot.slot_number}`}
+                      </Button>
+                    );
+                  })}
+                  {filterConfiguredScheduleSlots(scheduleSlots).length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      Configure a slot date, time, and roster to enable its publish button.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {!usesSlotScheduling ? (
+              <p className="text-xs text-slate-500">
+                With 8-slot mode off, the exam window uses the start and end date-times above. Students
+                see the exam on their portal during that window.
+              </p>
+            ) : null}
+          </Card>
+
           <Card className="p-5">
             <h3 className="font-semibold text-slate-900 mb-3">Exam details preview</h3>
             <div className="text-sm text-slate-700 space-y-1">
@@ -764,6 +1070,14 @@ export default function AdminExamsPage() {
         </Button>
         <Button onClick={() => void saveExam()} disabled={!canSave}>
           {saving ? 'Saving…' : selectedExamId ? 'Update Exam' : 'Create Exam'}
+        </Button>
+        <Button
+          variant="default"
+          className="bg-[#1e3a5f] hover:bg-[#162d4a]"
+          disabled={!canSave || publishing || Boolean(publishedTestId)}
+          onClick={() => void publishExam()}
+        >
+          {publishing ? 'Publishing…' : publishedTestId ? 'Already published' : 'Publish & schedule'}
         </Button>
       </div>
     </div>

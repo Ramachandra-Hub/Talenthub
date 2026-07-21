@@ -35,6 +35,8 @@ export type ExamDetailsDto = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  faculty_exam_request_id?: string | null;
+  published_test_id?: string | null;
   subjects: SubjectDto[];
 };
 
