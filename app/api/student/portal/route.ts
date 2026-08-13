@@ -17,6 +17,10 @@ import { requireAuth } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { sanitizeStudentExamTopic } from '@/lib/placement/elevatex-exam-config';
 import {
+  getOpenLinkRequestVisibility,
+  studentMaySeeOpenLinkExam,
+} from '@/lib/exams/open-exam-link';
+import {
   buildRosterFirstStudentExams,
   dedupeFacultyExamSchedules,
   filterEvaloraCoveredByFaculty,
@@ -143,11 +147,18 @@ export async function GET() {
   }
 
   const approved = (approvedRequests ?? []) as ApprovedExamRequest[];
+  const { openLinkRequestIds, joinedOpenLinkRequestIds } =
+    await getOpenLinkRequestVisibility(rollNumber);
   const publishedRequestIds = new Set(approved.map((r) => String(r.id)));
   schedules = schedules.filter((s) => {
     const reqId = s.faculty_exam_request_id;
     if (!reqId) return false;
-    return publishedRequestIds.has(String(reqId));
+    if (!publishedRequestIds.has(String(reqId))) return false;
+    return studentMaySeeOpenLinkExam(
+      String(reqId),
+      openLinkRequestIds,
+      joinedOpenLinkRequestIds,
+    );
   });
 
   const facultyIds = [
@@ -241,7 +252,7 @@ export async function GET() {
   for (const schedule of schedules) {
     const reqId = schedule.faculty_exam_request_id;
     if (!reqId || examTitlesByRequestId.has(reqId)) continue;
-    const baseTitle = schedule.title.split(' Â· Slot')[0]?.trim();
+    const baseTitle = schedule.title.split('  Slot')[0]?.trim();
     if (baseTitle) examTitlesByRequestId.set(reqId, baseTitle);
   }
 
@@ -274,7 +285,9 @@ export async function GET() {
     studentSlotByRequestId.size > 0 ? studentSlotByRequestId : undefined;
 
   const supplementalLive = listLiveFacultyExamsForStudent(
-    approved as Parameters<typeof listLiveFacultyExamsForStudent>[0],
+    (approved as Parameters<typeof listLiveFacultyExamsForStudent>[0]).filter((req) =>
+      studentMaySeeOpenLinkExam(req.id, openLinkRequestIds, joinedOpenLinkRequestIds),
+    ),
     schedules,
     department,
     year,

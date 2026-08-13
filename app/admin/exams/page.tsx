@@ -75,6 +75,9 @@ type ExamDetails = {
   status: string;
   faculty_exam_request_id?: string | null;
   published_test_id?: string | null;
+  open_link_enabled?: boolean;
+  open_link_token?: string | null;
+  open_link_password?: string | null;
   subjects: Subject[];
 };
 
@@ -150,6 +153,9 @@ export default function AdminExamsPage() {
   const [codingProblemsPerSubject, setCodingProblemsPerSubject] = useState(2);
   const [subjectRubrics, setSubjectRubrics] = useState<Record<string, SubjectRubricConfig>>({});
   const [subjectPage, setSubjectPage] = useState(1);
+  const [openLinkEnabled, setOpenLinkEnabled] = useState(false);
+  const [openLinkPath, setOpenLinkPath] = useState<string | null>(null);
+  const [openLinkPassword, setOpenLinkPassword] = useState<string | null>(null);
   const pageSize = 100;
 
   const filteredSubjects = useMemo(() => {
@@ -262,6 +268,9 @@ export default function AdminExamsPage() {
     setScheduleSlots(emptySlots());
     setPublishedSlotNumbers([]);
     setSubjectRubrics({});
+    setOpenLinkEnabled(false);
+    setOpenLinkPath(null);
+    setOpenLinkPassword(null);
     setDirty(false);
   };
 
@@ -296,6 +305,9 @@ export default function AdminExamsPage() {
     const exam = json.exam;
     setSelectedExamId(exam.id);
     setPublishedTestId(exam.published_test_id ?? null);
+    setOpenLinkEnabled(Boolean(exam.open_link_enabled));
+    setOpenLinkPath(exam.open_link_token ? `/join/${exam.open_link_token}` : null);
+    setOpenLinkPassword(exam.open_link_password ?? null);
     await loadPublishedSlotState(exam.id);
     setForm({
       title: exam.title,
@@ -481,15 +493,15 @@ export default function AdminExamsPage() {
       setError(validation);
       return;
     }
-    if (!targetYears.length) {
+    if (!targetYears.length && !openLinkEnabled) {
       setError('Select at least one target year for scheduling.');
       return;
     }
-    if (!departmentGroupId && !department) {
+    if (!openLinkEnabled && !departmentGroupId && !department) {
       setError('Choose a primary department or department group.');
       return;
     }
-    if (usesSlotScheduling && !slotsValid) {
+    if (usesSlotScheduling && !openLinkEnabled && !slotsValid) {
       setError(
         (slot1 ? validateSingleScheduleSlot(slot1) : null) ??
           'Complete Slot 1 date, time, and roster. Other slots can be published later.',
@@ -512,10 +524,12 @@ export default function AdminExamsPage() {
         body: JSON.stringify({
           department,
           departmentGroupId: departmentGroupId || undefined,
-          targetYears,
-          usesSlotScheduling,
-          scheduleSlots: usesSlotScheduling ? scheduleSlots : undefined,
+          targetYears: openLinkEnabled ? [...ACADEMIC_YEARS] : targetYears,
+          usesSlotScheduling: openLinkEnabled ? false : usesSlotScheduling,
+          scheduleSlots: openLinkEnabled || !usesSlotScheduling ? undefined : scheduleSlots,
           questionsPerSubject,
+          codingProblemsPerSubject,
+          openLinkEnabled,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -523,11 +537,18 @@ export default function AdminExamsPage() {
         message?: string;
         takeUrl?: string;
         testId?: string;
+        openLinkPath?: string;
+        openLinkPassword?: string;
         warnings?: string[];
       };
       if (!res.ok) throw new Error(json.error ?? 'Publish failed');
 
       setPublishedTestId(json.testId ?? null);
+      if (json.openLinkPath) {
+        setOpenLinkEnabled(true);
+        setOpenLinkPath(json.openLinkPath);
+        setOpenLinkPassword(json.openLinkPassword ?? null);
+      }
       if (usesSlotScheduling) {
         setPublishedSlotNumbers((prev) => [...new Set([...prev, 1])]);
       }
@@ -536,7 +557,9 @@ export default function AdminExamsPage() {
       const warn =
         json.warnings?.length ? ` ${json.warnings.join(' ')}` : '';
       setSuccess(
-        `${json.message ?? 'Exam published.'}${warn} Use Live Dashboard and Test Reports for individual and consolidated PDFs.`,
+        json.openLinkPath
+          ? `${json.message ?? 'Exam published with an open join link.'}${warn} Copy the link below and download the Excel file of student joins.`
+          : `${json.message ?? 'Exam published.'}${warn} Use Live Dashboard and Test Reports for individual and consolidated PDFs.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Publish failed');
@@ -869,6 +892,71 @@ export default function AdminExamsPage() {
               ) : null}
             </div>
 
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={openLinkEnabled}
+                onChange={(e) => {
+                  setOpenLinkEnabled(e.target.checked);
+                  if (e.target.checked) setUsesSlotScheduling(false);
+                }}
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">Open link</span>
+                <span className="block text-xs text-slate-600 mt-0.5">
+                  Anyone with the link can join using roll number, the default password, branch, and
+                  year. Joins are saved to an Excel file you can download. No roster upload needed.
+                </span>
+              </span>
+            </label>
+
+            {openLinkPath ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                  Share this open link
+                </p>
+                <p className="text-sm font-mono break-all text-slate-800">
+                  {typeof window !== 'undefined'
+                    ? `${window.location.origin}${openLinkPath}`
+                    : openLinkPath}
+                </p>
+                {openLinkPassword ? (
+                  <p className="text-xs text-slate-700">
+                    Default password: <strong>{openLinkPassword}</strong>
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const url = `${window.location.origin}${openLinkPath}`;
+                      void navigator.clipboard.writeText(url);
+                      setSuccess('Open link copied.');
+                    }}
+                  >
+                    Copy link
+                  </Button>
+                  {selectedExamId ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        window.open(`/api/exams/${selectedExamId}/open-link/export`, '_blank');
+                      }}
+                    >
+                      Download Excel
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {!openLinkEnabled ? (
+              <>
             <div>
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Primary department
@@ -913,6 +1001,13 @@ export default function AdminExamsPage() {
                 ))}
               </div>
             </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Students enter their own branch and year on the open link. No roster or department
+                targeting is used.
+              </p>
+            )}
 
             <NumberField
               label="MCQs per subject (default when rubric row empty)"
@@ -939,10 +1034,13 @@ export default function AdminExamsPage() {
               codingProblemsPerSubject={codingProblemsPerSubject}
             />
 
+            {!openLinkEnabled ? (
+              <>
             <ExamSlotSchedulePanel
               enabled={usesSlotScheduling}
               onEnabledChange={(v) => {
                 setUsesSlotScheduling(v);
+                if (v) setOpenLinkEnabled(false);
                 if (v && scheduleSlots.length === 0) setScheduleSlots(emptySlots());
               }}
               slots={scheduleSlots}
@@ -994,6 +1092,13 @@ export default function AdminExamsPage() {
                 see the exam on their portal during that window.
               </p>
             ) : null}
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Open-link exams use the start and end date-times above. Students open the shared URL
+                and sign in with roll number, default password, branch, and year.
+              </p>
+            )}
           </Card>
 
           <Card className="p-5">
@@ -1108,7 +1213,13 @@ export default function AdminExamsPage() {
           disabled={!canSave || publishing || Boolean(publishedTestId)}
           onClick={() => void publishExam()}
         >
-          {publishing ? 'Publishing…' : publishedTestId ? 'Already published' : 'Publish & schedule'}
+          {publishing
+            ? 'Publishing…'
+            : publishedTestId
+              ? 'Already published'
+              : openLinkEnabled
+                ? 'Publish open link'
+                : 'Publish & schedule'}
         </Button>
       </div>
     </div>

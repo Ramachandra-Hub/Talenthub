@@ -27,7 +27,8 @@ import {
   sectionPlansFromBlocks,
 } from '@/lib/exams/create-pro-exam-sections';
 import { parseSubjectRubricConfig } from '@/lib/exams/pro-exam-rubric';
-import type { ProExamSubjectBlock } from '@/lib/exams/draw-questions-for-exam';
+import { newOpenLinkToken, openJoinPath, resolveOpenLinkPassword } from '@/lib/exams/open-exam-link';
+import { ACADEMIC_YEARS, DEPARTMENTS } from '@/lib/college-brand';
 
 export type PublishProExamInput = {
   examId: string;
@@ -39,6 +40,7 @@ export type PublishProExamInput = {
   scheduleSlots?: unknown;
   questionsPerSubject?: number;
   codingProblemsPerSubject?: number;
+  openLinkEnabled?: boolean;
 };
 
 export type PublishProExamResult = {
@@ -46,6 +48,8 @@ export type PublishProExamResult = {
   testId?: string;
   scheduleId?: string;
   takeUrl?: string;
+  openLinkPath?: string;
+  openLinkPassword?: string;
   warnings: string[];
 };
 
@@ -173,7 +177,8 @@ export async function publishProExam(
     elevateXTopic = serializeElevateXExamConfig(config);
   }
 
-  const usesSlotScheduling = Boolean(input.usesSlotScheduling);
+  const openLinkEnabled = Boolean(input.openLinkEnabled);
+  const usesSlotScheduling = openLinkEnabled ? false : Boolean(input.usesSlotScheduling);
   const parsedSlots = usesSlotScheduling ? parseScheduleSlotsJson(input.scheduleSlots) : [];
   // Initial publish creates Slot 1 only. Slots 2–8 are published independently later.
   const scheduleSlots = usesSlotScheduling
@@ -184,10 +189,11 @@ export async function publishProExam(
     creatorUserId: input.creatorUserId,
     primaryDepartment: input.primaryDepartment.trim(),
     departmentGroupId: input.departmentGroupId ?? null,
+    extraBranches: openLinkEnabled ? [...DEPARTMENTS] : undefined,
     title: exam.title,
     description: exam.description,
     topic: elevateXTopic ?? exam.title,
-    targetYears: input.targetYears,
+    targetYears: openLinkEnabled ? [...ACADEMIC_YEARS] : input.targetYears,
     durationMinutes: exam.duration,
     questions,
     testType,
@@ -241,7 +247,9 @@ export async function publishProExam(
           description: exam.description,
           creatorUserId: input.creatorUserId,
           targetYears: input.targetYears,
-          targetDepartments: Array.from(new Set([created.department, ...created.target_branches])),
+          targetDepartments: openLinkEnabled
+            ? [...DEPARTMENTS]
+            : Array.from(new Set([created.department, ...created.target_branches])),
           startsAt: new Date(exam.start_time),
           endsAt: new Date(exam.end_time),
         });
@@ -267,12 +275,18 @@ export async function publishProExam(
     }
   }
 
+  const openLinkToken = openLinkEnabled ? newOpenLinkToken() : null;
+  const openLinkPassword = openLinkEnabled ? resolveOpenLinkPassword(null) : null;
+
   await prisma.exam.update({
     where: { id: input.examId },
     data: {
       status: 'published',
       facultyExamRequestId: created.requestId,
       publishedTestId: created.testId ?? null,
+      openLinkEnabled,
+      openLinkToken,
+      openLinkPassword,
     },
   });
 
@@ -287,6 +301,8 @@ export async function publishProExam(
     testId: created.testId,
     scheduleId,
     takeUrl,
+    openLinkPath: openLinkToken ? openJoinPath(openLinkToken) : undefined,
+    openLinkPassword: openLinkPassword ?? undefined,
     warnings,
   };
 }

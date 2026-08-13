@@ -197,6 +197,9 @@ export async function getExamDetails(examId: string): Promise<ExamDetailsDto | n
     updated_at: exam.updatedAt.toISOString(),
     faculty_exam_request_id: exam.facultyExamRequestId,
     published_test_id: exam.publishedTestId,
+    open_link_enabled: exam.openLinkEnabled,
+    open_link_token: exam.openLinkToken,
+    open_link_password: exam.openLinkPassword,
     subjects: exam.subjects.map((x) => {
       const isProgramming = isProgrammingLanguageSubject({
         slug: x.subject.slug,

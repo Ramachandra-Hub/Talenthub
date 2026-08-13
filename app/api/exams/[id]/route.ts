@@ -17,6 +17,11 @@ export async function GET(request: NextRequest, context: Params) {
   const { id } = await context.params;
   const exam = await getExamDetails(id);
   if (!exam) return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
+  if (auth.ctx.resolved.role !== 'admin') {
+    return NextResponse.json({
+      exam: { ...exam, open_link_token: null, open_link_password: null },
+    });
+  }
   return NextResponse.json({ exam });
 }
 

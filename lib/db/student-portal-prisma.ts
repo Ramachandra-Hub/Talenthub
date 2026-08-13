@@ -11,6 +11,10 @@ import { dedupeFacultyExamSchedules } from '@/lib/student-portal-exams';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
 import { sanitizeStudentExamTopic } from '@/lib/placement/elevatex-exam-config';
+import {
+  getOpenLinkRequestVisibility,
+  studentMaySeeOpenLinkExam,
+} from '@/lib/exams/open-exam-link';
 
 function mapSchedule(row: {
   id: string;
@@ -118,9 +122,20 @@ export async function buildStudentPortalFromPrisma(userId: string, email: string
   }
 
   const rollNumber = rollNumberFromUser(email ?? profile.email ?? '', null);
+  const { openLinkRequestIds, joinedOpenLinkRequestIds } =
+    await getOpenLinkRequestVisibility(rollNumber);
 
   const schedulesForPartition: ExamScheduleRow[] = [];
   for (const schedule of schedules) {
+    if (
+      !studentMaySeeOpenLinkExam(
+        schedule.faculty_exam_request_id,
+        openLinkRequestIds,
+        joinedOpenLinkRequestIds,
+      )
+    ) {
+      continue;
+    }
     if (!schedule.slot_number || !rollNumber) {
       schedulesForPartition.push(schedule);
       continue;
@@ -157,6 +172,9 @@ export async function buildStudentPortalFromPrisma(userId: string, email: string
   const supplementalLive = listLiveFacultyExamsForStudent(
     approvedRequests
       .filter((r): r is typeof r & { publishedTestId: string } => Boolean(r.publishedTestId))
+      .filter((r) =>
+        studentMaySeeOpenLinkExam(r.id, openLinkRequestIds, joinedOpenLinkRequestIds),
+      )
       .map((r) => ({
         id: r.id,
         title: r.title,

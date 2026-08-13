@@ -103,11 +103,15 @@ model Exam {
   createdBy   String?  @map("created_by") @db.Uuid
   facultyExamRequestId String?  @map("faculty_exam_request_id") @db.Uuid
   publishedTestId      String?  @map("published_test_id")
+  openLinkEnabled      Boolean  @default(false) @map("open_link_enabled")
+  openLinkToken        String?  @unique @map("open_link_token")
+  openLinkPassword     String?  @map("open_link_password")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   creator  User?         @relation("ExamCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   subjects ExamSubject[]
+  openLinkEntries ExamOpenLinkEntry[]
 
   @@index([status, startTime])
   @@index([createdBy])
@@ -126,6 +130,22 @@ model Subject {
 
   @@index([status])
   @@map("subjects")
+}
+
+model ExamOpenLinkEntry {
+  id         String   @id @default(uuid()) @db.Uuid
+  examId     String   @map("exam_id") @db.Uuid
+  rollNumber String   @map("roll_number")
+  branch     String
+  year       String
+  userId     String?  @map("user_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, rollNumber])
+  @@index([examId])
+  @@map("exam_open_link_entries")
 }
 
 model ExamSubject {

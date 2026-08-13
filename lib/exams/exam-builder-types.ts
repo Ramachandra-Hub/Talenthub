@@ -39,6 +39,9 @@ export type ExamDetailsDto = {
   updated_at: string;
   faculty_exam_request_id?: string | null;
   published_test_id?: string | null;
+  open_link_enabled?: boolean;
+  open_link_token?: string | null;
+  open_link_password?: string | null;
   subjects: SubjectDto[];
 };
 

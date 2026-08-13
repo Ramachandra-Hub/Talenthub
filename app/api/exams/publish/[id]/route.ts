@@ -57,12 +57,14 @@ export async function POST(request: NextRequest, context: Params) {
       scheduleSlots: body.scheduleSlots,
       questionsPerSubject: Number(body.questionsPerSubject) || 5,
       codingProblemsPerSubject: Number(body.codingProblemsPerSubject) || 3,
+      openLinkEnabled: Boolean(body.openLinkEnabled),
     });
 
     return NextResponse.json({
       ...result,
-      message:
-        'Exam published and scheduled. Students can take it from their portal; use Live Dashboard and Test Reports for results and PDF exports.',
+      message: result.openLinkPath
+        ? 'Exam published with an open join link. Anyone with the link can sign in using roll number, the default password, branch, and year.'
+        : 'Exam published and scheduled. Students can take it from their portal; use Live Dashboard and Test Reports for results and PDF exports.',
       links: {
         liveDashboard: '/admin/live-dashboard',
         testReports: '/admin/reports',
