@@ -252,7 +252,7 @@ export async function GET() {
   for (const schedule of schedules) {
     const reqId = schedule.faculty_exam_request_id;
     if (!reqId || examTitlesByRequestId.has(reqId)) continue;
-    const baseTitle = schedule.title.split(' ù Slot')[0]?.trim();
+    const baseTitle = schedule.title.split(' \u00b7 Slot')[0]?.trim();
     if (baseTitle) examTitlesByRequestId.set(reqId, baseTitle);
   }
 
