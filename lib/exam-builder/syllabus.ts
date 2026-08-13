@@ -57,6 +57,30 @@ const BASE_GROUPS = {
     { slug: 'english-grammar', name: 'English Grammar' },
     { slug: 'verbal-ability', name: 'Verbal Ability (general)' },
   ],
+  ai: [
+    { slug: 'ai-search-algorithms', name: 'Search Algorithms (BFS, DFS, A*)' },
+    { slug: 'ai-knowledge-representation', name: 'Knowledge Representation' },
+    { slug: 'ai-expert-systems', name: 'Expert Systems' },
+    { slug: 'ai-propositional-logic', name: 'Propositional Logic' },
+    { slug: 'ai-nlp-basics', name: 'NLP Basics' },
+    { slug: 'ai-neural-networks-intro', name: 'Neural Networks (Intro)' },
+    { slug: 'ai-game-theory', name: 'Game Theory & Minimax' },
+    { slug: 'ai-planning', name: 'Automated Planning' },
+  ],
+  ml: [
+    { slug: 'ml-linear-regression', name: 'Linear Regression' },
+    { slug: 'ml-logistic-regression', name: 'Logistic Regression' },
+    { slug: 'ml-decision-trees', name: 'Decision Trees' },
+    { slug: 'ml-random-forest', name: 'Random Forest' },
+    { slug: 'ml-svm', name: 'Support Vector Machines (SVM)' },
+    { slug: 'ml-knn', name: 'K-Nearest Neighbors (KNN)' },
+    { slug: 'ml-kmeans', name: 'K-Means Clustering' },
+    { slug: 'ml-naive-bayes', name: 'Naive Bayes' },
+    { slug: 'ml-neural-networks', name: 'Neural Networks' },
+    { slug: 'ml-gradient-descent', name: 'Gradient Descent' },
+    { slug: 'ml-backpropagation', name: 'Backpropagation' },
+    { slug: 'ml-pca', name: 'PCA & Dimensionality Reduction' },
+  ],
 } as const satisfies Record<string, SyllabusUnit[]>;
 
 /** RMSET = all placement syllabus units + core eligibility sections (deduped by slug). */
@@ -67,6 +91,14 @@ function buildRmsetUnits(): SyllabusUnit[] {
   }
   for (const u of RMSET_CORE_UNITS) map.set(u.slug, u);
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Sub-topics available for a subject slug (e.g. ai, machine-learning). */
+export function syllabusSubtopicsForSubjectSlug(subjectSlug: string): SyllabusUnit[] {
+  const slug = subjectSlug.trim().toLowerCase();
+  if (slug === 'ai') return [...SYLLABUS_GROUPS.ai];
+  if (slug === 'machine-learning' || slug === 'ml') return [...SYLLABUS_GROUPS.ml];
+  return [];
 }
 
 export const SYLLABUS_GROUPS = {

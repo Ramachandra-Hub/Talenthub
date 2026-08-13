@@ -6,6 +6,7 @@ import {
   buildStudentSlotExamPortalNotices,
   scheduleSlotNumber,
   facultyRequestUsesSlotScheduling,
+  normalizeRoll,
 } from '@/lib/exam-schedule-slots';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { syncExpiredLiveExamSchedules } from '@/lib/exam-schedule-sync';
@@ -14,7 +15,7 @@ import { buildStudentPortalPayload } from '@/lib/student-portal';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
 import { requireAuth } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
-import { normalizeRoll } from '@/lib/exam-schedule-slots';
+import { sanitizeStudentExamTopic } from '@/lib/placement/elevatex-exam-config';
 import {
   buildRosterFirstStudentExams,
   dedupeFacultyExamSchedules,
@@ -161,7 +162,7 @@ export async function GET() {
   for (const row of approved) {
     extras.set(String(row.id), {
       duration_minutes: row.duration_minutes as number,
-      topic: (row.topic as string | null) ?? null,
+      topic: sanitizeStudentExamTopic((row.topic as string | null) ?? null, department),
     });
   }
   if (facultyIds.length) {
@@ -174,7 +175,7 @@ export async function GET() {
       for (const row of facultyRows ?? []) {
         extras.set(row.id as string, {
           duration_minutes: row.duration_minutes as number,
-          topic: (row.topic as string | null) ?? null,
+          topic: sanitizeStudentExamTopic((row.topic as string | null) ?? null, department),
         });
       }
     }

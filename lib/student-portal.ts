@@ -3,6 +3,7 @@ import { isElevateXTestId } from '@/lib/elevatex';
 import { isScheduleWindowOpen, type StudentExamSchedule } from '@/lib/exam-schedule';
 import type { StudentSlotExamPortalNotice } from '@/lib/exam-schedule-slots';
 import { formatSlotWindowLabel } from '@/lib/exam-schedule-slots';
+import { resolveStudentExamDescription } from '@/lib/placement/elevatex-exam-config';
 
 export type PortalExamItem = {
   id: string;
@@ -52,7 +53,7 @@ function fromEvalora(mod: StudentEvaloraModule): PortalExamItem {
   };
 }
 
-function fromFaculty(exam: StudentExamSchedule): PortalExamItem {
+function fromFaculty(exam: StudentExamSchedule, department?: string | null): PortalExamItem {
   const slotNumber =
     exam.slot_number != null && Number.isFinite(Number(exam.slot_number))
       ? Number(exam.slot_number)
@@ -63,7 +64,11 @@ function fromFaculty(exam: StudentExamSchedule): PortalExamItem {
     source: 'faculty',
     kind: exam.kind,
     title: exam.title,
-    description: exam.description?.trim() || exam.topic?.trim() || 'Faculty department examination.',
+    description: resolveStudentExamDescription(
+      exam.description,
+      exam.topic,
+      department,
+    ),
     notice: exam.notice,
     starts_at: exam.starts_at,
     ends_at: exam.ends_at,
@@ -128,8 +133,10 @@ export function buildStudentPortalPayload(input: {
   year: string | null;
   message?: string;
 }): StudentPortalPayload {
-  const facultyLiveItems = input.facultyLive.map(fromFaculty);
-  const facultyUpcomingItems = input.facultyUpcoming.map(fromFaculty);
+  const facultyLiveItems = input.facultyLive.map((exam) => fromFaculty(exam, input.department));
+  const facultyUpcomingItems = input.facultyUpcoming.map((exam) =>
+    fromFaculty(exam, input.department),
+  );
   const allFaculty = [...facultyLiveItems, ...facultyUpcomingItems];
 
   const evaloraLive = input.evaloraLive

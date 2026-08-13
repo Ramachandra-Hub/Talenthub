@@ -6,14 +6,7 @@ import { isFacultyExamLiveForStudent } from '@/lib/exam-schedule';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import { resolveStudentTargeting } from '@/lib/student-profile-sync';
 import { requireAuth } from '@/lib/server-auth';
-import {
-  parseElevateXTechnicalConfig,
-  resolveTechnicalFormatForDepartment,
-} from '@/lib/placement/elevatex-technical-config';
-import {
-  technicalSectionSummary,
-} from '@/lib/placement/config';
-import { placementDepartmentIdFromBranch } from '@/lib/placement/student-candidate';
+import { sanitizeStudentExamTopic, sanitizeStudentFacingText } from '@/lib/placement/elevatex-exam-config';
 
 export async function GET() {
   const auth = await requireAuth(['student']);
@@ -34,10 +27,6 @@ export async function GET() {
 
   const department = profile.branch ?? auth.ctx.resolved.department;
   const year = profile.academic_year ?? auth.ctx.resolved.academicYear;
-
-  const placementDeptId = department
-    ? placementDepartmentIdFromBranch(department)
-    : '';
 
   if (!department || !year) {
     return NextResponse.json({
@@ -67,25 +56,15 @@ export async function GET() {
     return isFacultyExamLiveForStudent(r.id as string, schedules, department, year);
     })
     .map((r) => {
-      // For ElevateX, admin stores per-department technical format in `topic` as a serialized
-      // config blob (`elevatex_cfg:{...}`). Students should see a readable summary, not raw JSON.
-      const topic = (r.topic as string | null) ?? null;
-      if (!topic) return r;
-      if (!topic.startsWith('elevatex_cfg:')) return r;
-
-      const adminFormats = parseElevateXTechnicalConfig(topic);
-      const resolvedFormat = placementDeptId
-        ? resolveTechnicalFormatForDepartment(placementDeptId, adminFormats)
-        : null;
-
-      const label =
-        resolvedFormat != null
-          ? technicalSectionSummary(resolvedFormat)
-          : technicalSectionSummary('mcq');
-
+      const topic = sanitizeStudentExamTopic((r.topic as string | null) ?? null, department);
+      const description = sanitizeStudentFacingText(
+        (r.description as string | null) ?? null,
+        department,
+      );
       return {
         ...r,
-        topic: label,
+        ...(topic ? { topic } : {}),
+        ...(description ? { description } : { description: null }),
       };
     });
 

@@ -20,7 +20,7 @@ export function useCollegeSignIn() {
       setError(null);
       setLoading(true);
       try {
-        const res = await fetch('/api/auth/student/signin', {
+        const res = await fetch('/api/student/signin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

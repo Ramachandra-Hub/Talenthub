@@ -17,6 +17,11 @@ import {
   scheduleSlotNumber,
 } from '@/lib/exam-schedule-slots';
 import { parseTargetStringArray } from '@/lib/targeting-parse';
+import {
+  resolveStudentExamDescription,
+  sanitizeStudentExamTopic,
+  sanitizeStudentFacingText,
+} from '@/lib/placement/elevatex-exam-config';
 
 export type ApprovedExamRequest = {
   id: string;
@@ -179,15 +184,27 @@ export function buildStudentExamScheduleCard(
   request: ApprovedExamRequest,
   visibility: PortalScheduleVisibility,
   extras?: { duration_minutes?: number; topic?: string | null },
+  department?: string | null,
 ): StudentExamSchedule {
   const testId = String(request.published_test_id);
+  const topic = sanitizeStudentExamTopic(extras?.topic ?? request.topic ?? null, department);
+  const description = resolveStudentExamDescription(
+    schedule.description ?? request.description,
+    extras?.topic ?? request.topic ?? null,
+    department,
+  );
+  const title =
+    sanitizeStudentFacingText(request.title?.trim() || schedule.title, department) ||
+    schedule.title;
+
   return {
     ...schedule,
+    title,
+    description,
     kind: visibility === 'live' ? 'live' : 'upcoming',
     take_url: studentTakeUrlForTestId(testId),
     duration_minutes: extras?.duration_minutes ?? request.duration_minutes ?? null,
-    topic: extras?.topic ?? request.topic ?? null,
-    title: request.title?.trim() || schedule.title,
+    topic,
   };
 }
 
@@ -245,6 +262,7 @@ export async function buildRosterFirstStudentExams(input: {
       request,
       visibility,
       meta,
+      input.department,
     );
 
     const testKey = String(request.published_test_id);
@@ -302,3 +320,16 @@ export async function findStudentSlotAssignmentForRequest(
 }
 
 export { isScheduleWindowOpen, findStudentSlotAssignment };
+
+export function sanitizeStudentExamScheduleForResponse(
+  exam: StudentExamSchedule,
+  department?: string | null,
+): StudentExamSchedule {
+  const rawTopic = exam.topic ?? null;
+  return {
+    ...exam,
+    title: sanitizeStudentFacingText(exam.title, department) ?? exam.title,
+    description: resolveStudentExamDescription(exam.description, rawTopic, department),
+    topic: sanitizeStudentExamTopic(rawTopic, department),
+  };
+}

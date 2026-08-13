@@ -8,6 +8,7 @@ import { linkTestQuestions } from '@/lib/exam-builder/link-test-questions';
 import { resolveSyllabusTopicsForBuilder } from '@/lib/exam-builder/draw-questions';
 import { RMSET_CATEGORY_SLUG } from '@/lib/rmset/types';
 import { insertTestRow } from '@/lib/tests/insert-test';
+import { ensureTestCategory } from '@/lib/tests/ensure-test-category';
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -19,29 +20,12 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 async function ensureRmsetCategory(admin: DbServiceClient): Promise<string> {
-  const { data: existing } = await admin
-    .from('test_categories')
-    .select('id')
-    .eq('slug', RMSET_CATEGORY_SLUG)
-    .maybeSingle();
-
-  if (existing?.id) return existing.id as string;
-
-  const { data: created, error } = await admin
-    .from('test_categories')
-    .insert({
-      name: 'RMSET',
-      slug: RMSET_CATEGORY_SLUG,
-      description: 'Topic-selected eligibility test',
-      icon: '📋',
-    })
-    .select('id')
-    .single();
-
-  if (error || !created?.id) {
-    throw new Error(error?.message ?? 'Could not create RMSET category');
-  }
-  return created.id as string;
+  return ensureTestCategory(admin, {
+    slug: RMSET_CATEGORY_SLUG,
+    name: 'RMSET',
+    description: 'Topic-selected eligibility test',
+    icon: '📋',
+  });
 }
 
 async function questionIdsForTopic(

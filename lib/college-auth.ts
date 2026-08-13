@@ -29,6 +29,9 @@ export function adminAuthEmail(username: string): string {
 export function validateRollNumber(roll: string): string | null {
   const v = roll.trim();
   if (!v) return 'Roll number is required';
+  if (/^elevatex_cfg:/i.test(v)) {
+    return 'Enter your roll number (e.g. 21CS001), not system configuration text';
+  }
   if (v.length < 4) return 'Enter a valid roll / registration number';
   if (!/^[@.\w-]+$/i.test(v.replace(/@.+$/, ''))) return 'Invalid characters in roll number';
   return null;

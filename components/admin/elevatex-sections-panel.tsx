@@ -35,16 +35,26 @@ export function ElevateXSectionsPanel({
   const [success, setSuccess] = useState<string | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const skipNotifyRef = useRef(true);
   const initialKey = initialEnabled.join(',');
 
   useEffect(() => {
     const next = initialEnabled.length ? initialEnabled : defaultElevateXEnabledSectionIds();
     setEnabled((prev) => (prev.join(',') === next.join(',') ? prev : next));
+    skipNotifyRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialKey]);
 
-  const notifyChange = (next: PlacementSectionId[]) => {
-    onChangeRef.current?.(next);
+  useEffect(() => {
+    if (skipNotifyRef.current) {
+      skipNotifyRef.current = false;
+      return;
+    }
+    onChangeRef.current?.(enabled);
+  }, [enabled]);
+
+  const applyEnabled = (next: PlacementSectionId[]) => {
+    setEnabled(next);
   };
 
   const toggle = (id: PlacementSectionId) => {
@@ -52,12 +62,9 @@ export function ElevateXSectionsPanel({
       if (prev.includes(id)) {
         const next = prev.filter((x) => x !== id);
         if (!next.length) return prev;
-        notifyChange(next);
         return next;
       }
-      const next = PLACEMENT_SECTIONS.filter((s) => [...prev, id].includes(s.id)).map((s) => s.id);
-      notifyChange(next);
-      return next;
+      return PLACEMENT_SECTIONS.filter((s) => [...prev, id].includes(s.id)).map((s) => s.id);
     });
   };
 
@@ -151,11 +158,7 @@ export function ElevateXSectionsPanel({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => {
-            const next = defaultElevateXEnabledSectionIds();
-            setEnabled(next);
-            notifyChange(next);
-          }}
+          onClick={() => applyEnabled(defaultElevateXEnabledSectionIds())}
         >
           Classic 6 sections
         </Button>
@@ -163,11 +166,7 @@ export function ElevateXSectionsPanel({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => {
-            const next = PLACEMENT_SECTIONS.map((s) => s.id);
-            setEnabled(next);
-            notifyChange(next);
-          }}
+          onClick={() => applyEnabled(PLACEMENT_SECTIONS.map((s) => s.id))}
         >
           Select all
         </Button>

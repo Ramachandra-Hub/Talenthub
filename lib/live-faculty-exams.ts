@@ -9,6 +9,11 @@ import {
 } from '@/lib/exam-schedule';
 import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
 import { scheduleSlotNumber } from '@/lib/exam-schedule-slots';
+import {
+  resolveStudentExamDescription,
+  sanitizeStudentExamTopic,
+  sanitizeStudentFacingText,
+} from '@/lib/placement/elevatex-exam-config';
 
 type ApprovedRequest = {
   id: string;
@@ -65,10 +70,13 @@ export function listLiveFacultyExamsForStudent(
     const liveSchedule = relevant.find((s) => isScheduleLiveNow(s)) ?? relevant[0] ?? related[0];
 
     const meta = extras?.get(req.id);
+    const topic = sanitizeStudentExamTopic(meta?.topic ?? req.topic ?? null, department);
     live.push({
       id: liveSchedule?.id ?? req.id,
-      title: req.title,
-      description: req.description,
+      title:
+        sanitizeStudentFacingText(req.title, department) ||
+        req.title,
+      description: resolveStudentExamDescription(req.description, req.topic, department),
       notice: liveSchedule?.notice ?? null,
       faculty_exam_request_id: req.id,
       test_id: testId,
@@ -86,7 +94,7 @@ export function listLiveFacultyExamsForStudent(
       kind: 'live',
       take_url: studentTakeUrlForTestId(testId),
       duration_minutes: meta?.duration_minutes ?? req.duration_minutes ?? null,
-      topic: meta?.topic ?? req.topic ?? null,
+      topic,
     });
   }
 

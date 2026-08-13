@@ -36,9 +36,11 @@ export function StudentSessionHeartbeat() {
     if (!active) return undefined;
 
     const ping = () => {
-      void fetch('/api/auth/student/session-heartbeat', {
+      void fetch('/api/student/session-heartbeat', {
         method: 'POST',
         credentials: 'include',
+      }).catch(() => {
+        /* ignore when dev server is restarting or offline */
       });
     };
 

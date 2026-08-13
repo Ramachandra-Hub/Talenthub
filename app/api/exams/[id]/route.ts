@@ -66,6 +66,7 @@ export async function PUT(request: NextRequest, context: Params) {
           examId: id,
           subjectId: row.subjectId,
           assessmentFormat: row.assessmentFormat,
+          rubricConfig: row.rubricConfig ?? undefined,
         })),
       }),
     ]);

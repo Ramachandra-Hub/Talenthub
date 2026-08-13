@@ -1,4 +1,6 @@
+import { randomUUID } from 'crypto';
 import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { dbRowTimestamps } from '@/lib/db/row-timestamps';
 import { detectTestsIdKind, normalizeTestId } from '@/lib/exam-builder/id-utils';
 
 export type InsertTestInput = {
@@ -10,11 +12,20 @@ export type InsertTestInput = {
   difficulty?: string;
 };
 
+function withTestInsertDefaults(row: Record<string, unknown>, id: string): Record<string, unknown> {
+  return {
+    ...row,
+    id,
+    ...dbRowTimestamps(),
+  };
+}
+
 /** Insert into tests across legacy schemas (title vs name, optional columns). */
 export async function insertTestRow(
   admin: DbServiceClient,
   input: InsertTestInput,
 ): Promise<{ testId: string; rawId: string | number }> {
+  const id = randomUUID();
   const base: Record<string, unknown> = {
     category_id: input.categoryId,
     title: input.title.trim(),
@@ -28,27 +39,37 @@ export async function insertTestRow(
   };
 
   const attempts: Record<string, unknown>[] = [
-    base,
-    {
-      category_id: input.categoryId,
-      title: input.title.trim(),
-      description: input.description?.trim() ?? null,
-      duration_minutes: input.durationMinutes,
-      total_questions: input.totalQuestions,
-    },
-    {
-      category_id: input.categoryId,
-      name: input.title.trim(),
-      description: input.description?.trim() ?? null,
-      duration_minutes: input.durationMinutes,
-      total_questions: input.totalQuestions,
-    },
-    {
-      category_id: input.categoryId,
-      title: input.title.trim(),
-      total_questions: input.totalQuestions,
-      duration_minutes: input.durationMinutes,
-    },
+    withTestInsertDefaults(base, id),
+    withTestInsertDefaults(
+      {
+        category_id: input.categoryId,
+        title: input.title.trim(),
+        description: input.description?.trim() ?? null,
+        duration_minutes: input.durationMinutes,
+        total_questions: input.totalQuestions,
+        difficulty: input.difficulty ?? 'medium',
+      },
+      id,
+    ),
+    withTestInsertDefaults(
+      {
+        category_id: input.categoryId,
+        name: input.title.trim(),
+        description: input.description?.trim() ?? null,
+        duration_minutes: input.durationMinutes,
+        total_questions: input.totalQuestions,
+      },
+      id,
+    ),
+    withTestInsertDefaults(
+      {
+        category_id: input.categoryId,
+        title: input.title.trim(),
+        total_questions: input.totalQuestions,
+        duration_minutes: input.durationMinutes,
+      },
+      id,
+    ),
   ];
 
   let lastError = 'Failed to create test';

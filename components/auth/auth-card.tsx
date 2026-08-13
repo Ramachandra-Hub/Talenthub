@@ -22,7 +22,7 @@ export function AuthCard({ children, className, title, description }: Props) {
             {title}
           </h2>
           {description ? (
-            <p className="mt-1.5 text-sm leading-relaxed">{description}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-white/85">{description}</p>
           ) : null}
         </div>
       ) : null}

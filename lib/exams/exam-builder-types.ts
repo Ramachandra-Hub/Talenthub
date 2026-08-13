@@ -1,4 +1,5 @@
 import type { AssessmentFormat } from '@/lib/exams/programming-subjects';
+import type { SubjectRubricConfig } from '@/lib/exams/pro-exam-rubric';
 
 export type SubjectDto = {
   id: string;
@@ -7,6 +8,7 @@ export type SubjectDto = {
   status: string;
   assessment_format?: AssessmentFormat;
   is_programming?: boolean;
+  rubric_config?: SubjectRubricConfig | null;
 };
 
 export type ExamSummaryDto = {
@@ -43,4 +45,5 @@ export type ExamDetailsDto = {
 export type ExamSubjectSelection = {
   subjectId: string;
   assessment_format?: AssessmentFormat;
+  rubric_config?: SubjectRubricConfig | null;
 };

@@ -5,8 +5,9 @@ import {
   computePlacementExamTotals,
   defaultElevateXEnabledSectionIds,
   getActivePlacementSections,
+  technicalSectionSummary,
 } from '@/lib/placement/config';
-import type { PlacementSectionId } from '@/lib/placement/types';
+import type { PlacementSectionId, PlacementTechnicalFormat } from '@/lib/placement/types';
 import {
   defaultElevateXTechnicalFormats,
   mergeElevateXTechnicalFormats,
@@ -14,7 +15,7 @@ import {
   resolveTechnicalFormatForDepartment,
   type ElevateXTechnicalFormatsMap,
 } from '@/lib/placement/elevatex-technical-config';
-import type { PlacementTechnicalFormat } from '@/lib/placement/types';
+import { placementDepartmentIdFromBranch } from '@/lib/placement/student-candidate';
 
 export const TOPIC_PREFIX = 'elevatex_cfg:';
 export const PROGRAMMING_SECTION_PROBLEM_COUNT = 3;
@@ -117,6 +118,80 @@ export function mergeElevateXExamConfig(
     programmingDefaultLanguage:
       stored?.programmingDefaultLanguage === 'python' ? 'python' : 'c',
   };
+}
+
+export function isElevateXConfigTopic(topic: string | null | undefined): boolean {
+  return (topic?.trim() ?? '').startsWith(TOPIC_PREFIX);
+}
+
+/** Human-readable exam summary for students — never expose raw `elevatex_cfg:{...}` JSON. */
+export function studentFacingExamTopicLabel(
+  topic: string | null | undefined,
+  departmentBranch?: string | null,
+): string | null {
+  const raw = topic?.trim();
+  if (!raw) return null;
+  if (!raw.startsWith(TOPIC_PREFIX)) return raw;
+
+  const config = mergeElevateXExamConfig(parseElevateXExamConfig(raw));
+  const deptId = departmentBranch ? placementDepartmentIdFromBranch(departmentBranch) : null;
+  const parts: string[] = [];
+
+  for (const section of getActivePlacementSections(config.enabledSections)) {
+    if (section.id === 'technical') {
+      const format: PlacementTechnicalFormat = deptId
+        ? resolveTechnicalFormatForDepartment(deptId, config.technicalFormats)
+        : 'mcq';
+      parts.push(technicalSectionSummary(format));
+    } else if (section.id === 'programming') {
+      const count = config.programmingProblems.length;
+      parts.push(
+        count > 0
+          ? `${count} C coding problem${count === 1 ? '' : 's'}`
+          : section.short,
+      );
+    } else {
+      parts.push(section.short);
+    }
+  }
+
+  return parts.length > 0 ? parts.join(' · ') : 'ElevateX examination';
+}
+
+export function sanitizeStudentExamTopic(
+  topic: string | null | undefined,
+  departmentBranch?: string | null,
+): string | null {
+  if (!topic?.trim()) return null;
+  if (!isElevateXConfigTopic(topic)) return topic.trim();
+  return studentFacingExamTopicLabel(topic, departmentBranch);
+}
+
+/** Strip internal ElevateX config blobs from any student-visible text field. */
+export function sanitizeStudentFacingText(
+  value: string | null | undefined,
+  departmentBranch?: string | null,
+): string | null {
+  if (!value?.trim()) return null;
+  if (isElevateXConfigTopic(value)) {
+    return studentFacingExamTopicLabel(value, departmentBranch);
+  }
+  return value.trim();
+}
+
+/** Prefer a real faculty description; never surface raw `elevatex_cfg:{...}` JSON. */
+export function resolveStudentExamDescription(
+  description: string | null | undefined,
+  topic: string | null | undefined,
+  departmentBranch?: string | null,
+): string {
+  const cleanDescription = sanitizeStudentFacingText(description, departmentBranch);
+  if (cleanDescription) return cleanDescription;
+
+  return (
+    studentFacingExamTopicLabel(topic, departmentBranch) ||
+    'Faculty department examination.'
+  );
 }
 
 export function resolveElevateXExamConfigForStudent(

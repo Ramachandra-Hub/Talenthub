@@ -55,7 +55,7 @@ export function useCollegeSignUp() {
         if (role === 'student') {
           const rollNumber =
             metadata.roll_number?.trim() || email.split('@')[0]?.trim() || '';
-          const signinRes = await fetch('/api/auth/student/signin', {
+          const signinRes = await fetch('/api/student/signin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',

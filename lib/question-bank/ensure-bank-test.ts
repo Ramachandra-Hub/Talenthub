@@ -1,4 +1,8 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { randomUUID } from 'crypto';
+import { dbRowTimestamps } from '@/lib/db/row-timestamps';
+import { ensureTestCategory } from '@/lib/tests/ensure-test-category';
+import { insertTestRow } from '@/lib/tests/insert-test';
 
 const POOL_TEST_TITLE = 'Question Bank Pool';
 const POOL_CATEGORY_SLUG = 'question-bank-pool';
@@ -40,37 +44,57 @@ export async function ensureQuestionBankPoolTestId(
     const { data: anyCat } = await admin.from('test_categories').select('id').limit(1).maybeSingle();
     if (anyCat?.id != null) categoryId = anyCat.id as string | number;
     else {
-      const { data: newCat, error: catErr } = await admin
-        .from('test_categories')
-        .insert({
-          name: 'Question Bank',
+      try {
+        categoryId = await ensureTestCategory(admin, {
           slug: POOL_CATEGORY_SLUG,
+          name: 'Question Bank',
           description: 'Pool category for syllabus-tagged bank MCQs',
           icon: '📚',
-        })
-        .select('id')
-        .single();
-      if (catErr || !newCat?.id) return null;
-      categoryId = newCat.id as string | number;
+        });
+      } catch {
+        return null;
+      }
     }
   }
 
+  try {
+    const { rawId } = await insertTestRow(admin, {
+      categoryId: categoryId as string | number,
+      title: POOL_TEST_TITLE,
+      description: 'Shared pool for draw-from-bank MCQs; not a student-facing exam.',
+      durationMinutes: 60,
+      totalQuestions: 0,
+    });
+    cachedPoolTestId = rawId;
+    return cachedPoolTestId;
+  } catch {
+    // fall through to legacy minimal attempts
+  }
+
+  const poolId = randomUUID();
+  const ts = dbRowTimestamps();
   const attempts: Record<string, unknown>[] = [
     {
+      id: poolId,
       title: POOL_TEST_TITLE,
       description: 'Shared pool for draw-from-bank MCQs; not a student-facing exam.',
       total_questions: 0,
       duration_minutes: 60,
       category_id: categoryId,
+      ...ts,
     },
     {
+      id: randomUUID(),
       title: POOL_TEST_TITLE,
       description: 'Shared pool for draw-from-bank MCQs.',
       category_id: categoryId,
+      ...dbRowTimestamps(),
     },
     {
+      id: randomUUID(),
       title: POOL_TEST_TITLE,
       category_id: categoryId,
+      ...dbRowTimestamps(),
     },
   ];
 

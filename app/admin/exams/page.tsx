@@ -37,6 +37,8 @@ import {
   isProgrammingLanguageSubject,
   type AssessmentFormat,
 } from '@/lib/exams/programming-subjects';
+import { ProExamRubricPanel } from '@/components/admin/pro-exam-rubric-panel';
+import type { SubjectRubricConfig } from '@/lib/exams/pro-exam-rubric';
 
 type Subject = {
   id: string;
@@ -45,6 +47,7 @@ type Subject = {
   status: string;
   is_programming?: boolean;
   assessment_format?: AssessmentFormat;
+  rubric_config?: SubjectRubricConfig | null;
 };
 
 type ExamSummary = {
@@ -144,6 +147,8 @@ export default function AdminExamsPage() {
   const [publishedSlotNumbers, setPublishedSlotNumbers] = useState<number[]>([]);
   const [publishingSlotNumber, setPublishingSlotNumber] = useState<number | null>(null);
   const [questionsPerSubject, setQuestionsPerSubject] = useState(5);
+  const [codingProblemsPerSubject, setCodingProblemsPerSubject] = useState(2);
+  const [subjectRubrics, setSubjectRubrics] = useState<Record<string, SubjectRubricConfig>>({});
   const [subjectPage, setSubjectPage] = useState(1);
   const pageSize = 100;
 
@@ -256,11 +261,12 @@ export default function AdminExamsPage() {
     setUsesSlotScheduling(false);
     setScheduleSlots(emptySlots());
     setPublishedSlotNumbers([]);
+    setSubjectRubrics({});
     setDirty(false);
   };
 
   const loadPublishedSlotState = async (examId: string) => {
-    const res = await fetch(`/api/exams/${examId}/slots`, {
+    const res = await fetch(`/api/exams/slots/${examId}`, {
       credentials: 'include',
       cache: 'no-store',
     });
@@ -307,6 +313,11 @@ export default function AdminExamsPage() {
       formats[s.id] = (s.assessment_format as AssessmentFormat | undefined) ?? 'mcq';
     }
     setSubjectFormats(formats);
+    const rubrics: Record<string, SubjectRubricConfig> = {};
+    for (const s of exam.subjects) {
+      if (s.rubric_config) rubrics[s.id] = s.rubric_config;
+    }
+    setSubjectRubrics(rubrics);
     setDirty(false);
     setSuccess(`Loaded "${exam.title}" for editing.`);
   };
@@ -430,7 +441,9 @@ export default function AdminExamsPage() {
         subjects: selectedIds.map((subjectId) => ({
           subjectId,
           assessment_format: subjectFormats[subjectId] ?? 'mcq',
+          rubric_config: subjectRubrics[subjectId] ?? null,
         })),
+        subjectRubrics,
         start_time: new Date(form.start_time).toISOString(),
         end_time: new Date(form.end_time).toISOString(),
       };
@@ -492,7 +505,7 @@ export default function AdminExamsPage() {
       }
       if (!examId) throw new Error('Save the exam before publishing.');
 
-      const res = await fetch(`/api/exams/${examId}/publish`, {
+      const res = await fetch(`/api/exams/publish/${examId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -549,7 +562,7 @@ export default function AdminExamsPage() {
     setSuccess(null);
     setPublishingSlotNumber(slotNumber);
     try {
-      const res = await fetch(`/api/exams/${selectedExamId}/slots`, {
+      const res = await fetch(`/api/exams/slots/${selectedExamId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -902,10 +915,28 @@ export default function AdminExamsPage() {
             </div>
 
             <NumberField
-              label="MCQs per subject (from question bank)"
+              label="MCQs per subject (default when rubric row empty)"
               value={questionsPerSubject}
               onChange={setQuestionsPerSubject}
               onDirty={() => undefined}
+            />
+
+            <NumberField
+              label="Coding snippets per subject (programming subjects)"
+              value={codingProblemsPerSubject}
+              onChange={setCodingProblemsPerSubject}
+              onDirty={() => undefined}
+            />
+
+            <ProExamRubricPanel
+              selectedSubjects={subjects.filter((s) => selectedIds.includes(s.id))}
+              rubrics={subjectRubrics}
+              onRubricsChange={(next) => {
+                setSubjectRubrics(next);
+                setDirty(true);
+              }}
+              questionsPerSubject={questionsPerSubject}
+              codingProblemsPerSubject={codingProblemsPerSubject}
             />
 
             <ExamSlotSchedulePanel

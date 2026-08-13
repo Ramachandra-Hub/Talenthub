@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PortalShell } from '@/components/auth/portal-shell';
@@ -17,6 +17,7 @@ import { DEFAULT_ADMIN_EMAIL } from '@/lib/admin-defaults';
 
 function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,18 +25,39 @@ function AdminLoginForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const verifyAdmin = async () => {
-    const verifyRes = await fetch('/api/admin/verify', {
+    // Session cookie can lag one tick after signIn in some browsers — retry once.
+    let verifyRes = await fetch('/api/admin/verify', {
       method: 'POST',
       credentials: 'include',
+      cache: 'no-store',
     });
+    if (verifyRes.status === 401) {
+      await new Promise((r) => window.setTimeout(r, 250));
+      verifyRes = await fetch('/api/admin/verify', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+    }
     const verifyJson = (await verifyRes.json().catch(() => ({}))) as {
       isAdmin?: boolean;
       error?: string;
     };
 
     if (verifyRes.ok && verifyJson.isAdmin) {
-      router.push('/admin/dashboard');
+      const redirect = searchParams.get('redirect');
+      const next =
+        redirect && redirect.startsWith('/') && !redirect.startsWith('//')
+          ? redirect
+          : '/admin/dashboard';
+      router.push(next);
       return;
+    }
+
+    if (verifyRes.status === 401) {
+      throw new Error(
+        'Sign-in succeeded but the session cookie was not saved. Use http://localhost:3000 (not the Vercel URL), then try again.',
+      );
     }
 
     throw new Error(
@@ -59,13 +81,8 @@ function AdminLoginForm() {
     try {
       const trimmed = username.trim();
       const email = trimmed.includes('@') ? trimmed.toLowerCase() : adminAuthEmail(trimmed);
-      if (!trimmed.includes('@')) {
-        throw new Error(
-          `Enter your full admin email (e.g. ${DEFAULT_ADMIN_EMAIL}).`,
-        );
-      }
 
-      const signInRes = await fetch('/api/auth/admin/signin', {
+      const signInRes = await fetch('/api/admin/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

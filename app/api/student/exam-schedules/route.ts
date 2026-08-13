@@ -3,6 +3,8 @@ import { getDbService } from '@/lib/db/get-db-service';
 import { requireAuth } from '@/lib/server-auth';
 import { partitionSchedulesForStudent } from '@/lib/exam-schedule';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
+import { sanitizeStudentExamTopic } from '@/lib/placement/elevatex-exam-config';
+import { sanitizeStudentExamScheduleForResponse } from '@/lib/student-portal-exams';
 
 export async function GET() {
   const auth = await requireAuth(['student']);
@@ -60,7 +62,7 @@ export async function GET() {
     for (const row of facultyRows ?? []) {
       extras.set(row.id as string, {
         duration_minutes: row.duration_minutes as number,
-        topic: (row.topic as string | null) ?? null,
+        topic: sanitizeStudentExamTopic((row.topic as string | null) ?? null, department),
       });
     }
   }
@@ -72,5 +74,10 @@ export async function GET() {
     extras,
   );
 
-  return NextResponse.json({ live, upcoming, department, year });
+  return NextResponse.json({
+    live: live.map((exam) => sanitizeStudentExamScheduleForResponse(exam, department)),
+    upcoming: upcoming.map((exam) => sanitizeStudentExamScheduleForResponse(exam, department)),
+    department,
+    year,
+  });
 }

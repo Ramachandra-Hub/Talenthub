@@ -1,4 +1,6 @@
+import { randomUUID } from 'crypto';
 import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { dbRowTimestamps } from '@/lib/db/row-timestamps';
 import { linkTestQuestions } from '@/lib/exam-builder/link-test-questions';
 import {
   isElevateXBuilderTestType,
@@ -11,6 +13,7 @@ import {
   normalizeTestId,
 } from '@/lib/exam-builder/id-utils';
 import { isFacultyCodingQuestion } from '@/lib/exam-builder/programming-syllabus';
+import { questionTagsFromProMetadata } from '@/lib/exam-v2/subject-progress';
 import { parseQuestionsJson, type FacultyExamQuestion, type FacultyMcqQuestion } from '@/lib/faculty-exams';
 import {
   createSchedulesFromSlots,
@@ -24,33 +27,18 @@ import {
   provisionStudentsFromSlotRoster,
 } from '@/lib/roster-student-provision';
 import { enrichSlotsWithPasswords } from '@/lib/roster-credentials-export';
+import { ensureTestCategory } from '@/lib/tests/ensure-test-category';
+import { insertTestRow } from '@/lib/tests/insert-test';
 
 const DEPT_EXAMS_SLUG = 'department-exams';
 
 async function ensureDepartmentExamsCategory(admin: DbServiceClient): Promise<string> {
-  const { data: existing } = await admin
-    .from('test_categories')
-    .select('id')
-    .eq('slug', DEPT_EXAMS_SLUG)
-    .maybeSingle();
-
-  if (existing?.id) return existing.id as string;
-
-  const { data: created, error } = await admin
-    .from('test_categories')
-    .insert({
-      name: 'Department Exams',
-      slug: DEPT_EXAMS_SLUG,
-      description: 'Department examinations created by the examination cell',
-      icon: '🏫',
-    })
-    .select('id')
-    .single();
-
-  if (error || !created?.id) {
-    throw new Error(error?.message ?? 'Could not create department exams category');
-  }
-  return created.id as string;
+  return ensureTestCategory(admin, {
+    slug: DEPT_EXAMS_SLUG,
+    name: 'Department Exams',
+    description: 'Department examinations created by the examination cell',
+    icon: '🏫',
+  });
 }
 
 async function finalizeSlotSchedulesOnPublish(
@@ -208,32 +196,25 @@ export async function publishFacultyExamRequest(
 
   const categoryId = await ensureDepartmentExamsCategory(admin);
 
-  const { data: testRow, error: testError } = await admin
-    .from('tests')
-    .insert({
-      category_id: categoryId,
-      title: request.title,
-      description: request.description ?? `Department: ${request.department}`,
-      duration_minutes: request.duration_minutes,
-      total_questions: questions.length,
-      difficulty: 'medium',
-    })
-    .select('id')
-    .single();
-
-  if (testError || !testRow?.id) {
-    throw new Error(testError?.message ?? 'Failed to create test');
-  }
+  const { testId: testIdStr, rawId: testId } = await insertTestRow(admin, {
+    categoryId,
+    title: String(request.title),
+    description: String(request.description ?? `Department: ${request.department}`),
+    durationMinutes: Number(request.duration_minutes),
+    totalQuestions: questions.length,
+    difficulty: 'medium',
+  });
 
   const testsIdKind = await detectTestsIdKind(admin);
   const questionsIdKind = await detectQuestionsIdKind(admin);
-  const testId = normalizeTestId(testRow.id, testsIdKind);
-  const testIdStr = String(testId);
 
   const mcqQuestions = questions.filter((q): q is FacultyMcqQuestion => !isFacultyCodingQuestion(q));
 
   const questionRows = mcqQuestions.map((q) => {
+    const proTags = questionTagsFromProMetadata(q);
     const row: Record<string, unknown> = {
+      id: randomUUID(),
+      ...dbRowTimestamps(),
       question_text: q.question_text,
       question_type: 'mcq',
       option_a: q.option_a,
@@ -245,6 +226,7 @@ export async function publishFacultyExamRequest(
       marks: 1,
       test_id: testsIdKind === 'bigint' ? Number(testIdStr) : testId,
     };
+    if (proTags.length) row.tags = proTags;
     return row;
   });
 

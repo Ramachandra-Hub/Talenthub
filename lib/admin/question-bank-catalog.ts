@@ -21,6 +21,8 @@ export const QUESTION_BANK_SECTION_LABELS: Record<QuestionBankSectionKey, string
   technical: 'Technical / CS',
   verbal: 'Verbal & English',
   rmset: 'RMSET & eligibility',
+  ai: 'Artificial Intelligence',
+  ml: 'Machine Learning',
   coding: 'Coding (C / Python)',
   other: 'Other topics',
   uncategorized: 'Uncategorized',

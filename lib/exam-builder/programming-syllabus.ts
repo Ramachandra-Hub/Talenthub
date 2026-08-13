@@ -20,6 +20,11 @@ export type FacultyCodingQuestion = {
   input_format?: string;
   output_format?: string;
   hint?: string;
+  pro_subject?: string;
+  pro_subject_slug?: string;
+  pro_topic_slug?: string;
+  /** When true, grade only against sample I/O (logic check). */
+  logic_only?: boolean;
 };
 
 export function isFacultyCodingQuestion(

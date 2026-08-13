@@ -51,7 +51,11 @@ export function useStudentSignIn() {
 
         window.location.assign(dest);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Sign in failed';
+        const raw = err instanceof Error ? err.message : 'Sign in failed';
+        const msg =
+          raw === 'Failed to fetch' || /network|fetch/i.test(raw)
+            ? 'Cannot reach the server. Open http://localhost:3000 and ensure `npm run dev` is running, then try again.'
+            : raw;
         setError(msg);
       } finally {
         setLoading(false);

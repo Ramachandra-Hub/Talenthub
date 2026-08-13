@@ -15,7 +15,7 @@ export async function signUp(email: string, password: string, fullName: string) 
 }
 
 export async function signIn(email: string, password: string) {
-  const res = await fetch('/api/auth/student/signin', {
+  const res = await fetch('/api/student/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
             data: mappings.map((row) => ({
               subjectId: row.subjectId,
               assessmentFormat: row.assessmentFormat,
+              rubricConfig: row.rubricConfig ?? undefined,
             })),
           },
         },

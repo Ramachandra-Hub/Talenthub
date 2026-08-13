@@ -2,7 +2,6 @@ import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { prisma } from '@/lib/prisma';
 import type { FacultyExamQuestion } from '@/lib/faculty-exams';
 import { createFacultyExamRequestRecord } from '@/lib/exam-builder/create-exam-request';
-import { augmentExamQuestionsWithCoding } from '@/lib/exam-builder/programming-syllabus';
 import { getExamDetails } from '@/lib/exams/exam-builder-service';
 import { drawQuestionsForProExam } from '@/lib/exams/draw-questions-for-exam';
 import {
@@ -23,6 +22,12 @@ import {
 } from '@/lib/placement/elevatex-exam-config';
 import { loadCodingBankFromDb } from '@/lib/coding/coding-bank-store';
 import { isProgrammingLanguageSubject } from '@/lib/exams/programming-subjects';
+import {
+  createProExamTestSections,
+  sectionPlansFromBlocks,
+} from '@/lib/exams/create-pro-exam-sections';
+import { parseSubjectRubricConfig } from '@/lib/exams/pro-exam-rubric';
+import type { ProExamSubjectBlock } from '@/lib/exams/draw-questions-for-exam';
 
 export type PublishProExamInput = {
   examId: string;
@@ -129,13 +134,24 @@ export async function publishProExam(
   let questions: FacultyExamQuestion[] = ELEVATEX_PLACEHOLDER_QUESTIONS;
   let topicSlugs: string[] = ['technical-c-language'];
   let elevateXTopic: string | null = null;
+  let subjectBlocks: ProExamSubjectBlock[] = [];
 
   if (!useElevateX) {
+    const examSubjectRows = await prisma.examSubject.findMany({
+      where: { examId: input.examId },
+      include: { subject: { select: { id: true, subjectName: true, slug: true } } },
+    });
+    const rubricBySubjectId = new Map(
+      examSubjectRows.map((row) => [row.subjectId, parseSubjectRubricConfig(row.rubricConfig)]),
+    );
+
     const drawn = await drawQuestionsForProExam(admin, {
       subjects: exam.subjects.map((s) => ({
+        subjectId: s.id,
         subjectName: s.subject_name,
         slug: s.slug,
         assessmentFormat: s.assessment_format ?? 'mcq',
+        rubric: rubricBySubjectId.get(s.id) ?? null,
       })),
       questionsPerSubject,
       codingProblemsPerSubject,
@@ -145,7 +161,8 @@ export async function publishProExam(
     });
     warnings.push(...drawn.warnings);
     topicSlugs = drawn.topicSlugs;
-    questions = augmentExamQuestionsWithCoding(drawn.questions, topicSlugs, testType);
+    subjectBlocks = drawn.subjectBlocks;
+    questions = drawn.questions;
   } else {
     const programmingProblems = await loadCodingBankFromDb({ language: 'c', limit: 3 });
     const config = mergeElevateXExamConfig({
@@ -188,6 +205,18 @@ export async function publishProExam(
   let scheduleId = created.scheduleId;
 
   if (created.testId) {
+    if (!useElevateX && subjectBlocks.length) {
+      try {
+        await createProExamTestSections(admin, {
+          testId: created.testId,
+          examDurationMinutes: exam.duration,
+          sections: sectionPlansFromBlocks(subjectBlocks),
+        });
+      } catch (err) {
+        warnings.push(err instanceof Error ? err.message : 'Could not create subject sections');
+      }
+    }
+
     try {
       if (usesSlotScheduling) {
         const firstSlotSchedule = await prisma.examSchedule.findFirst({

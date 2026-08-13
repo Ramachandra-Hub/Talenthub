@@ -10,6 +10,7 @@ import { buildStudentPortalPayload } from '@/lib/student-portal';
 import { dedupeFacultyExamSchedules } from '@/lib/student-portal-exams';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { resolveStudentProfilePrisma } from '@/lib/db/test-attempts-prisma';
+import { sanitizeStudentExamTopic } from '@/lib/placement/elevatex-exam-config';
 
 function mapSchedule(row: {
   id: string;
@@ -111,7 +112,9 @@ export async function buildStudentPortalFromPrisma(userId: string, email: string
 
   const extras = new Map<string, { duration_minutes?: number; topic?: string | null }>();
   for (const row of approvedRequests) {
-    extras.set(row.id, { topic: row.topic ?? null });
+    extras.set(row.id, {
+      topic: sanitizeStudentExamTopic(row.topic ?? null, department),
+    });
   }
 
   const rollNumber = rollNumberFromUser(email ?? profile.email ?? '', null);
@@ -157,7 +160,7 @@ export async function buildStudentPortalFromPrisma(userId: string, email: string
       .map((r) => ({
         id: r.id,
         title: r.title,
-        topic: r.topic,
+        topic: sanitizeStudentExamTopic(r.topic, department),
         description: r.description,
         duration_minutes: 0,
         target_years: [],

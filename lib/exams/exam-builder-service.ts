@@ -6,6 +6,11 @@ import type {
   SubjectDto,
 } from '@/lib/exams/exam-builder-types';
 import {
+  parseSubjectRubricConfig,
+  parseSubjectRubricsFromBody,
+  type SubjectRubricConfig,
+} from '@/lib/exams/pro-exam-rubric';
+import {
   isProgrammingLanguageSubject,
   normalizeAssessmentFormat,
   type AssessmentFormat,
@@ -20,14 +25,18 @@ export function slugifySubjectName(name: string): string {
 }
 
 export function parseSubjectSelections(body: Record<string, unknown>): ExamSubjectSelection[] {
+  const rubrics = parseSubjectRubricsFromBody(body);
+
   if (Array.isArray(body.subjects) && body.subjects.length) {
     return (body.subjects as Record<string, unknown>[])
       .map((row) => {
         const subjectId = String(row.subjectId ?? row.subject_id ?? '').trim();
         if (!subjectId) return null;
+        const inlineRubric = parseSubjectRubricConfig(row.rubric_config ?? row.rubricConfig);
         return {
           subjectId,
           assessment_format: normalizeAssessmentFormat(row.assessment_format ?? row.assessmentFormat),
+          rubric_config: inlineRubric ?? rubrics[subjectId] ?? null,
         };
       })
       .filter(Boolean) as ExamSubjectSelection[];
@@ -44,6 +53,7 @@ export function parseSubjectSelections(body: Record<string, unknown>): ExamSubje
   return [...new Set(subjectIds)].map((subjectId) => ({
     subjectId,
     assessment_format: normalizeAssessmentFormat(formats[subjectId]),
+    rubric_config: rubrics[subjectId] ?? null,
   }));
 }
 
@@ -70,10 +80,15 @@ export function validateExamInput(body: Record<string, unknown>): string | null 
 
 export async function resolveSubjectMappings(
   selections: ExamSubjectSelection[],
-): Promise<{ subjectId: string; assessmentFormat: AssessmentFormat }[]> {
-  const unique = new Map<string, AssessmentFormat>();
+): Promise<
+  { subjectId: string; assessmentFormat: AssessmentFormat; rubricConfig: SubjectRubricConfig | null }[]
+> {
+  const unique = new Map<string, { format: AssessmentFormat; rubric: SubjectRubricConfig | null }>();
   for (const row of selections) {
-    unique.set(row.subjectId, normalizeAssessmentFormat(row.assessment_format));
+    unique.set(row.subjectId, {
+      format: normalizeAssessmentFormat(row.assessment_format),
+      rubric: row.rubric_config ?? null,
+    });
   }
   const ids = [...unique.keys()];
   const subjects = await prisma.subject.findMany({
@@ -85,14 +100,16 @@ export async function resolveSubjectMappings(
   }
 
   return subjects.map((subject) => {
-    const requested = unique.get(subject.id) ?? 'mcq';
+    const requested = unique.get(subject.id);
+    const format = requested?.format ?? 'mcq';
     const isProgramming = isProgrammingLanguageSubject({
       slug: subject.slug,
       subjectName: subject.subjectName,
     });
     return {
       subjectId: subject.id,
-      assessmentFormat: isProgramming ? requested : 'mcq',
+      assessmentFormat: isProgramming ? format : 'mcq',
+      rubricConfig: requested?.rubric ?? null,
     };
   });
 }
@@ -192,6 +209,7 @@ export async function getExamDetails(examId: string): Promise<ExamDetailsDto | n
         status: x.subject.status,
         assessment_format: normalizeAssessmentFormat(x.assessmentFormat),
         is_programming: isProgramming,
+        rubric_config: parseSubjectRubricConfig(x.rubricConfig),
       };
     }),
   };

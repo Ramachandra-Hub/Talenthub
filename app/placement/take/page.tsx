@@ -488,7 +488,7 @@ export default function PlacementTakePage() {
         markPlacementCompleted(scorecard.candidate.hallTicket, attemptId);
         clearPlacementDrafts(scorecard.candidate.hallTicket);
         clearPlacementProctorSessionId();
-        void fetchWithSession('/api/auth/student/session-release', {
+        void fetchWithSession('/api/student/session-release', {
           method: 'POST',
           credentials: 'include',
         }).catch(() => undefined);

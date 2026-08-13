@@ -30,6 +30,7 @@ import { clearExamDraft } from '@/lib/exam-v2/autosave';
 import { assignQuestionsToSections } from '@/lib/exam-v2/load-sections';
 import { scoreBySections, scoreMcqWithNegativeMarking } from '@/lib/exam-v2/scoring';
 import { computeSectionProgress, type TestSectionConfig } from '@/lib/exam-v2/section-timer';
+import { computeSubjectAnswerProgress } from '@/lib/exam-v2/subject-progress';
 import { EXAM_SERVER_PROGRESS_INTERVAL_MS } from '@/lib/exam-v2/progress-intervals';
 import { slimAnswersForSubmit } from '@/lib/exam-v2/sanitize-answers';
 import { fetchSubmitWithRetry } from '@/lib/submit-with-retry';
@@ -473,6 +474,11 @@ export default function TestInterface({
     if (!sectionMode) return null;
     return computeSectionProgress(examSections, sectionIndex, sectionTimeLeft);
   }, [sectionMode, examSections, sectionIndex, sectionTimeLeft]);
+
+  const subjectProgress = useMemo(
+    () => computeSubjectAnswerProgress(questions, answers),
+    [questions, answers],
+  );
 
   const saveLocalAttemptAndNavigate = (scorePercent: number, ownerUserId: string) => {
     const localAttemptId = `local-${Date.now()}`;
@@ -1006,6 +1012,33 @@ export default function TestInterface({
                     style={{ width: `${sectionProgress.percent}%` }}
                   />
                 </div>
+              </div>
+            ) : null}
+
+            {subjectProgress.length > 1 ? (
+              <div className="mb-4 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Subject completion
+                </p>
+                {subjectProgress.map((row) => (
+                  <div key={row.subjectSlug}>
+                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <span className="truncate pr-2">{row.subjectName}</span>
+                      <span className="font-semibold text-gray-900 shrink-0">
+                        {row.percent}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-emerald-600 h-2 rounded-full transition-all"
+                        style={{ width: `${row.percent}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      {row.answered}/{row.total} answered
+                    </p>
+                  </div>
+                ))}
               </div>
             ) : null}
 

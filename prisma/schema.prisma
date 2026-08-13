@@ -134,6 +134,8 @@ model ExamSubject {
   subjectId        String   @map("subject_id") @db.Uuid
   /** mcq | coding | both — only meaningful for programming-language subjects. */
   assessmentFormat String   @default("mcq") @map("assessment_format")
+  /** Strict rubric matrix: topicSlug → mcq/coding counts, shuffle, logic-only coding. */
+  rubricConfig     Json?    @map("rubric_config")
   createdAt        DateTime @default(now()) @map("created_at")
 
   exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)

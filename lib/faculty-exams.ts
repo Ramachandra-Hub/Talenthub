@@ -13,6 +13,10 @@ export type FacultyMcqQuestion = {
   option_d: string;
   correct_answer: 'A' | 'B' | 'C' | 'D';
   explanation?: string;
+  /** Pro exam subject metadata — stored in question tags on publish. */
+  pro_subject?: string;
+  pro_subject_slug?: string;
+  pro_topic_slug?: string;
 };
 
 export type FacultyExamQuestion = FacultyMcqQuestion | FacultyCodingQuestion;

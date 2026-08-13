@@ -5,6 +5,8 @@ export interface TestSectionConfig {
   cutoffScore?: number | null;
   negativeMarking?: number;
   shuffleQuestions?: boolean;
+  /** When set, assignQuestionsToSections uses explicit counts instead of even split. */
+  questionCount?: number;
 }
 
 export function sectionDurationSeconds(section: TestSectionConfig): number {

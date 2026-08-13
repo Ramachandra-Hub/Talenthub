@@ -15,6 +15,7 @@ import {
   resolveStudentProfilePrisma,
 } from '@/lib/db/test-attempts-prisma';
 import { checkStudentExamAccessPrisma } from '@/lib/db/exam-access-prisma';
+import { enrichSectionsWithQuestionCounts } from '@/lib/exam-v2/enrich-sections';
 import { sanitizeQuestionsForStudent } from '@/lib/questions/sanitize-for-student';
 
 type RouteContext = { params: Promise<{ testId: string }> };
@@ -58,7 +59,8 @@ export async function GET(_request: Request, context: RouteContext) {
       access.schedule?.id,
     );
     const questions = await loadQuestionsForTakePrisma(trimmedId);
-    const sections = await loadTestSectionsPrisma(trimmedId);
+    const sectionsRaw = await loadTestSectionsPrisma(trimmedId);
+    const sections = enrichSectionsWithQuestionCounts(sectionsRaw, questions);
 
     if (!questions.length) {
       return NextResponse.json(
@@ -119,7 +121,8 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const priorAttempt = await findCompletedAttemptForTest(admin, auth.ctx.user.id, trimmedId);
   const questions = await loadQuestionsForTake(admin, trimmedId);
-  const sections = await loadTestSections(admin, trimmedId);
+  const sectionsRaw = await loadTestSections(admin, trimmedId);
+  const sections = enrichSectionsWithQuestionCounts(sectionsRaw, questions);
 
   if (!questions.length) {
     return NextResponse.json(

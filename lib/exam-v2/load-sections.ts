@@ -49,6 +49,21 @@ export function assignQuestionsToSections(
   const map = new Map<string, Question[]>();
   if (!sections.length) return map;
 
+  const hasExplicitCounts = sections.every(
+    (s) => typeof s.questionCount === 'number' && s.questionCount >= 0,
+  );
+
+  if (hasExplicitCounts) {
+    let offset = 0;
+    for (const section of sections) {
+      const count = section.questionCount ?? 0;
+      const slice = questions.slice(offset, offset + count);
+      map.set(section.id, section.shuffleQuestions ? shuffle(slice) : slice);
+      offset += count;
+    }
+    return map;
+  }
+
   const per = Math.max(1, Math.ceil(questions.length / sections.length));
   let offset = 0;
   for (const section of sections) {

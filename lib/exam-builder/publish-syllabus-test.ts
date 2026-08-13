@@ -1,30 +1,20 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
+import { randomUUID } from 'crypto';
+import { dbRowTimestamps } from '@/lib/db/row-timestamps';
 import { linkTestQuestions } from '@/lib/exam-builder/link-test-questions';
 import type { FacultyExamQuestion } from '@/lib/faculty-exams';
+import { ensureTestCategory } from '@/lib/tests/ensure-test-category';
+import { insertTestRow } from '@/lib/tests/insert-test';
 
 const SYLLABUS_CATEGORY_SLUG = 'syllabus-exams';
 
 async function ensureCategory(admin: DbServiceClient): Promise<string> {
-  const { data: existing } = await admin
-    .from('test_categories')
-    .select('id')
-    .eq('slug', SYLLABUS_CATEGORY_SLUG)
-    .maybeSingle();
-  if (existing?.id) return existing.id as string;
-
-  const { data: created, error } = await admin
-    .from('test_categories')
-    .insert({
-      name: 'Syllabus Exams',
-      slug: SYLLABUS_CATEGORY_SLUG,
-      description: 'Faculty and admin syllabus-based examinations',
-      icon: '📋',
-    })
-    .select('id')
-    .single();
-
-  if (error || !created?.id) throw new Error(error?.message ?? 'Could not create category');
-  return created.id as string;
+  return ensureTestCategory(admin, {
+    slug: SYLLABUS_CATEGORY_SLUG,
+    name: 'Syllabus Exams',
+    description: 'Faculty and admin syllabus-based examinations',
+    icon: '📋',
+  });
 }
 
 export async function publishSyllabusExam(
@@ -41,22 +31,14 @@ export async function publishSyllabusExam(
 
   const categoryId = await ensureCategory(admin);
 
-  const { data: testRow, error: testError } = await admin
-    .from('tests')
-    .insert({
-      category_id: categoryId,
-      title: input.title,
-      description: input.description ?? `${input.testType} syllabus exam`,
-      duration_minutes: input.durationMinutes,
-      total_questions: input.questions.length,
-      difficulty: 'medium',
-    })
-    .select('id')
-    .single();
-
-  if (testError || !testRow?.id) throw new Error(testError?.message ?? 'Failed to create test');
-
-  const testId = testRow.id as string;
+  const { testId } = await insertTestRow(admin, {
+    categoryId,
+    title: input.title,
+    description: input.description ?? `${input.testType} syllabus exam`,
+    durationMinutes: input.durationMinutes,
+    totalQuestions: input.questions.length,
+    difficulty: 'medium',
+  });
 
   const mcqQuestions = input.questions.filter(
     (q): q is import('@/lib/faculty-exams').FacultyMcqQuestion =>
@@ -64,6 +46,8 @@ export async function publishSyllabusExam(
   );
 
   const questionRows = mcqQuestions.map((q) => ({
+    id: randomUUID(),
+    ...dbRowTimestamps(),
     test_id: testId,
     question_text: q.question_text,
     question_type: 'mcq',
