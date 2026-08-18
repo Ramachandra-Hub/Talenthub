@@ -21,6 +21,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const rollParam = url.searchParams.get('rollNumber')?.trim() ?? '';
+    const examNameParam = url.searchParams.get('examName')?.trim() ?? '';
     let rollNumber = rollParam ? normalizeRollNumber(rollParam) : '';
 
     const profile = await resolveStudentProfilePrisma(session.user.id);
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
     const prior = await findCompletedElevateXAttempt({
       userId: session.user.id,
       rollNumber: rollNumber || undefined,
+      examName: examNameParam || undefined,
     });
 
     const payload = {

@@ -240,12 +240,13 @@ export async function POST(request: Request) {
       const prior = await findCompletedElevateXAttempt({
         userId,
         rollNumber: accessRollNumber,
+        examName: testName,
       });
       if (prior) {
         return NextResponse.json(
           {
             error:
-              'You have already submitted ElevateX. Each roll number may attempt this exam only once.',
+              'You have already submitted this ElevateX exam name. You can retake only if the exam name is different.',
             attemptId: prior.id,
             priorAttempt: prior,
             locked: true,

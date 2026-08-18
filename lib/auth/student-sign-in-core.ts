@@ -5,7 +5,6 @@ import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
 import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getAuthSetupErrors } from '@/lib/auth/config-check';
 import { prisma } from '@/lib/prisma';
-import { findCompletedElevateXAttempt } from '@/lib/elevatex/completed-attempt';
 import { claimStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 import { createStudentSessionId } from '@/lib/student-session-cookie';
 import { cookies } from 'next/headers';
@@ -88,17 +87,6 @@ export async function runStudentCredentialSignIn(
   if (!user) {
     return {
       error: 'Account not found. Ask faculty to provision your roll on the exam roster.',
-    };
-  }
-
-  const completedElevateX = await findCompletedElevateXAttempt({
-    userId: user.id,
-    rollNumber,
-  });
-  if (completedElevateX) {
-    return {
-      error:
-        'You have already submitted ElevateX for this roll number. You cannot sign in again for this examination.',
     };
   }
 

@@ -10,13 +10,28 @@ export type CompletedElevateXSummary = {
   completed_at: string | null;
 };
 
+function normalizeExamName(name: string | null | undefined): string {
+  return String(name ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 export function normalizeRollNumber(roll: string): string {
   return roll.replace(/\s+/g, '').toUpperCase();
 }
 
-function matchesElevateX(testId: unknown, title: unknown): boolean {
+function matchesElevateX(
+  testId: unknown,
+  title: unknown,
+  examName?: string | null,
+): boolean {
+  const rowTitle = String(title ?? '');
+  if (examName?.trim()) {
+    return normalizeExamName(rowTitle) === normalizeExamName(examName);
+  }
   if (isElevateXTestId(String(testId ?? ''))) return true;
-  return isElevateXAttemptTitle(String(title ?? ''));
+  return isElevateXAttemptTitle(rowTitle);
 }
 
 function isCompletedRow(status: unknown, completedAt: unknown): boolean {
@@ -35,6 +50,7 @@ function toScorePercent(percentage: unknown, score: unknown): number {
 /** Prior completed ElevateX attempt for a student — never throws. */
 export async function findCompletedElevateXAttemptForUser(
   userId: string,
+  examName?: string | null,
 ): Promise<CompletedElevateXSummary | null> {
   type AttemptRow = {
     id: string;
@@ -90,7 +106,7 @@ export async function findCompletedElevateXAttemptForUser(
     try {
       const rows = await query;
       for (const row of rows) {
-        if (!matchesElevateX(row.test_id, row.test_title)) continue;
+        if (!matchesElevateX(row.test_id, row.test_title, examName)) continue;
         if (!isCompletedRow(row.status, row.completed_at)) continue;
         return {
           id: row.id,
@@ -108,7 +124,7 @@ export async function findCompletedElevateXAttemptForUser(
     const entries = await fetchDashboardStatEntriesPrisma(userId);
     let placeholder: CompletedElevateXSummary | null = null;
     for (const entry of entries) {
-      if (!matchesElevateX(entry.test_id, entry.test_name)) continue;
+      if (!matchesElevateX(entry.test_id, entry.test_name, examName)) continue;
       if (!isCompletedRow(entry.status, entry.completed_at)) continue;
       const summary: CompletedElevateXSummary = {
         id: entry.id,
@@ -129,6 +145,7 @@ export async function findCompletedElevateXAttemptForUser(
 /** Completed ElevateX for this roll (any linked account or scorecard payload). */
 export async function findCompletedElevateXAttemptForRoll(
   rollNumber: string,
+  examName?: string | null,
 ): Promise<CompletedElevateXSummary | null> {
   const roll = normalizeRollNumber(rollNumber);
   if (!roll) return null;
@@ -139,7 +156,7 @@ export async function findCompletedElevateXAttemptForRoll(
       select: { id: true },
     });
     for (const user of users) {
-      const hit = await findCompletedElevateXAttemptForUser(user.id);
+      const hit = await findCompletedElevateXAttemptForUser(user.id, examName);
       if (hit) return hit;
     }
   } catch (err) {
@@ -177,7 +194,7 @@ export async function findCompletedElevateXAttemptForRoll(
       LIMIT 10
     `;
     for (const row of rows) {
-      if (!matchesElevateX(row.test_id, row.test_title)) continue;
+      if (!matchesElevateX(row.test_id, row.test_title, examName)) continue;
       if (!isCompletedRow(row.status, row.completed_at)) continue;
       return {
         id: row.id,
@@ -196,11 +213,12 @@ export async function findCompletedElevateXAttemptForRoll(
 export async function findCompletedElevateXAttempt(input: {
   userId: string;
   rollNumber?: string | null;
+  examName?: string | null;
 }): Promise<CompletedElevateXSummary | null> {
-  const byUser = await findCompletedElevateXAttemptForUser(input.userId);
+  const byUser = await findCompletedElevateXAttemptForUser(input.userId, input.examName);
   if (byUser) return byUser;
   if (input.rollNumber?.trim()) {
-    return findCompletedElevateXAttemptForRoll(input.rollNumber);
+    return findCompletedElevateXAttemptForRoll(input.rollNumber, input.examName);
   }
   return null;
 }

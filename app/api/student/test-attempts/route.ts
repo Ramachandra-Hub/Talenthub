@@ -34,7 +34,7 @@ function submitErrorResponse(error: unknown, testId = ''): NextResponse {
     return NextResponse.json(
       {
         error: isElevateXTestId(testId)
-          ? 'You have already submitted ElevateX. Each roll number may attempt this exam only once.'
+          ? 'You have already submitted this ElevateX exam name. You can retake only if the exam name is different.'
           : 'You have already submitted this exam sitting and cannot take it again.',
         code: 'already_submitted',
         attemptId: error.attemptId,

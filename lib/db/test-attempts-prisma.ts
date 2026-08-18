@@ -36,7 +36,11 @@ import {
 } from '@/lib/exam-attempt-round';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 
-function elevateXTitleWhere(): PrismaTypes.TestAttemptWhereInput {
+function elevateXTitleWhere(examName?: string | null): PrismaTypes.TestAttemptWhereInput {
+  const name = examName?.trim();
+  if (name) {
+    return { testTitle: { equals: name, mode: 'insensitive' } };
+  }
   return {
     OR: [
       { testTitle: { contains: 'ElevateX', mode: 'insensitive' } },
@@ -143,19 +147,19 @@ export async function ensureAttemptConstraintsPrisma(): Promise<void> {
   if (attemptConstraintGlobal.attemptConstraintsAttempted) return;
   attemptConstraintGlobal.attemptConstraintsAttempted = true;
   try {
-    await prisma.$executeRawUnsafe(`
+  await prisma.$executeRawUnsafe(`
       DROP INDEX IF EXISTS test_attempts_one_completed_per_user_test_idx;
       CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_schedule_idx
       ON test_attempts (user_id, schedule_id)
       WHERE schedule_id IS NOT NULL
         AND status IN ('completed', 'submitted');
-      CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_user_test_idx
-      ON test_attempts (user_id, test_id)
+    CREATE UNIQUE INDEX IF NOT EXISTS test_attempts_one_completed_per_user_test_idx
+    ON test_attempts (user_id, test_id)
       WHERE schedule_id IS NULL
         AND test_id IS NOT NULL
         AND status IN ('completed', 'submitted');
-    `);
-    attemptConstraintGlobal.attemptConstraintsEnsured = true;
+  `);
+  attemptConstraintGlobal.attemptConstraintsEnsured = true;
   } catch (err) {
     console.warn(
       '[test-attempts] ensureAttemptConstraints skipped:',
@@ -880,9 +884,9 @@ function buildProctorMetadata(input: FinalizeAttemptInput): Prisma.InputJsonValu
     return undefined;
   }
   return {
-    proctor_session_id: input.proctorSessionId ?? null,
-    proctor_violations: input.proctorViolations ?? 0,
-    proctor_auto_submit: input.proctorAutoSubmit ?? false,
+          proctor_session_id: input.proctorSessionId ?? null,
+          proctor_violations: input.proctorViolations ?? 0,
+          proctor_auto_submit: input.proctorAutoSubmit ?? false,
   } as Prisma.InputJsonValue;
 }
 
@@ -915,7 +919,7 @@ function priorCompletedWhereForFinalize(
     return {
       userId: input.userId,
       status: { in: ['completed', 'submitted'] },
-      ...elevateXTitleWhere(),
+      ...elevateXTitleWhere(input.testName),
       ...exclude,
     };
   }
@@ -966,6 +970,7 @@ function openAttemptWhereForTest(
   userId: string,
   testId: string,
   resolvedTestId: string | null,
+  testName?: string | null,
 ): PrismaTypes.TestAttemptWhereInput {
   const base: PrismaTypes.TestAttemptWhereInput = {
     userId,
@@ -973,7 +978,7 @@ function openAttemptWhereForTest(
     completedAt: null,
   };
   if (isElevateXTestId(testId)) {
-    return { ...base, ...elevateXTitleWhere() };
+    return { ...base, ...elevateXTitleWhere(testName) };
   }
   if (resolvedTestId) {
     return { ...base, testId: resolvedTestId };
@@ -985,6 +990,7 @@ async function findOpenCandidateForFinalize(
   userId: string,
   testId: string,
   resolvedTestId: string | null,
+  testName?: string | null,
   attemptId?: string,
 ) {
   const id = attemptId?.trim();
@@ -1000,7 +1006,7 @@ async function findOpenCandidateForFinalize(
     if (byId) return byId;
   }
   return prisma.testAttempt.findFirst({
-    where: openAttemptWhereForTest(userId, testId, resolvedTestId),
+    where: openAttemptWhereForTest(userId, testId, resolvedTestId, testName),
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -1060,7 +1066,7 @@ async function completeOpenAttemptRow(
           userId: input.userId,
           id: { not: updated.id },
           status: { in: [...OPEN_ATTEMPT_STATUSES] },
-          ...elevateXTitleWhere(),
+          ...elevateXTitleWhere(input.testName),
         },
         data: { status: 'abandoned', completedAt: now },
       })
@@ -1079,6 +1085,7 @@ async function finalizeOpenAttemptDirectPrisma(
     input.userId,
     input.testId,
     resolvedTestId,
+    input.testName,
     input.attemptId,
   );
   if (!candidate) return null;
@@ -1151,6 +1158,7 @@ async function finalizeEmergencySubmitPrisma(
     input.userId,
     input.testId,
     resolvedTestId,
+    input.testName,
     input.attemptId,
   );
   if (open) {
@@ -1231,18 +1239,18 @@ export async function finalizeTestAttemptPrisma(
         ? {
             userId: input.userId,
             status: { in: ['completed', 'submitted'] },
-            ...elevateXTitleWhere(),
+            ...elevateXTitleWhere(input.testName),
           }
         : resolvedTestId
           ? {
-              userId: input.userId,
-              testId: resolvedTestId,
-              status: { in: ['completed', 'submitted'] },
+            userId: input.userId,
+            testId: resolvedTestId,
+            status: { in: ['completed', 'submitted'] },
             }
           : {
               userId: input.userId,
               status: { in: ['completed', 'submitted'] },
-            };
+          };
 
       const prior = await tx.testAttempt.findFirst({
         where: priorWhere,
@@ -1362,7 +1370,7 @@ export async function finalizeTestAttemptPrisma(
     } catch (emergencyErr) {
       const emergencyMsg = emergencyErr instanceof Error ? emergencyErr.message : String(emergencyErr);
       console.error('[finalizeTestAttempt] emergency submit failed:', emergencyMsg);
-      throw error;
+    throw error;
     }
   }
 }
@@ -1481,7 +1489,7 @@ export async function upsertExamProgressPrisma(input: {
       };
     }
   } else if (isElevateXTestId(input.testId)) {
-    const done = await findCompletedElevateXAttemptForUser(input.userId);
+        const done = await findCompletedElevateXAttemptForUser(input.userId, input.testName);
     if (done) {
       const row = await prisma.testAttempt.findFirst({
         where: { id: done.id },
@@ -1577,7 +1585,7 @@ export async function upsertExamProgressPrisma(input: {
     ? {
         userId: input.userId,
         status: { in: ['in_progress', 'started', 'active'] },
-        ...elevateXTitleWhere(),
+        ...elevateXTitleWhere(input.testName),
       }
     : {
         userId: input.userId,
@@ -1712,19 +1720,19 @@ export async function linkProctorViolationsPrisma(
   sessionId: string,
 ): Promise<void> {
   try {
-    await prisma.examViolation.updateMany({
-      where: {
-        userId,
-        metadata: {
-          path: ['sessionId'],
-          equals: sessionId,
-        },
+  await prisma.examViolation.updateMany({
+    where: {
+      userId,
+      metadata: {
+        path: ['sessionId'],
+        equals: sessionId,
       },
-      data: {
-        attemptId,
+    },
+    data: {
+      attemptId,
         testId: testId ?? undefined,
-      },
-    });
+    },
+  });
   } catch (err) {
     console.warn('[test-attempts] linkProctorViolations skipped:', err);
   }
