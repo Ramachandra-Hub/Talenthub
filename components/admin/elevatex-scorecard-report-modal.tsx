@@ -28,7 +28,7 @@ export function ElevateXScorecardReportModal({
 }: ElevateXScorecardReportModalProps) {
   if (!open) return null;
 
-  const pdfName = `elevatex-${(rollNumber || studentName).replace(/[^a-zA-Z0-9_-]+/g, '_')}.pdf`;
+  const pdfName = `${(scorecard?.reportKind === 'exam' ? 'exam' : 'elevatex')}-${(rollNumber || studentName).replace(/[^a-zA-Z0-9_-]+/g, '_')}.pdf`;
 
   return (
     <AppModal open onClose={onClose} ariaLabel="Close student section report">
@@ -36,7 +36,7 @@ export function ElevateXScorecardReportModal({
         <div className="shrink-0 border-b border-slate-200 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              ElevateX · Section-wise full report
+              {scorecard?.candidate.examName?.trim() || 'Exam'} · Section-wise full report
             </p>
             <h3 className="text-lg font-bold text-[#0c2340] truncate">{studentName}</h3>
             {rollNumber ? (

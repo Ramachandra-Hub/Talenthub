@@ -181,4 +181,6 @@ export type PlacementScorecard = {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  /** Exam Builder / generic exams use subject sections instead of ElevateX employability weights. */
+  reportKind?: 'elevatex' | 'exam';
 };

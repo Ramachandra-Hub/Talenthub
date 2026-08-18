@@ -8,7 +8,7 @@ export type SubjectAnswerProgress = {
   percent: number;
 };
 
-function readProSubjectMeta(question: Question): { name: string; slug: string } | null {
+export function readProSubjectMeta(question: Question): { name: string; slug: string } | null {
   const tags = question.tags ?? [];
   for (const tag of tags) {
     if (typeof tag !== 'string') continue;

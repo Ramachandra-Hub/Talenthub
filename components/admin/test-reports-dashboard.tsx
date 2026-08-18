@@ -35,7 +35,6 @@ import {
 } from '@/lib/admin/consolidated-test-report-export';
 import {
   downloadAllIndividualTestReportsZip,
-  downloadGenericStudentReportPdf,
   type BulkIndividualFormat,
 } from '@/lib/admin/bulk-individual-test-reports';
 import type { TestReportsPayload, TestOption } from '@/lib/admin/test-reports-data';
@@ -86,7 +85,17 @@ export function TestReportsDashboard() {
   const [individualFormat, setIndividualFormat] = useState<BulkIndividualFormat>('pdf');
   const [bulkExportBusy, setBulkExportBusy] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const [scoreOverrides, setScoreOverrides] = useState<Record<string, number>>({});
   const scorecardModal = useElevateXScorecardModal();
+
+  useEffect(() => {
+    const card = scorecardModal.scorecard;
+    const attemptId = scorecardModal.target?.attemptId;
+    if (!card || !attemptId) return;
+    setScoreOverrides((prev) =>
+      prev[attemptId] === card.percentage ? prev : { ...prev, [attemptId]: card.percentage },
+    );
+  }, [scorecardModal.scorecard, scorecardModal.target?.attemptId]);
 
   const load = useCallback(
     async (
@@ -218,8 +227,13 @@ export function TestReportsDashboard() {
     } else if (statusFilter === 'completed') {
       rows = rows.filter((r) => isCompletedAttemptStatus(r.status, r.completed_at));
     }
-    return rows;
-  }, [payload, search, statusFilter]);
+    if (Object.keys(scoreOverrides).length === 0) return rows;
+    return rows.map((row) =>
+      scoreOverrides[row.attempt_id] != null
+        ? { ...row, score: scoreOverrides[row.attempt_id]! }
+        : row,
+    );
+  }, [payload, search, statusFilter, scoreOverrides]);
 
   const selectedTestName =
     payload?.tests.find((t) => t.id === selectedTestId)?.name ?? undefined;
@@ -501,15 +515,11 @@ export function TestReportsDashboard() {
 
   const openStudentReport = (row: TestReportsPayload['rows'][0]) => {
     if (!canOpenStudentReport(row)) return;
-    if (row.exam_type === 'elevatex') {
-      void scorecardModal.open({
-        attemptId: row.attempt_id,
-        studentName: row.student_name,
-        rollNumber: row.roll_number || undefined,
-      });
-      return;
-    }
-    downloadGenericStudentReportPdf(row);
+    void scorecardModal.open({
+      attemptId: row.attempt_id,
+      studentName: row.student_name,
+      rollNumber: row.roll_number || undefined,
+    });
   };
 
   const testReportsContext = useMemo(
@@ -884,8 +894,9 @@ export function TestReportsDashboard() {
                   All individual student reports
                 </p>
                 <p className="text-sm text-slate-700 mb-3">
-                  One click downloads a ZIP with a separate report for every completed student
-                  (ElevateX = section-wise scorecard; every other exam = full attempt report).
+                  One click downloads a ZIP with a separate ElevateX-style scorecard for every
+                  completed student, grouped by Exam Builder subjects, with coding scored from
+                  test cases (compile errors and wrong output are 0).
                 </p>
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[120px]">

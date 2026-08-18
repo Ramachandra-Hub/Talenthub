@@ -21,7 +21,7 @@ export function buildElevateXScorecardPdfDoc(scorecard: PlacementScorecard): jsP
   const hall = scorecard.candidate.hallTicket;
 
   doc.setFontSize(16);
-  doc.text('ElevateX Scorecard', 14, 18);
+  doc.text(scorecard.candidate.examName?.trim() || 'Exam Scorecard', 14, 18);
   doc.setFontSize(10);
   doc.text(scorecard.candidate.collegeName ?? 'Campus Assessment', 14, 26);
   doc.text(`${scorecard.candidate.fullName} · ${hall} · ${dept?.name ?? 'Department'}`, 14, 32);
@@ -39,11 +39,15 @@ export function buildElevateXScorecardPdfDoc(scorecard: PlacementScorecard): jsP
     14,
     54,
   );
-  doc.text(
-    `Technical ${formatScorePercentLabel(scorecard.technicalRating)} · Communication ${formatScorePercentLabel(scorecard.communicationRating)} · Employability ${formatScorePercent(scorecard.employabilityScore)}`,
-    14,
-    60,
-  );
+  if (scorecard.reportKind === 'exam') {
+    doc.text('Subject scores follow Exam Builder selections. Coding is graded by test cases.', 14, 60);
+  } else {
+    doc.text(
+      `Technical ${formatScorePercentLabel(scorecard.technicalRating)} · Communication ${formatScorePercentLabel(scorecard.communicationRating)} · Employability ${formatScorePercent(scorecard.employabilityScore)}`,
+      14,
+      60,
+    );
+  }
 
   autoTable(doc, {
     startY: 68,

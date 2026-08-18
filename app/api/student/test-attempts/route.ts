@@ -10,6 +10,7 @@ import {
   AttemptConflictError,
   AttemptDeadlineError,
   fetchAttemptsForUserPrisma,
+  resolveStudentProfilePrisma,
   submitTestAttemptLeanPrisma,
   syncTestAttemptReportPrisma,
   linkProctorViolationsPrisma,
@@ -20,7 +21,8 @@ import {
   type ExamAccessResult,
 } from '@/lib/db/exam-access-prisma';
 import type { TestAttempt } from '@/lib/types';
-import { isElevateXTestId } from '@/lib/elevatex';
+import { isElevateXAttemptTitle, isElevateXTestId } from '@/lib/elevatex';
+import { buildExamScorecard, encodeExamScorecardAnswers } from '@/lib/exams/exam-scorecard';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { slimAnswersForSubmit } from '@/lib/exam-v2/sanitize-answers';
 
@@ -99,8 +101,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const scorePercent = Number(body.scorePercent);
-    if (!Number.isFinite(scorePercent)) {
+    const scorePercentClient = Number(body.scorePercent);
+    if (!Number.isFinite(scorePercentClient)) {
       return NextResponse.json({ error: 'scorePercent is required' }, { status: 400 });
     }
 
@@ -131,7 +133,8 @@ export async function POST(request: Request) {
       typeof body.proctorSessionId === 'string' ? body.proctorSessionId : undefined;
     const proctorViolations = Number(body.proctorViolations) || 0;
     const proctorAutoSubmit = Boolean(body.proctorAutoSubmit);
-    const rawNetScore = Number(body.rawNetScore) || scorePercent;
+    let scorePercent = scorePercentClient;
+    let rawNetScore = Number(body.rawNetScore) || scorePercentClient;
 
     let durationSec = Number(body.durationSec) || 0;
     if (!durationSec) {
@@ -183,6 +186,50 @@ export async function POST(request: Request) {
       body.answers != null && typeof body.answers === 'object'
         ? slimAnswersForSubmit(body.answers as Record<string, unknown>)
         : {};
+
+    if (!isElevateXTestId(testId) && !isElevateXAttemptTitle(testName)) {
+      try {
+        const profile = await resolveStudentProfilePrisma(userId);
+        const built = await buildExamScorecard({
+          testId,
+          testName,
+          answers: answersIn,
+          candidate: {
+            fullName: profile.full_name || profile.email || 'Student',
+            hallTicket: profile.roll_number || rollNumberFromUser(profile.email || ''),
+            departmentId: profile.branch,
+          },
+          elapsedSec: clientElapsedSec,
+          completedAt: nowIso,
+        });
+        if (built) {
+          scorePercent = built.scorePercent;
+          rawNetScore = built.rawNetScore;
+          Object.assign(answersIn, encodeExamScorecardAnswers(built.scorecard, answersIn));
+        } else {
+          const hasCodingPayload = Object.values(answersIn).some((value) => {
+            if (!value || typeof value !== 'object') return false;
+            const ua = (value as { userAnswer?: unknown }).userAnswer;
+            return typeof ua === 'string' && ua.includes('sourceCode');
+          });
+          if (hasCodingPayload && scorePercent >= 99) {
+            scorePercent = 0;
+            rawNetScore = 0;
+          }
+        }
+      } catch (err) {
+        console.warn('[test-attempts/submit] server scoring skipped:', err);
+        const hasCodingPayload = Object.values(answersIn).some((value) => {
+          if (!value || typeof value !== 'object') return false;
+          const ua = (value as { userAnswer?: unknown }).userAnswer;
+          return typeof ua === 'string' && ua.includes('sourceCode');
+        });
+        if (hasCodingPayload && scorePercent >= 99) {
+          scorePercent = 0;
+          rawNetScore = 0;
+        }
+      }
+    }
 
     const totalQuestions = Number(body.totalQuestions) || 0;
     recoverCtx = {

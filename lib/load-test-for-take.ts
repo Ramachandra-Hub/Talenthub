@@ -4,6 +4,7 @@ import {
   examShouldIncludeCodingQuestions,
   isFacultyCodingQuestion,
 } from '@/lib/exam-builder/programming-syllabus';
+import { questionTagsFromProMetadata } from '@/lib/exam-v2/subject-progress';
 import { parseQuestionsJson, type FacultyExamQuestion } from '@/lib/faculty-exams';
 import { adaptQuestionRow, adaptTestRow, extractJoinedQuestion, isCodingQuestion } from '@/lib/practice-mappers';
 import type { Question, Test } from '@/lib/types';
@@ -15,6 +16,31 @@ function testIdVariants(testId: string): (string | number)[] {
     if (Number.isFinite(n)) out.push(n);
   }
   return out;
+}
+
+function stemKey(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Copy Exam Builder subject tags onto published questions so reports group by selected subjects. */
+export function overlayFacultySubjectTags(
+  loaded: Question[],
+  facultyItems: FacultyExamQuestion[],
+): Question[] {
+  if (!loaded.length || !facultyItems.length) return loaded;
+  const tagged = facultyQuestionsToUiQuestions(facultyItems, 'overlay');
+  const byStem = new Map<string, string[]>();
+  for (const question of tagged) {
+    const tags = (question.tags ?? []).filter((tag) => typeof tag === 'string' && tag.startsWith('pro-subject'));
+    if (!tags.length) continue;
+    byStem.set(stemKey(question.question_text), tags);
+  }
+  if (!byStem.size) return loaded;
+  return loaded.map((question) => {
+    const extra = byStem.get(stemKey(question.question_text));
+    if (!extra?.length) return question;
+    return { ...question, tags: [...new Set([...(question.tags ?? []), ...extra])] };
+  });
 }
 
 export function facultyQuestionsToUiQuestions(
@@ -34,7 +60,7 @@ export function facultyQuestionsToUiQuestions(
         options: null,
         correct_answer: '',
         explanation: null,
-        tags: ['technical-programming'],
+        tags: ['technical-programming', ...questionTagsFromProMetadata(q)],
         created_at: now,
         updated_at: now,
         question_type: 'coding',
@@ -59,7 +85,7 @@ export function facultyQuestionsToUiQuestions(
       options: [q.option_a, q.option_b, q.option_c, q.option_d],
       correct_answer: q.correct_answer,
       explanation: q.explanation ?? null,
-      tags: null,
+      tags: questionTagsFromProMetadata(q).length ? questionTagsFromProMetadata(q) : null,
       created_at: now,
       updated_at: now,
       question_type: 'mcq',
@@ -77,14 +103,15 @@ export function mergeMissingCodingQuestions(
   facultyItems: FacultyExamQuestion[],
   testId: string,
 ): Question[] {
+  const withSubjects = overlayFacultySubjectTags(loaded, facultyItems);
   const codingItems = facultyItems.filter(isFacultyCodingQuestion);
-  if (!codingItems.length) return loaded;
-  if (loaded.some(isCodingQuestion)) return loaded;
+  if (!codingItems.length) return withSubjects;
+  if (withSubjects.some(isCodingQuestion)) return withSubjects;
 
   const codingUi = facultyQuestionsToUiQuestions(facultyItems, testId).filter(isCodingQuestion);
-  if (!loaded.length) return codingUi;
+  if (!withSubjects.length) return overlayFacultySubjectTags(codingUi, facultyItems);
 
-  const mcqs = loaded.filter((q) => !isCodingQuestion(q));
+  const mcqs = withSubjects.filter((q) => !isCodingQuestion(q));
   let mcqIndex = 0;
   let codingIndex = 0;
   const merged: Question[] = [];
@@ -97,7 +124,7 @@ export function mergeMissingCodingQuestions(
   }
   while (mcqIndex < mcqs.length) merged.push(mcqs[mcqIndex++]);
   while (codingIndex < codingUi.length) merged.push(codingUi[codingIndex++]);
-  return merged;
+  return overlayFacultySubjectTags(merged, facultyItems);
 }
 
 async function attachFacultyCodingIfMissing(
@@ -105,7 +132,7 @@ async function attachFacultyCodingIfMissing(
   testId: string,
   loaded: Question[],
 ): Promise<Question[]> {
-  if (!loaded.length || loaded.some(isCodingQuestion)) return loaded;
+  if (!loaded.length) return loaded;
   for (const id of testIdVariants(testId)) {
     const { data: fer } = await client
       .from('faculty_exam_requests')

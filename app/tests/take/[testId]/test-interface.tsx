@@ -460,6 +460,7 @@ export default function TestInterface({
 
   const currentQuestion = activeSectionQuestions[currentQuestionIndex];
   const isCodingItem = currentQuestion ? isCodingQuestion(currentQuestion) : false;
+  const paperHasCoding = questions.some(isCodingQuestion);
 
   const scopeQuestions = fullAccess ? activeSectionQuestions : activeSectionQuestions.slice(0, unlockedCount);
   const answeredCount = scopeQuestions.filter(
@@ -1043,7 +1044,7 @@ export default function TestInterface({
             ) : null}
 
             <div className="space-y-2 mb-4 text-sm">
-              {liveScorePercent != null ? (
+              {liveScorePercent != null && !paperHasCoding ? (
                 <div className="flex justify-between">
                   <span className="text-[#1e3a5f]">Live score</span>
                   <span className="font-semibold text-gray-900">

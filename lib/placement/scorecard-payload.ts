@@ -1,4 +1,5 @@
 import { isElevateXAttemptTitle, isElevateXTestId } from '@/lib/elevatex';
+import { EXAM_SCORECARD_ANSWERS_TYPE } from '@/lib/exams/exam-scorecard';
 import type { PlacementScorecard } from '@/lib/placement/types';
 
 export const ELEVATEX_SCORECARD_ANSWERS_TYPE = 'elevatex_scorecard_v1';
@@ -18,8 +19,15 @@ export function parseElevateXScorecardFromAnswers(answers: unknown): PlacementSc
   if (!answers || typeof answers !== 'object') return null;
   const obj = answers as Record<string, unknown>;
 
-  if (obj._type === ELEVATEX_SCORECARD_ANSWERS_TYPE && obj.scorecard) {
-    return obj.scorecard as PlacementScorecard;
+  if (
+    (obj._type === ELEVATEX_SCORECARD_ANSWERS_TYPE || obj._type === EXAM_SCORECARD_ANSWERS_TYPE) &&
+    obj.scorecard
+  ) {
+    const scorecard = obj.scorecard as PlacementScorecard;
+    if (obj._type === EXAM_SCORECARD_ANSWERS_TYPE && !scorecard.reportKind) {
+      return { ...scorecard, reportKind: 'exam' };
+    }
+    return scorecard;
   }
 
   const maybe = obj as PlacementScorecard;

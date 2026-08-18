@@ -114,6 +114,9 @@ export function parseQuestionsJson(raw: unknown): FacultyExamQuestion[] {
       option_d: String(q.option_d ?? '').trim(),
       correct_answer: correct,
       explanation: q.explanation ? String(q.explanation) : undefined,
+      pro_subject: q.pro_subject ? String(q.pro_subject) : undefined,
+      pro_subject_slug: q.pro_subject_slug ? String(q.pro_subject_slug) : undefined,
+      pro_topic_slug: q.pro_topic_slug ? String(q.pro_topic_slug) : undefined,
     });
   }
   return out;

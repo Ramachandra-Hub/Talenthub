@@ -83,7 +83,7 @@ function buildGenericAttemptCsv(row: TestReportRow): string {
 
 function buildElevateXScorecardCsv(scorecard: PlacementScorecard, row: TestReportRow): string {
   const lines = [
-    'ElevateX Individual Report',
+    'Exam Individual Report',
     `Student,${escapeCsv(scorecard.candidate.fullName || row.student_name)}`,
     `Roll,${escapeCsv(scorecard.candidate.hallTicket || row.roll_number)}`,
     `Overall %,${formatScorePercent(scorecard.percentage)}`,
@@ -133,35 +133,23 @@ export async function downloadAllIndividualTestReportsZip(
     try {
       const stem = fileStem(row);
 
-      if (row.exam_type === 'elevatex') {
-        const result = await fetchElevateXScorecardForAdmin(row.attempt_id, {
-          rollNumber: row.roll_number || undefined,
-        });
-        if ('error' in result) {
-          if (options.format === 'pdf') {
-            zip.file(`${stem}.pdf`, buildGenericAttemptPdfBlob(row));
-            filesAdded += 1;
-          } else {
-            zip.file(`${stem}.csv`, buildGenericAttemptCsv(row));
-            filesAdded += 1;
-          }
-          await sleep(60);
-          continue;
-        }
-
+      const result = await fetchElevateXScorecardForAdmin(row.attempt_id, {
+        rollNumber: row.roll_number || undefined,
+      });
+      if ('error' in result) {
         if (options.format === 'pdf') {
-          zip.file(`${stem}.pdf`, await buildElevateXScorecardPdfBlob(result.scorecard));
+          zip.file(`${stem}.pdf`, buildGenericAttemptPdfBlob(row));
         } else {
-          zip.file(`${stem}.csv`, buildElevateXScorecardCsv(result.scorecard, row));
+          zip.file(`${stem}.csv`, buildGenericAttemptCsv(row));
         }
       } else if (options.format === 'pdf') {
-        zip.file(`${stem}.pdf`, buildGenericAttemptPdfBlob(row));
+        zip.file(`${stem}.pdf`, await buildElevateXScorecardPdfBlob(result.scorecard));
       } else {
-        zip.file(`${stem}.csv`, buildGenericAttemptCsv(row));
+        zip.file(`${stem}.csv`, buildElevateXScorecardCsv(result.scorecard, row));
       }
 
       filesAdded += 1;
-      await sleep(row.exam_type === 'elevatex' ? 120 : 40);
+      await sleep(80);
     } catch {
       skipped += 1;
     }

@@ -8,9 +8,12 @@ import {
   isElevateXAttemptMeta,
   parseElevateXScorecardFromAnswers,
 } from '@/lib/placement/scorecard-payload';
+import { buildExamScorecard, encodeExamScorecardAnswers } from '@/lib/exams/exam-scorecard';
+import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import type { PlacementScorecard } from '@/lib/placement/types';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
 import { isPlaceholderAttemptId } from '@/lib/test-attempts';
+import type { Prisma } from '@prisma/client';
 
 function parseStatAttempts(raw: unknown): DashboardStatEntry[] {
   if (!Array.isArray(raw)) return [];
@@ -30,6 +33,56 @@ export type ElevateXScorecardLookupResult =
     }
   | { error: string; status: number };
 
+async function rebuildExamScorecardForAttempt(row: {
+  id: string;
+  userId: string;
+  testId: string | null;
+  testTitle: string | null;
+  answers: Prisma.JsonValue;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  timeTaken: number | null;
+}): Promise<ElevateXScorecardLookupResult | null> {
+  if (!row.testId) return null;
+  const answers =
+    row.answers && typeof row.answers === 'object' && !Array.isArray(row.answers)
+      ? (row.answers as Record<string, unknown>)
+      : {};
+  const user = await prisma.user.findUnique({
+    where: { id: row.userId },
+    select: { fullName: true, email: true, rollNumber: true, branch: true },
+  });
+  const built = await buildExamScorecard({
+    testId: row.testId,
+    testName: row.testTitle || 'Exam',
+    answers,
+    candidate: {
+      fullName: user?.fullName || user?.email || 'Student',
+      hallTicket: user?.rollNumber || rollNumberFromUser(user?.email || ''),
+      departmentId: user?.branch,
+    },
+    startedAt: row.startedAt?.toISOString(),
+    completedAt: row.completedAt?.toISOString(),
+    elapsedSec: row.timeTaken ?? 0,
+  });
+  if (!built) return null;
+  await prisma.testAttempt.update({
+    where: { id: row.id },
+    data: {
+      score: built.scorePercent,
+      percentageScore: built.scorePercent,
+      totalScore: built.rawNetScore,
+      answers: encodeExamScorecardAnswers(built.scorecard, answers) as Prisma.InputJsonValue,
+    },
+  });
+  return {
+    scorecard: built.scorecard,
+    attemptId: row.id,
+    userId: row.userId,
+    source: 'recomputed',
+  };
+}
+
 export async function fetchElevateXScorecardForAttemptPrisma(
   attemptId: string,
   options?: { rollNumber?: string },
@@ -43,13 +96,43 @@ export async function fetchElevateXScorecardForAttemptPrisma(
         testId: true,
         testTitle: true,
         answers: true,
+        startedAt: true,
+        completedAt: true,
+        timeTaken: true,
       },
     });
     if (row) {
-      if (!isElevateXAttemptMeta(row.testId, row.testTitle)) {
-        return { error: 'Not an ElevateX attempt', status: 400 };
-      }
       const scorecard = parseElevateXScorecardFromAnswers(row.answers);
+      const elevateX = isElevateXAttemptMeta(row.testId, row.testTitle);
+      if (!elevateX) {
+        const answers =
+          row.answers && typeof row.answers === 'object' && !Array.isArray(row.answers)
+            ? (row.answers as Record<string, unknown>)
+            : {};
+        const hasCoding = Object.values(answers).some((value) => {
+          if (!value || typeof value !== 'object') return false;
+          const ua = (value as { userAnswer?: unknown }).userAnswer;
+          return typeof ua === 'string' && ua.includes('sourceCode');
+        });
+        const staleCard =
+          !scorecard ||
+          scorecard.reportKind !== 'exam' ||
+          (hasCoding && scorecard.percentage >= 99);
+        if (staleCard) {
+          const rebuilt = await rebuildExamScorecardForAttempt(row);
+          if (rebuilt) return rebuilt;
+        }
+        if (scorecard) {
+          return {
+            scorecard,
+            attemptId: row.id,
+            userId: row.userId,
+            source: 'attempt_row',
+          };
+        }
+        return { error: 'Exam report could not be generated for this attempt.', status: 404 };
+      }
+
       if (scorecard) {
         return {
           scorecard,
@@ -80,9 +163,6 @@ export async function fetchElevateXScorecardForAttemptPrisma(
   for (const stat of stats) {
     for (const entry of parseStatAttempts(stat.payload)) {
       if (String(entry.id) !== attemptId) continue;
-      if (!isElevateXAttemptMeta(entry.test_id, entry.test_name)) {
-        return { error: 'Not an ElevateX attempt', status: 400 };
-      }
       const scorecard = parseElevateXScorecardFromAnswers(entry.answers);
       if (scorecard) {
         return {
@@ -91,6 +171,9 @@ export async function fetchElevateXScorecardForAttemptPrisma(
           userId: stat.userId,
           source: 'dashboard_stats',
         };
+      }
+      if (!isElevateXAttemptMeta(entry.test_id, entry.test_name)) {
+        continue;
       }
       const fromUser = await findElevateXScorecardForUserId(stat.userId);
       if (fromUser) {

@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/server-auth';
 import { fetchElevateXScorecardForAttemptPrisma } from '@/lib/placement/fetch-elevatex-scorecard-prisma';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(
   request: Request,

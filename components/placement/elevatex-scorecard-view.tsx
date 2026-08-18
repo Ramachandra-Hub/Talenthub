@@ -33,6 +33,7 @@ type ElevateXScorecardViewProps = {
 export function ElevateXScorecardView({ scorecard, compact, className }: ElevateXScorecardViewProps) {
   const dept = findDepartment(scorecard.candidate.departmentId);
   const readinessClass = READINESS_COLORS[scorecard.placementReadiness];
+  const isExamReport = scorecard.reportKind === 'exam';
 
   return (
     <div className={cn('space-y-6', className)}>
@@ -48,7 +49,7 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
                 compact ? 'text-xl' : 'text-3xl',
               )}
             >
-              ElevateX Scorecard
+              {scorecard.candidate.examName?.trim() || 'Exam Scorecard'}
             </h2>
             <p className="text-sm text-slate-600 mt-1">
               {scorecard.candidate.fullName} ·{' '}
@@ -73,26 +74,39 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
 
         <div className="grid sm:grid-cols-3 gap-3 mt-6">
           <RatingTile
-            label="Placement readiness"
-            value={scorecard.placementReadiness}
+            label={isExamReport ? 'Overall result' : 'Placement readiness'}
+            value={isExamReport ? formatScorePercentLabel(scorecard.percentage) : scorecard.placementReadiness}
             badgeClass={readinessClass}
-            subtitle={`${formatScorePercentLabel(scorecard.percentage)} composite`}
+            subtitle={
+              isExamReport
+                ? `${scorecard.earnedMarks} / ${scorecard.totalMarks} from selected subjects`
+                : `${formatScorePercentLabel(scorecard.percentage)} composite`
+            }
           />
           <RatingTile
-            label="Technical rating"
+            label={isExamReport ? 'Subject average' : 'Technical rating'}
             value={formatScorePercentLabel(scorecard.technicalRating)}
             badgeClass="bg-[#1e3a5f]"
           />
-          <RatingTile
-            label="Communication rating"
-            value={formatScorePercentLabel(scorecard.communicationRating)}
-            badgeClass="bg-emerald-600"
-          />
+          {isExamReport ? (
+            <RatingTile
+              label="Sections"
+              value={String(scorecard.sections.length)}
+              badgeClass="bg-indigo-600"
+              subtitle="Exam Builder subjects"
+            />
+          ) : (
+            <RatingTile
+              label="Communication rating"
+              value={formatScorePercentLabel(scorecard.communicationRating)}
+              badgeClass="bg-emerald-600"
+            />
+          )}
         </div>
 
         <div className="mt-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-            Employability score
+            {isExamReport ? 'Overall score' : 'Employability score'}
           </p>
           <div className="flex items-center gap-3">
             <Progress value={scorecard.employabilityScore} className="h-2 flex-1" />
@@ -101,13 +115,17 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
             </span>
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
-            50% Technical · 25% Communication · 25% Cognitive (Aptitude + Logic + IQ)
+            {isExamReport
+              ? 'Section scores follow the subjects selected in Exam Builder. Coding marks are awarded only for passing test cases; compile errors and wrong output score 0.'
+              : '50% Technical · 25% Communication · 25% Cognitive (Aptitude + Logic + IQ)'}
           </p>
         </div>
       </Card>
 
       <Card className={cn('shadow-md border-slate-200', compact ? 'p-4' : 'p-6')}>
-        <h3 className="text-lg font-bold text-slate-900 mb-4">Section-wise performance</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-4">
+              {isExamReport ? 'Subject-wise performance' : 'Section-wise performance'}
+            </h3>
         <div className="space-y-3">
           {scorecard.sections.map((s) => (
             <div key={s.sectionId} className="rounded-lg border border-slate-200 p-4 bg-white">

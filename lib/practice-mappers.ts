@@ -15,6 +15,22 @@ function looksLikeCodingType(value: unknown): boolean {
   return String(value ?? '').trim().toLowerCase() === 'coding';
 }
 
+function parseQuestionTags(raw: unknown): string[] | null {
+  if (Array.isArray(raw)) {
+    const tags = raw.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0);
+    return tags.length ? tags : null;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return parseQuestionTags(parsed);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /** Compare stored correct key (often A/B/C/D) with what the UI captured. */
 export function answersMatchMcq(user: unknown, correct: unknown): boolean {
   const u = String(user ?? '').trim().toUpperCase();
@@ -109,9 +125,7 @@ export function adaptQuestionRow(row: Record<string, unknown>): Question {
     options: optsFromJson,
     correct_answer,
     explanation,
-    tags: Array.isArray(row.tags)
-      ? (row.tags as string[])
-      : null,
+    tags: parseQuestionTags(row.tags),
     created_at: String(row.created_at ?? row.createdAt ?? new Date().toISOString()),
     updated_at: String(row.updated_at ?? row.updatedAt ?? new Date().toISOString()),
     question_type: coding ? 'coding' : questionTypeRaw ?? undefined,
