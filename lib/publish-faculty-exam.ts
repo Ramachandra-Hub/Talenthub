@@ -1,20 +1,17 @@
-import { randomUUID } from 'crypto';
 import type { DbServiceClient } from '@/lib/db/get-db-service';
-import { dbRowTimestamps } from '@/lib/db/row-timestamps';
 import { linkTestQuestions } from '@/lib/exam-builder/link-test-questions';
 import {
   isElevateXBuilderTestType,
   ELEVATEX_TEST_ID,
 } from '@/lib/exam-builder/elevatex-exam';
 import {
-  detectQuestionsIdKind,
   detectTestsIdKind,
   isUuidTypeMismatchError,
   normalizeTestId,
 } from '@/lib/exam-builder/id-utils';
 import { isFacultyCodingQuestion } from '@/lib/exam-builder/programming-syllabus';
-import { questionTagsFromProMetadata } from '@/lib/exam-v2/subject-progress';
-import { parseQuestionsJson, type FacultyExamQuestion, type FacultyMcqQuestion } from '@/lib/faculty-exams';
+import { examQuestionToDbRow } from '@/lib/exam-builder/exam-question-db-row';
+import { parseQuestionsJson, type FacultyExamQuestion } from '@/lib/faculty-exams';
 import {
   createSchedulesFromSlots,
   filterConfiguredScheduleSlots,
@@ -206,34 +203,13 @@ export async function publishFacultyExamRequest(
   });
 
   const testsIdKind = await detectTestsIdKind(admin);
-  const questionsIdKind = await detectQuestionsIdKind(admin);
 
-  const mcqQuestions = questions.filter((q): q is FacultyMcqQuestion => !isFacultyCodingQuestion(q));
+  const testIdValue = testsIdKind === 'bigint' ? Number(testIdStr) : testId;
+  const questionRows = questions.map((q) => examQuestionToDbRow(q, { testId: testIdValue }));
 
-  const questionRows = mcqQuestions.map((q) => {
-    const proTags = questionTagsFromProMetadata(q);
-    const row: Record<string, unknown> = {
-      id: randomUUID(),
-      ...dbRowTimestamps(),
-      question_text: q.question_text,
-      question_type: 'mcq',
-      option_a: q.option_a,
-      option_b: q.option_b,
-      option_c: q.option_c,
-      option_d: q.option_d,
-      correct_answer: q.correct_answer,
-      explanation: q.explanation ?? '',
-      marks: 1,
-      test_id: testsIdKind === 'bigint' ? Number(testIdStr) : testId,
-    };
-    if (proTags.length) row.tags = proTags;
-    return row;
-  });
-
-  let { data: inserted, error: qError } = await admin
-    .from('questions')
-    .insert(questionRows)
-    .select('id');
+  let { data: inserted, error: qError } = questionRows.length
+    ? await admin.from('questions').insert(questionRows).select('id')
+    : { data: [] as Array<{ id: unknown }>, error: null };
 
   if (qError && isUuidTypeMismatchError(String(qError.message ?? ''))) {
     const fallbackRows = questionRows.map((r) => {
@@ -243,6 +219,19 @@ export async function publishFacultyExamRequest(
     const retry = await admin.from('questions').insert(fallbackRows).select('id');
     inserted = retry.data;
     qError = retry.error;
+  }
+
+  if (qError) {
+    const mcqOnly = questions
+      .filter((q) => !isFacultyCodingQuestion(q))
+      .map((q) => examQuestionToDbRow(q, { testId: testIdValue }));
+    if (mcqOnly.length && mcqOnly.length !== questionRows.length) {
+      const retryMcq = await admin.from('questions').insert(mcqOnly).select('id');
+      if (!retryMcq.error) {
+        inserted = retryMcq.data;
+        qError = null;
+      }
+    }
   }
 
   if (qError) throw new Error(qError.message);

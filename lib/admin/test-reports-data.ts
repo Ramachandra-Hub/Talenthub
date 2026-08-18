@@ -4,7 +4,7 @@ import {
   matchesAdminExamType,
   type AdminExamType,
 } from '@/lib/admin/exam-type';
-import { loadAdminStudents, loadAllAttemptsRollup, type RollupAttempt } from '@/lib/admin/attempts-rollup';
+import { type RollupAttempt } from '@/lib/admin/attempts-rollup';
 import { isCompletedAttemptStatus, isInProgressStatus } from '@/lib/attempt-status';
 import { averageScorePercent, roundRatePercent, roundScorePercent } from '@/lib/format-score';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@/lib/admin/load-schedule-for-report';
 import { loadElevateXTodayReportFast } from '@/lib/admin/elevatex-today-report';
 import {
+  getIstDayBoundsIso,
   isInstantInDateRange,
   parseReportDateFilter,
   parseReportDateRangeFilter,
@@ -123,6 +124,14 @@ export async function loadTestReportsPayload(
   const reportDateKey = dateRange?.isSingleDay ? dateRange.startKey : undefined;
   const reportDateLabel = dateRange?.isSingleDay ? dateRange.label : undefined;
 
+  const dateBounds =
+    dateRange
+      ? {
+          fromIso: getIstDayBoundsIso(dateRange.startKey).start,
+          toIso: getIstDayBoundsIso(dateRange.endKey).end,
+        }
+      : null;
+
   if (
     examType === 'elevatex' &&
     dateRange?.isSingleDay &&
@@ -134,10 +143,20 @@ export async function loadTestReportsPayload(
     return loadElevateXTodayReportFast(admin, reportDateKey, reportDateLabel);
   }
 
+  const {
+    loadAdminStudentsPrisma,
+    loadAllAttemptsRollupPrisma,
+  } = await import('@/lib/admin/attempts-rollup-prisma');
+
   const [students, { attempts, testsById }, categoriesRes, testsRes, scheduleOptions] =
     await Promise.all([
-      loadAdminStudents(admin),
-      loadAllAttemptsRollup(admin),
+      loadAdminStudentsPrisma(),
+      loadAllAttemptsRollupPrisma({
+        fromIso: dateBounds?.fromIso,
+        toIso: dateBounds?.toIso,
+        includeAnswers: false,
+        includeDashboardStats: !dateBounds,
+      }),
       admin.from('test_categories').select('id, name, slug'),
       admin.from('tests').select('id, title, name, category_id'),
       loadReportScheduleOptions(admin),
@@ -273,7 +292,7 @@ export async function loadTestReportsPayload(
         completed_at: a.completed_at,
         created_at: a.created_at,
         time_taken_sec: a.time_taken,
-        slot_number: slotNumber,
+        slot_number: a.slot_number ?? slotNumber,
         schedule_title: scheduleTitle,
       };
     }),

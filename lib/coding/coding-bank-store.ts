@@ -113,7 +113,7 @@ export async function loadCodingBankFromDb(options?: {
   for (const row of rows) {
     const stored = parseStoredCodingProblem(row.explanation);
     if (!stored) continue;
-    const problem = { ...stored.problem, id: row.id };
+    const problem = { ...stored.problem, id: row.id, starterCode: undefined };
     if (search) {
       const hay = `${problem.title} ${problem.statement}`.toLowerCase();
       if (!hay.includes(search)) continue;

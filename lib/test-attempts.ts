@@ -26,6 +26,8 @@ export type AttemptRow = Record<string, unknown> & {
   started_at?: string;
   answers?: unknown;
   time_taken?: number | null;
+  schedule_id?: string | null;
+  slot_number?: number | null;
 };
 
 export function toAttemptScore(row: AttemptRow): number {

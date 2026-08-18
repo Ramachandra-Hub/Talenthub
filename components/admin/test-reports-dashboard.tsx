@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,9 +35,10 @@ import {
 } from '@/lib/admin/consolidated-test-report-export';
 import {
   downloadAllIndividualTestReportsZip,
+  downloadGenericStudentReportPdf,
   type BulkIndividualFormat,
 } from '@/lib/admin/bulk-individual-test-reports';
-import type { TestReportsPayload } from '@/lib/admin/test-reports-data';
+import type { TestReportsPayload, TestOption } from '@/lib/admin/test-reports-data';
 import { buildTestReportsCardDashboardView } from '@/lib/admin/test-reports-analytics';
 import type { TestReportsCardKey } from '@/lib/admin/test-reports-card-reports';
 import {
@@ -52,10 +52,8 @@ import { cn } from '@/lib/utils';
 
 type StatusFilter = 'all' | 'in_progress' | 'completed';
 
-function canOpenElevateXReport(row: TestReportsPayload['rows'][0]): boolean {
-  return (
-    row.exam_type === 'elevatex' && isCompletedAttemptStatus(row.status, row.completed_at)
-  );
+function canOpenStudentReport(row: TestReportsPayload['rows'][0]): boolean {
+  return isCompletedAttemptStatus(row.status, row.completed_at);
 }
 
 export function TestReportsDashboard() {
@@ -367,6 +365,67 @@ export function TestReportsDashboard() {
     }
   };
 
+  const rowsForConductedExam = (test: TestOption) =>
+    (payload?.rows ?? []).filter(
+      (r) => (r.test_id ?? `title:${r.test_name}`) === test.id || r.test_name === test.name,
+    );
+
+  const downloadExamLeaderboardPdf = (test: TestOption) => {
+    const rows = rowsForConductedExam(test);
+    if (!rows.length) return;
+    downloadConsolidatedTestReportPdf({
+      examLabel: test.name,
+      testName: test.name,
+      scheduleLabel: activeScheduleLabel,
+      dateRangeLabel:
+        payload?.report_date_range_label ??
+        (hasDateFilter ? payload?.report_date_label ?? dateRangeLabel : undefined),
+      rows,
+    });
+  };
+
+  const downloadExamLeaderboardExcel = (test: TestOption) => {
+    const rows = rowsForConductedExam(test);
+    if (!rows.length) return;
+    downloadConsolidatedTestReportExcel({
+      examLabel: test.name,
+      testName: test.name,
+      scheduleLabel: activeScheduleLabel,
+      dateRangeLabel:
+        payload?.report_date_range_label ??
+        (hasDateFilter ? payload?.report_date_label ?? dateRangeLabel : undefined),
+      rows,
+    });
+  };
+
+  const downloadExamIndividualZip = async (test: TestOption) => {
+    const rows = rowsForConductedExam(test);
+    const completed = rows.filter((r) => isCompletedAttemptStatus(r.status, r.completed_at));
+    if (!completed.length) {
+      alert(`No completed attempts for ${test.name}.`);
+      return;
+    }
+    setBulkExportBusy(`exam-${test.id}`);
+    setBulkProgress(null);
+    try {
+      const { filesAdded, skipped } = await downloadAllIndividualTestReportsZip({
+        rows,
+        format: individualFormat,
+        zipBaseName: `exam-${slugifyDateRange(test.name)}`,
+        onProgress: (current, total, name) => {
+          setBulkProgress(`${test.name}: ${current} / ${total} — ${name}`);
+        },
+      });
+      const extra = skipped > 0 ? ` (${skipped} skipped)` : '';
+      setBulkProgress(`Done — ${filesAdded} file${filesAdded === 1 ? '' : 's'} for ${test.name}${extra}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Exam export failed');
+      setBulkProgress(null);
+    } finally {
+      setBulkExportBusy(null);
+    }
+  };
+
   const downloadPdf = () => {
     if (!payload || filteredRows.length === 0) return;
     downloadTestReportPdf({
@@ -440,12 +499,17 @@ export function TestReportsDashboard() {
     }
   };
 
-  const openElevateXReport = (row: TestReportsPayload['rows'][0]) => {
-    void scorecardModal.open({
-      attemptId: row.attempt_id,
-      studentName: row.student_name,
-      rollNumber: row.roll_number || undefined,
-    });
+  const openStudentReport = (row: TestReportsPayload['rows'][0]) => {
+    if (!canOpenStudentReport(row)) return;
+    if (row.exam_type === 'elevatex') {
+      void scorecardModal.open({
+        attemptId: row.attempt_id,
+        studentName: row.student_name,
+        rollNumber: row.roll_number || undefined,
+      });
+      return;
+    }
+    downloadGenericStudentReportPdf(row);
   };
 
   const testReportsContext = useMemo(
@@ -457,8 +521,8 @@ export function TestReportsDashboard() {
               rows: filteredRows,
               summary: displaySummary ?? payload.summary,
             },
-            examLabel: meta.label,
-            testFilterLabel: selectedTestId !== 'all' ? selectedTestName : undefined,
+          examLabel: meta.label,
+          testFilterLabel: selectedTestId !== 'all' ? selectedTestName : undefined,
           }
         : null,
     [payload, filteredRows, displaySummary, meta.label, selectedTestId, selectedTestName],
@@ -483,11 +547,11 @@ export function TestReportsDashboard() {
         fileBase={detailCard ? `test-reports-${examType}-${detailCard}` : undefined}
       />
       <AdminPageHeader
-        title={todayOnly && examType === 'elevatex' ? 'ElevateX — today’s report' : 'Test reports'}
+        title="Exam reports"
         description={
           todayOnly && payload?.report_date_label
-            ? `Students who wrote ElevateX on ${payload.report_date_label} (IST). Download PDF or CSV for the examination cell.`
-            : 'Select exam type, set a start/end date range, and leave slot as All slots (overall) for a combined leaderboard across every slot — download PDF, Excel, or individual reports.'
+            ? `Students who wrote exams on ${payload.report_date_label} (IST). Every conducted exam — not only ElevateX — can be downloaded as PDF, Excel, or individual reports.`
+            : 'Every exam that has been attempted on this portal gets a report. Filter by exam name, date, or slot — then download leaderboard PDF/Excel or individual student reports.'
         }
         actions={
           payload ? (
@@ -821,7 +885,7 @@ export function TestReportsDashboard() {
                 </p>
                 <p className="text-sm text-slate-700 mb-3">
                   One click downloads a ZIP with a separate report for every completed student
-                  (ElevateX = section-wise scorecard; other exams = attempt summary).
+                  (ElevateX = section-wise scorecard; every other exam = full attempt report).
                 </p>
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[120px]">
@@ -855,6 +919,66 @@ export function TestReportsDashboard() {
               </div>
             </div>
           </Card>
+
+          {payload.tests.length > 0 ? (
+            <Card className="p-4 mb-6 border-[#0c2340]/15 bg-white">
+              <p className="text-sm font-semibold text-[#0c2340] mb-1">Exams conducted</p>
+              <p className="text-xs text-slate-600 mb-4">
+                One report pack per exam that has attempts — Java, department papers, ElevateX, or any other
+                name. Download that exam&apos;s leaderboard or every student&apos;s individual report.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {payload.tests.map((test) => {
+                  const examRows = rowsForConductedExam(test);
+                  const examCompleted = examRows.filter((r) =>
+                    isCompletedAttemptStatus(r.status, r.completed_at),
+                  ).length;
+                  const busy = bulkExportBusy === `exam-${test.id}`;
+                  return (
+                    <div
+                      key={test.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50/80 p-4"
+                    >
+                      <p className="font-semibold text-[#0c2340] leading-snug">{test.name}</p>
+                      <p className="text-xs text-slate-600 mt-1 mb-3">
+                        {test.attempt_count} attempt{test.attempt_count === 1 ? '' : 's'} · {examCompleted}{' '}
+                        completed
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-[#0c2340] hover:bg-[#16304f] text-white"
+                          disabled={examCompleted === 0 || Boolean(bulkExportBusy)}
+                          onClick={() => downloadExamLeaderboardPdf(test)}
+                        >
+                          Leaderboard PDF
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={examCompleted === 0 || Boolean(bulkExportBusy)}
+                          onClick={() => downloadExamLeaderboardExcel(test)}
+                        >
+                          Leaderboard Excel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={examCompleted === 0 || Boolean(bulkExportBusy)}
+                          onClick={() => void downloadExamIndividualZip(test)}
+                        >
+                          {busy ? 'Preparing ZIP…' : 'Individual reports'}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          ) : null}
 
           <div className="grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             <StatCard
@@ -940,11 +1064,11 @@ export function TestReportsDashboard() {
             <Card className="p-10 text-center text-slate-600">
               <p className="font-medium">No attempts for this filter</p>
               <p className="text-sm mt-2">
-                Students will appear here after they complete {meta.label === 'All tests' ? 'an exam' : meta.label}.
+                Students will appear here after they start or complete any exam on this portal.
               </p>
-              {examType === 'elevatex' ? (
-                <Button variant="outline" className="mt-4" asChild>
-                  <Link href="/admin/evalora-modules">Go live with ElevateX</Link>
+              {examType !== 'all' ? (
+                <Button variant="outline" className="mt-4" onClick={() => setExamTypeAndUrl('all')}>
+                  Show all exams
                 </Button>
               ) : null}
             </Card>
@@ -964,14 +1088,14 @@ export function TestReportsDashboard() {
                   </thead>
                   <tbody>
                     {filteredRows.map((row) => {
-                      const showReport = canOpenElevateXReport(row);
+                      const showReport = canOpenStudentReport(row);
                       return (
                       <tr
                         key={row.attempt_id}
                         className={cn(showReport && 'cursor-pointer hover:bg-slate-50/80')}
                         onClick={
                           showReport
-                            ? () => openElevateXReport(row)
+                            ? () => openStudentReport(row)
                             : undefined
                         }
                       >
@@ -979,20 +1103,20 @@ export function TestReportsDashboard() {
                           <p className="font-medium text-[#0c2340] truncate">{row.student_name}</p>
                           <p className="text-xs text-slate-500 truncate">{row.email}</p>
                           <p className="text-xs text-slate-600 truncate">
-                            {showReport && row.roll_number ? (
-                              <button
-                                type="button"
+                          {showReport && row.roll_number ? (
+                            <button
+                              type="button"
                                 className="font-mono text-[#1e3a5f] font-semibold underline-offset-2 hover:underline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openElevateXReport(row);
-                                }}
-                              >
-                                {row.roll_number}
-                              </button>
-                            ) : (
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openStudentReport(row);
+                              }}
+                            >
+                              {row.roll_number}
+                            </button>
+                          ) : (
                               <span className="font-mono">{row.roll_number || '—'}</span>
-                            )}
+                          )}
                             {row.branch ? ` · ${row.branch}` : ''}
                           </p>
                         </td>
@@ -1058,17 +1182,14 @@ export function TestReportsDashboard() {
                               variant="outline"
                               className="text-[#1e3a5f] border-[#1e3a5f]/30"
                               disabled={scorecardModal.loading}
-                              onClick={() => openElevateXReport(row)}
+                              onClick={() => openStudentReport(row)}
                             >
                               Full report
                             </Button>
-                          ) : row.exam_type === 'elevatex' &&
-                            isInProgressStatus(row.status) ? (
+                          ) : isInProgressStatus(row.status) ? (
                             <span className="text-xs text-amber-700 font-medium">In exam</span>
                           ) : (
-                            <Button size="sm" variant="ghost" asChild>
-                              <Link href={`/admin/users`}>User</Link>
-                            </Button>
+                            <span className="text-xs text-slate-400">—</span>
                           )}
                         </td>
                       </tr>

@@ -668,3 +668,7 @@ export const JAVA_CORE_50_PROBLEMS: ProgrammingProblem[] = [
     testCases: [{ input: '1 2 3 4\n5 6 7 8', expectedOutput: '19 22\n43 50' }],
   },
 ];
+
+export function getJavaCore50ProblemById(id: string) {
+  return JAVA_CORE_50_PROBLEMS.find((p) => p.id === id);
+}

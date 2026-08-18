@@ -5,7 +5,7 @@ export const CODING_BANK_MARKER = 'coding-bank-v1';
 export type StoredCodingProblem = {
   marker: typeof CODING_BANK_MARKER;
   problem: ProgrammingProblem;
-  defaultLanguage: 'c' | 'python';
+  defaultLanguage: 'c' | 'python' | 'java';
 };
 
 export function parseStoredCodingProblem(
@@ -15,7 +15,10 @@ export function parseStoredCodingProblem(
   try {
     const parsed = JSON.parse(explanation) as StoredCodingProblem;
     if (parsed?.marker === CODING_BANK_MARKER && parsed.problem?.statement) {
-      return parsed;
+      return {
+        ...parsed,
+        problem: { ...parsed.problem, starterCode: undefined },
+      };
     }
   } catch {
     return null;
@@ -25,7 +28,7 @@ export function parseStoredCodingProblem(
 
 export function buildCodingQuestionPayload(
   problem: ProgrammingProblem,
-  defaultLanguage: 'c' | 'python',
+  defaultLanguage: 'c' | 'python' | 'java',
 ): {
   questionText: string;
   questionType: string;
@@ -37,7 +40,7 @@ export function buildCodingQuestionPayload(
 } {
   const stored: StoredCodingProblem = {
     marker: CODING_BANK_MARKER,
-    problem,
+    problem: { ...problem, starterCode: undefined },
     defaultLanguage,
   };
   return {

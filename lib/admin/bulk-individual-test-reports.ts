@@ -29,6 +29,16 @@ function fileStem(row: TestReportRow): string {
   return roll ? `${roll}_${name}` : name;
 }
 
+export function downloadGenericStudentReportPdf(row: TestReportRow): void {
+  const blob = buildGenericAttemptPdfBlob(row);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${fileStem(row)}-exam-report.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function escapeCsv(value: unknown): string {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }

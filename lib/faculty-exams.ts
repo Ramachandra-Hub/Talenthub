@@ -62,6 +62,27 @@ export function parseQuestionsJson(raw: unknown): FacultyExamQuestion[] {
 
     if (q.question_type === 'coding') {
       const problemId = String(q.coding_problem_id ?? 'double-number').trim();
+      const testCases = Array.isArray(q.test_cases)
+        ? q.test_cases
+            .map((row) => {
+              if (!row || typeof row !== 'object') return null;
+              const r = row as { input?: unknown; expectedOutput?: unknown; explanation?: unknown };
+              const input = String(r.input ?? '').trim();
+              const expectedOutput = String(r.expectedOutput ?? '').trim();
+              if (!input || !expectedOutput) return null;
+              return {
+                input,
+                expectedOutput,
+                explanation: typeof r.explanation === 'string' ? r.explanation : undefined,
+              };
+            })
+            .filter(Boolean) as FacultyCodingQuestion['test_cases']
+        : undefined;
+      const langRaw = String(q.default_language ?? '').trim().toLowerCase();
+      const defaultLanguage =
+        langRaw === 'java' || langRaw === 'python' || langRaw === 'c'
+          ? (langRaw as FacultyCodingQuestion['default_language'])
+          : undefined;
       out.push({
         question_type: 'coding',
         question_text: text,
@@ -72,6 +93,12 @@ export function parseQuestionsJson(raw: unknown): FacultyExamQuestion[] {
         input_format: q.input_format ? String(q.input_format) : undefined,
         output_format: q.output_format ? String(q.output_format) : undefined,
         hint: q.hint ? String(q.hint) : undefined,
+        default_language: defaultLanguage,
+        test_cases: testCases,
+        pro_subject: q.pro_subject ? String(q.pro_subject) : undefined,
+        pro_subject_slug: q.pro_subject_slug ? String(q.pro_subject_slug) : undefined,
+        pro_topic_slug: q.pro_topic_slug ? String(q.pro_topic_slug) : undefined,
+        logic_only: q.logic_only === true,
       });
       continue;
     }

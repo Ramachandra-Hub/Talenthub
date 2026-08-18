@@ -15,6 +15,8 @@ export type RollupAttempt = {
   completed_at: string | null;
   time_taken: number | null;
   source: 'test_attempts' | 'dashboard_stats';
+  schedule_id?: string | null;
+  slot_number?: number | null;
 };
 
 export type RollupStudent = {
@@ -68,6 +70,8 @@ function attemptFromRow(row: AttemptRow, testName: string): RollupAttempt {
     completed_at: row.completed_at ? String(row.completed_at) : null,
     time_taken: row.time_taken != null ? Number(row.time_taken) : null,
     source: 'test_attempts',
+    schedule_id: row.schedule_id != null ? String(row.schedule_id) : null,
+    slot_number: row.slot_number != null ? Number(row.slot_number) : null,
   };
 }
 

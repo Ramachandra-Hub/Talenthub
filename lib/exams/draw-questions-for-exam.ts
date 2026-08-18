@@ -6,7 +6,13 @@ import {
   type FacultyCodingQuestion,
 } from '@/lib/exam-builder/programming-syllabus';
 import { PROGRAMMING_SAMPLE_PROBLEMS } from '@/lib/coding/sample-problems';
-import { loadCodingBankFromDb } from '@/lib/coding/coding-bank-store';
+import { JAVA_ARRAY_PROBLEMS } from '@/lib/coding/java-array-problems';
+import { JAVA_CORE_50_PROBLEMS } from '@/lib/coding/java-core50-problems';
+import {
+  ensureJavaArrayCodingBank,
+  ensureJavaCore50CodingBank,
+  loadCodingBankFromDb,
+} from '@/lib/coding/coding-bank-store';
 import type { AssessmentFormat } from '@/lib/exams/programming-subjects';
 import {
   defaultRubricForSubject,
@@ -61,12 +67,46 @@ function tagQuestion(
   return { ...q, ...base };
 }
 
-function codingQuestionsForLanguage(lang: 'c' | 'python', count: number): FacultyCodingQuestion[] {
-  const problems = PROGRAMMING_SAMPLE_PROBLEMS.slice(0, Math.max(1, count));
+function codingQuestionsForLanguage(
+  lang: 'c' | 'python' | 'java',
+  count: number,
+): FacultyCodingQuestion[] {
+  const pool =
+    lang === 'java'
+      ? [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY_PROBLEMS]
+      : PROGRAMMING_SAMPLE_PROBLEMS;
+  const problems = pool.slice(0, Math.max(1, count));
   return problems.map((p) => facultyQuestionFromProblem(p));
 }
 
-async function codingFromBank(lang: 'c' | 'python', count: number): Promise<FacultyCodingQuestion[]> {
+function uniqueProblemsByTitle<T extends { title: string }>(problems: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const problem of problems) {
+    const key = problem.title.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(problem);
+  }
+  return out;
+}
+
+async function codingFromBank(
+  lang: 'c' | 'python' | 'java',
+  count: number,
+): Promise<FacultyCodingQuestion[]> {
+  if (lang === 'java') {
+    await ensureJavaCore50CodingBank();
+    await ensureJavaArrayCodingBank();
+    const bank = await loadCodingBankFromDb({ language: 'java', limit: 1000 });
+    const catalog = [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY_PROBLEMS];
+    const byTitle = new Map(bank.map((p) => [p.title.trim().toLowerCase(), p]));
+    const ordered = uniqueProblemsByTitle([
+      ...catalog.map((p) => byTitle.get(p.title.trim().toLowerCase()) ?? p),
+      ...bank,
+    ]);
+    return ordered.slice(0, Math.max(1, count)).map((p) => facultyQuestionFromProblem(p));
+  }
   const bank = await loadCodingBankFromDb({ language: lang, limit: count });
   if (!bank.length) return codingQuestionsForLanguage(lang, count);
   return bank.slice(0, count).map((p) => facultyQuestionFromProblem(p));

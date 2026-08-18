@@ -17,7 +17,6 @@ import {
   getCodingLanguage,
   type CodingLanguageId,
 } from '@/lib/coding/languages';
-import { effectiveSourceCode } from '@/lib/coding/effective-source';
 import { formatCodingRunOutput, runCodingOnServer } from '@/lib/coding/run-client';
 import { getProgrammingProblemById } from '@/lib/exam-builder/programming-syllabus';
 import type { Question } from '@/lib/types';
@@ -49,31 +48,27 @@ type Props = {
   onAnswerChange: (payloadJson: string) => void;
 };
 
-/** In-exam coding workspace (Monaco + run) shown when a programming syllabus question is active. */
+/** In-exam coding workspace. Students write the code; Run compiles and shows output only. */
 export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props) {
-  const problem = useMemo(
-    () =>
-      getProgrammingProblemById(question.coding_problem_id ?? '') ?? {
-        id: 'inline',
-        title: question.coding_title ?? 'Coding problem',
-        difficulty: 'Hard' as const,
-        statement: question.question_text,
-        inputFormat: question.coding_input_format ?? 'See problem statement.',
-        outputFormat: question.coding_output_format ?? 'See problem statement.',
-        sampleInput: question.coding_sample_input ?? '',
-        sampleOutput: question.coding_sample_output ?? '',
-        hint: question.coding_hint ?? undefined,
-        starterCode: question.coding_starter_code ?? undefined,
-        defaultLanguage:
-          question.coding_default_language === 'java' ||
-          question.coding_default_language === 'python' ||
-          question.coding_default_language === 'c'
-            ? question.coding_default_language
-            : undefined,
-        testCases: question.coding_test_cases ?? [],
-      },
-    [question],
-  );
+  const problem = useMemo(() => {
+    const catalog = getProgrammingProblemById(question.coding_problem_id ?? '');
+    return {
+      id: catalog?.id ?? 'inline',
+      title: question.coding_title ?? catalog?.title ?? 'Coding problem',
+      difficulty: catalog?.difficulty ?? ('Hard' as const),
+      statement: question.question_text || catalog?.statement || '',
+      inputFormat: question.coding_input_format ?? catalog?.inputFormat ?? 'See problem statement.',
+      outputFormat: question.coding_output_format ?? catalog?.outputFormat ?? 'See problem statement.',
+      sampleInput: question.coding_sample_input ?? catalog?.sampleInput ?? '',
+      sampleOutput: question.coding_sample_output ?? catalog?.sampleOutput ?? '',
+      defaultLanguage:
+        question.coding_default_language === 'java' ||
+        question.coding_default_language === 'python' ||
+        question.coding_default_language === 'c'
+          ? question.coding_default_language
+          : catalog?.defaultLanguage,
+    };
+  }, [question]);
 
   const lockedLanguage: CodingLanguageId | null =
     problem.defaultLanguage === 'java' || question.coding_default_language === 'java'
@@ -85,28 +80,19 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
 
   const saved = parseCodingAnswer(answer);
   const initialLang = lockedLanguage ?? saved?.language ?? languages[0]?.id ?? 'java';
-  const initialCode =
-    saved?.sourceCode ??
-    problem.starterCode ??
-    getCodingLanguage(initialLang).stub;
   const [language, setLanguage] = useState<CodingLanguageId>(initialLang);
-  const [code, setCode] = useState(initialCode);
+  const [code, setCode] = useState(saved?.sourceCode ?? '');
   const [stdin, setStdin] = useState(problem.sampleInput);
   const [output, setOutput] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  const autoRanRef = useRef<string | null>(null);
 
   useEffect(() => {
     setStdin(problem.sampleInput);
-    const nextLang = lockedLanguage ?? 'java';
     const savedAnswer = parseCodingAnswer(answer);
-    const nextCode =
-      savedAnswer?.sourceCode ??
-      problem.starterCode ??
-      getCodingLanguage(nextLang).stub;
-    setLanguage(savedAnswer?.language && !lockedLanguage ? savedAnswer.language : nextLang);
-    setCode(nextCode);
+    const nextLang = lockedLanguage ?? savedAnswer?.language ?? 'java';
+    setLanguage(nextLang);
+    setCode(savedAnswer?.sourceCode ?? '');
     setOutput(null);
     setMeta(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the question changes
@@ -127,21 +113,21 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
     if (lockedLanguage) return;
     const lang = getCodingLanguage(value);
     setLanguage(lang.id);
-    setCode(problem.starterCode && lang.id === 'java' ? problem.starterCode : lang.stub);
     setOutput(null);
     setMeta(null);
   };
 
   const runCode = useCallback(async (input: string) => {
+    if (!code.trim()) {
+      setMeta(null);
+      setOutput('Write your program in the editor, then click Run to compile and see output.');
+      return;
+    }
     setRunning(true);
     setOutput(null);
     setMeta(null);
-    const source =
-      code.trim() ||
-      problem.starterCode ||
-      getCodingLanguage(language).stub;
     try {
-      const data = await runCodingOnServer(language, source, input);
+      const data = await runCodingOnServer(language, code, input);
       setMeta(
         [
           data.engine && `Engine: ${data.engine}`,
@@ -157,22 +143,14 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
     } finally {
       setRunning(false);
     }
-  }, [code, language, problem.starterCode]);
-
-  useEffect(() => {
-    if (lockedLanguage !== 'java') return;
-    if (autoRanRef.current === question.id) return;
-    if (!problem.sampleInput) return;
-    autoRanRef.current = question.id;
-    void runCode(problem.sampleInput);
-  }, [question.id, lockedLanguage, problem.sampleInput, runCode]);
+  }, [code, language]);
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-[#1e3a5f]/20 bg-slate-50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span className="text-xs font-bold uppercase tracking-wide text-[#1e3a5f]">
-            {lockedLanguage === 'java' ? 'Java · auto-run' : 'Programming · write code'}
+            {lockedLanguage === 'java' ? 'Java · write your program' : 'Programming · write your program'}
           </span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-[#1e3a5f]/10 text-[#0c2340] font-semibold">
             {problem.title}
@@ -184,11 +162,16 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
           ) : null}
         </div>
         <p className="text-sm text-gray-800 leading-relaxed">{problem.statement}</p>
-        {problem.hint ? (
-          <p className="text-xs text-slate-600 mt-2">
-            <span className="font-semibold">Hint:</span> {problem.hint}
-          </p>
-        ) : null}
+        <div className="mt-3 grid sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="font-semibold text-slate-800">Input format</p>
+            <p className="mt-1 text-slate-700">{problem.inputFormat}</p>
+          </div>
+          <div>
+            <p className="font-semibold text-slate-800">Output format</p>
+            <p className="mt-1 text-slate-700">{problem.outputFormat}</p>
+          </div>
+        </div>
         <div className="mt-3 grid sm:grid-cols-2 gap-3 text-xs">
           <div>
             <p className="font-semibold text-slate-800">Sample input</p>
@@ -232,14 +215,14 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
                 disabled={running}
                 onClick={() => void runCode(stdin)}
               >
-                {running ? 'Running…' : 'Run code'}
+                {running ? 'Compiling…' : 'Compile & run'}
               </Button>
             </div>
           </div>
           <CodeEditor
             key={`${question.id}-${language}`}
             language={language}
-            value={effectiveSourceCode(code, language)}
+            value={code}
             onChange={(value) => {
               if (!value.trim() && !code.trim()) return;
               setCode(value);
@@ -263,7 +246,7 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
             <h3 className="text-sm font-semibold text-gray-900 mb-1">Output</h3>
             {meta ? <p className="text-xs text-slate-600 mb-2">{meta}</p> : null}
             <pre className="text-sm text-slate-800 whitespace-pre-wrap font-mono max-h-[240px] overflow-auto bg-slate-50 border rounded-lg p-3">
-              {output ?? 'Run your code to see output. Your code is saved with this question.'}
+              {output ?? 'Write your code, then compile to see output here.'}
             </pre>
           </Card>
         </div>

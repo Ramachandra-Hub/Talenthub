@@ -1,6 +1,5 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
-import { randomUUID } from 'crypto';
-import { dbRowTimestamps } from '@/lib/db/row-timestamps';
+import { examQuestionToDbRow } from '@/lib/exam-builder/exam-question-db-row';
 import { linkTestQuestions } from '@/lib/exam-builder/link-test-questions';
 import type { FacultyExamQuestion } from '@/lib/faculty-exams';
 import { ensureTestCategory } from '@/lib/tests/ensure-test-category';
@@ -40,26 +39,11 @@ export async function publishSyllabusExam(
     difficulty: 'medium',
   });
 
-  const mcqQuestions = input.questions.filter(
-    (q): q is import('@/lib/faculty-exams').FacultyMcqQuestion =>
-      (q as { question_type?: string }).question_type !== 'coding',
+  const questionRows = input.questions.map((q) =>
+    examQuestionToDbRow(q, { testId, tags: [input.testType] }),
   );
 
-  const questionRows = mcqQuestions.map((q) => ({
-    id: randomUUID(),
-    ...dbRowTimestamps(),
-    test_id: testId,
-    question_text: q.question_text,
-    question_type: 'mcq',
-    option_a: q.option_a,
-    option_b: q.option_b,
-    option_c: q.option_c,
-    option_d: q.option_d,
-    correct_answer: q.correct_answer,
-    explanation: q.explanation ?? '',
-    marks: 1,
-    tags: [input.testType],
-  }));
+  if (!questionRows.length) throw new Error('No questions to publish');
 
   const { data: inserted, error: qError } = await admin
     .from('questions')

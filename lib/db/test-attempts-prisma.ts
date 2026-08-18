@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import type { Test, TestAttempt } from '@/lib/types';
+import type { Question, Test, TestAttempt } from '@/lib/types';
 import { adaptQuestionRow, adaptTestRow } from '@/lib/practice-mappers';
 import {
   fallbackTestForAttempt,
@@ -1666,6 +1666,17 @@ export async function loadTestRowForTakePrisma(testId: string): Promise<Test | n
   };
 }
 
+async function mergeCodingFromFacultyRequestPrisma(testId: string, questions: Question[]) {
+  const { mergeMissingCodingQuestions } = await import('@/lib/load-test-for-take');
+  const { parseQuestionsJson } = await import('@/lib/faculty-exams');
+  const fer = await prisma.facultyExamRequest.findFirst({
+    where: { publishedTestId: testId, status: 'approved' },
+    select: { questionsJson: true },
+  });
+  if (!fer?.questionsJson) return questions;
+  return mergeMissingCodingQuestions(questions, parseQuestionsJson(fer.questionsJson), testId);
+}
+
 export async function loadQuestionsForTakePrisma(testId: string) {
   const { dedupeQuestionsByStem } = await import('@/lib/questions/dedupe-questions');
 
@@ -1681,9 +1692,10 @@ export async function loadQuestionsForTakePrisma(testId: string) {
       .map((l) => byId.get(l.questionId))
       .filter((r): r is NonNullable<typeof r> => r != null);
     if (ordered.length) {
-      return dedupeQuestionsByStem(
+      const questions = dedupeQuestionsByStem(
         ordered.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
       );
+      return mergeCodingFromFacultyRequestPrisma(testId, questions);
     }
   }
 
@@ -1692,9 +1704,10 @@ export async function loadQuestionsForTakePrisma(testId: string) {
     orderBy: { createdAt: 'asc' },
   });
   if (direct.length) {
-    return dedupeQuestionsByStem(
+    const questions = dedupeQuestionsByStem(
       direct.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
     );
+    return mergeCodingFromFacultyRequestPrisma(testId, questions);
   }
 
   const fer = await prisma.facultyExamRequest.findFirst({

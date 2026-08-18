@@ -46,16 +46,14 @@ function inferAttemptStatus(row: AttemptRow): string {
 
 function attemptFromRow(row: AttemptRow, testName: string): RollupAttempt {
   const created = String(row.created_at ?? row.started_at ?? new Date().toISOString());
-  const elevatexId =
-    row.test_id != null && String(row.test_id).trim()
-      ? String(row.test_id)
-      : isElevateXAttemptMeta(String(row.test_id ?? ''), resolveAttemptTitle(row, testName))
-        ? 'placement_full'
-        : null;
+  const rawTestId = row.test_id != null ? String(row.test_id).trim() : '';
+  const testId =
+    rawTestId ||
+    (isElevateXAttemptMeta(rawTestId, resolveAttemptTitle(row, testName)) ? 'placement_full' : null);
   return {
     id: String(row.id),
     user_id: String(row.user_id ?? ''),
-    test_id: elevatexId,
+    test_id: testId,
     test_name: testName,
     score: rowScore(row, testName),
     status: inferAttemptStatus(row),
@@ -63,6 +61,8 @@ function attemptFromRow(row: AttemptRow, testName: string): RollupAttempt {
     completed_at: row.completed_at ? String(row.completed_at) : null,
     time_taken: row.time_taken != null ? Number(row.time_taken) : null,
     source: 'test_attempts',
+    schedule_id: row.schedule_id != null ? String(row.schedule_id) : null,
+    slot_number: row.slot_number != null ? Number(row.slot_number) : null,
   };
 }
 
@@ -123,10 +123,12 @@ function toAttemptRow(row: {
   score: { toNumber?: () => number } | number | null;
   percentageScore: { toNumber?: () => number } | number | null;
   totalScore: { toNumber?: () => number } | number | null;
-  answers: unknown;
+  answers?: unknown;
   timeTaken: number | null;
   status: string;
   createdAt: Date;
+  scheduleId?: string | null;
+  slotNumber?: number | null;
 }): AttemptRow {
   const num = (v: { toNumber?: () => number } | number | null) =>
     v == null ? null : typeof v === 'number' ? v : Number(v);
@@ -141,10 +143,12 @@ function toAttemptRow(row: {
     score: num(row.score),
     percentage_score: num(row.percentageScore),
     total_score: num(row.totalScore),
-    answers: row.answers,
+    answers: row.answers ?? null,
     time_taken: row.timeTaken,
     status: row.status,
     created_at: row.createdAt.toISOString(),
+    schedule_id: row.scheduleId ?? null,
+    slot_number: row.slotNumber ?? null,
   };
 }
 
@@ -198,12 +202,24 @@ export async function loadAdminStudentsPrisma(): Promise<RollupStudent[]> {
     }));
 }
 
-export async function loadAllAttemptsRollupPrisma(): Promise<{
+export type AttemptsRollupPrismaOptions = {
+  fromIso?: string;
+  toIso?: string;
+  /** Include answers JSON (needed for live ElevateX partials). Default false for reports. */
+  includeAnswers?: boolean;
+  includeDashboardStats?: boolean;
+};
+
+export async function loadAllAttemptsRollupPrisma(
+  options?: AttemptsRollupPrismaOptions,
+): Promise<{
   attempts: RollupAttempt[];
   testsById: Map<string, string>;
 }> {
   const testsById = new Map<string, string>();
   const facultyByTestId = new Map<string, string>();
+  const includeAnswers = options?.includeAnswers !== false;
+  const includeDashboardStats = options?.includeDashboardStats !== false;
 
   const tests = await prisma.test.findMany({
     select: { id: true, title: true, name: true },
@@ -225,69 +241,87 @@ export async function loadAllAttemptsRollupPrisma(): Promise<{
   const merged: RollupAttempt[] = [];
   const seenIds = new Set<string>();
 
-  const attemptRows: Array<{
-    id: string;
-    userId: string;
-    testId: string | null;
-    testTitle: string | null;
-    startedAt: Date | null;
-    completedAt: Date | null;
-    score: Prisma.Decimal | null;
-    percentageScore: Prisma.Decimal | null;
-    totalScore: Prisma.Decimal | null;
-    answers: Prisma.JsonValue | null;
-    timeTaken: number | null;
-    status: string;
-    createdAt: Date;
-  }> = [];
+  const dateWhere: Prisma.TestAttemptWhereInput | undefined =
+    options?.fromIso && options?.toIso
+      ? {
+          OR: [
+            { completedAt: { gte: new Date(options.fromIso), lte: new Date(options.toIso) } },
+            { createdAt: { gte: new Date(options.fromIso), lte: new Date(options.toIso) } },
+          ],
+        }
+      : undefined;
+
   let attemptCursor: string | undefined;
   while (true) {
     const page = await prisma.testAttempt.findMany({
+      where: dateWhere,
+      select: {
+        id: true,
+        userId: true,
+        testId: true,
+        testTitle: true,
+        startedAt: true,
+        completedAt: true,
+        score: true,
+        percentageScore: true,
+        totalScore: true,
+        timeTaken: true,
+        status: true,
+        createdAt: true,
+        scheduleId: true,
+        slotNumber: true,
+        ...(includeAnswers ? { answers: true } : {}),
+      },
       orderBy: { id: 'asc' },
       take: 2000,
       ...(attemptCursor ? { cursor: { id: attemptCursor }, skip: 1 } : {}),
     });
     if (!page.length) break;
-    attemptRows.push(...page);
+    for (const row of page) {
+      const ar = toAttemptRow(row);
+      const attempt = attemptFromRow(ar, resolveTestName(ar, testsById, facultyByTestId));
+      merged.push(attempt);
+      seenIds.add(attempt.id);
+      if (attempt.test_id && !testsById.has(attempt.test_id)) {
+        testsById.set(attempt.test_id, attempt.test_name);
+      }
+    }
     attemptCursor = page[page.length - 1].id;
     if (page.length < 2000) break;
   }
 
-  for (const row of attemptRows) {
-    const ar = toAttemptRow(row);
-    const attempt = attemptFromRow(ar, resolveTestName(ar, testsById, facultyByTestId));
-    merged.push(attempt);
-    seenIds.add(attempt.id);
-    if (attempt.test_id && !testsById.has(attempt.test_id)) {
-      testsById.set(attempt.test_id, attempt.test_name);
-    }
-  }
-
-  const statsRows: Array<{ userId: string; payload: Prisma.JsonValue | null }> = [];
-  let statsCursor: string | undefined;
-  while (true) {
-    const page = await prisma.studentDashboardStat.findMany({
-      where: { statKey: 'attempts_feed' },
-      select: { id: true, userId: true, payload: true },
-      orderBy: { id: 'asc' },
-      take: 2000,
-      ...(statsCursor ? { cursor: { id: statsCursor }, skip: 1 } : {}),
-    });
-    if (!page.length) break;
-    statsRows.push(...page.map((row) => ({ userId: row.userId, payload: row.payload })));
-    statsCursor = page[page.length - 1].id;
-    if (page.length < 2000) break;
-  }
-
-  for (const row of statsRows) {
-    const attempts = parseStatAttempts(row.payload);
-    for (const entry of attempts) {
-      if (seenIds.has(String(entry.id))) continue;
-      const attempt = attemptFromStat(entry);
-      merged.push(attempt);
-      if (attempt.test_id && !testsById.has(attempt.test_id)) {
-        testsById.set(attempt.test_id, attempt.test_name);
+  if (includeDashboardStats) {
+    let statsCursor: string | undefined;
+    while (true) {
+      const page = await prisma.studentDashboardStat.findMany({
+        where: { statKey: 'attempts_feed' },
+        select: { id: true, userId: true, payload: true },
+        orderBy: { id: 'asc' },
+        take: 2000,
+        ...(statsCursor ? { cursor: { id: statsCursor }, skip: 1 } : {}),
+      });
+      if (!page.length) break;
+      for (const row of page) {
+        const attempts = parseStatAttempts(row.payload);
+        for (const entry of attempts) {
+          if (seenIds.has(String(entry.id))) continue;
+          if (options?.fromIso && options?.toIso) {
+            const created = entry.created_at ?? entry.completed_at;
+            if (!created) continue;
+            const t = new Date(created).getTime();
+            if (t < new Date(options.fromIso).getTime() || t > new Date(options.toIso).getTime()) {
+              continue;
+            }
+          }
+          const attempt = attemptFromStat(entry);
+          merged.push(attempt);
+          if (attempt.test_id && !testsById.has(attempt.test_id)) {
+            testsById.set(attempt.test_id, attempt.test_name);
+          }
+        }
       }
+      statsCursor = page[page.length - 1].id;
+      if (page.length < 2000) break;
     }
   }
 

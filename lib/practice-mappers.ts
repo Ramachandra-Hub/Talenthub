@@ -1,4 +1,19 @@
+import { parseStoredCodingProblem } from '@/lib/coding/coding-bank-persist';
 import type { Question, Test } from '@/lib/types';
+
+function rowString(
+  row: Record<string, unknown>,
+  snake: string,
+  camel?: string,
+): string | null {
+  const raw = row[snake] ?? (camel ? row[camel] : undefined);
+  if (raw == null) return null;
+  return String(raw);
+}
+
+function looksLikeCodingType(value: unknown): boolean {
+  return String(value ?? '').trim().toLowerCase() === 'coding';
+}
 
 /** Compare stored correct key (often A/B/C/D) with what the UI captured. */
 export function answersMatchMcq(user: unknown, correct: unknown): boolean {
@@ -55,62 +70,71 @@ export function adaptTestRow(row: Record<string, unknown>): Test {
 
 /** Normalize practice questions from DB (option_a … option_d / question_type mcq). */
 export function adaptQuestionRow(row: Record<string, unknown>): Question {
-  const qa = typeof row.question_type === 'string' ? row.question_type : row.type;
+  const questionTypeRaw = rowString(row, 'question_type', 'questionType');
+  const typeRaw = rowString(row, 'type');
+  const explanation = rowString(row, 'explanation');
+  const stored = parseStoredCodingProblem(explanation);
+  const coding = looksLikeCodingType(questionTypeRaw) || looksLikeCodingType(typeRaw) || Boolean(stored);
 
-  let type: Question['type'] =
-    qa === 'coding'
-      ? 'coding'
-      : qa === 'numeric'
-        ? 'numeric'
-        : qa === 'verbal'
-          ? 'verbal'
-          : 'MCQ';
+  const qa = (questionTypeRaw ?? typeRaw ?? '').toLowerCase();
+  let type: Question['type'] = coding
+    ? 'coding'
+    : qa === 'numeric'
+      ? 'numeric'
+      : qa === 'verbal'
+        ? 'verbal'
+        : 'MCQ';
 
   const optsFromJson = Array.isArray(row.options)
     ? row.options.map(String)
     : null;
 
-  const ans = String(row.correct_answer ?? '').trim().toUpperCase();
+  const ans = String(row.correct_answer ?? row.correctAnswer ?? '').trim().toUpperCase();
   const correct_answer = ans.length <= 2 && /^[ABCD]$/.test(ans.slice(0, 1))
     ? ans.slice(0, 1)
     : ans;
 
+  const optionA = row.option_a ?? row.optionA;
+  const optionB = row.option_b ?? row.optionB;
+  const optionC = row.option_c ?? row.optionC;
+  const optionD = row.option_d ?? row.optionD;
+
   return {
     id: String(row.id),
-    category_id: String(row.category_id ?? ''),
+    category_id: String(row.category_id ?? row.categoryId ?? ''),
     difficulty:
       ((row.difficulty as Question['difficulty'] | undefined) ?? 'medium') as Question['difficulty'],
-    question_text: String(row.question_text ?? ''),
+    question_text: String(row.question_text ?? row.questionText ?? stored?.problem.statement ?? ''),
     type,
     options: optsFromJson,
     correct_answer,
-    explanation: (row.explanation as string | null | undefined) ?? null,
+    explanation,
     tags: Array.isArray(row.tags)
       ? (row.tags as string[])
       : null,
-    created_at: (row.created_at as string | undefined) ?? new Date().toISOString(),
-    updated_at: (row.updated_at as string | undefined) ?? new Date().toISOString(),
-    question_type: typeof row.question_type === 'string' ? row.question_type : undefined,
+    created_at: String(row.created_at ?? row.createdAt ?? new Date().toISOString()),
+    updated_at: String(row.updated_at ?? row.updatedAt ?? new Date().toISOString()),
+    question_type: coding ? 'coding' : questionTypeRaw ?? undefined,
     option_a:
-      typeof row.option_a === 'string' || row.option_a == null ? (row.option_a as string | null) : String(row.option_a),
+      typeof optionA === 'string' || optionA == null ? (optionA as string | null) : String(optionA),
     option_b:
-      typeof row.option_b === 'string' || row.option_b == null ? (row.option_b as string | null) : String(row.option_b),
+      typeof optionB === 'string' || optionB == null ? (optionB as string | null) : String(optionB),
     option_c:
-      typeof row.option_c === 'string' || row.option_c == null ? (row.option_c as string | null) : String(row.option_c),
+      typeof optionC === 'string' || optionC == null ? (optionC as string | null) : String(optionC),
     option_d:
-      typeof row.option_d === 'string' || row.option_d == null ? (row.option_d as string | null) : String(row.option_d),
+      typeof optionD === 'string' || optionD == null ? (optionD as string | null) : String(optionD),
     coding_problem_id:
-      typeof row.coding_problem_id === 'string' ? row.coding_problem_id : null,
-    coding_title: typeof row.title === 'string' ? row.title : null,
-    coding_sample_input:
-      typeof row.sample_input === 'string' ? row.sample_input : null,
-    coding_sample_output:
-      typeof row.sample_output === 'string' ? row.sample_output : null,
-    coding_input_format:
-      typeof row.input_format === 'string' ? row.input_format : null,
-    coding_output_format:
-      typeof row.output_format === 'string' ? row.output_format : null,
-    coding_hint: typeof row.hint === 'string' ? row.hint : null,
+      stored?.problem.id ??
+      (typeof row.coding_problem_id === 'string' ? row.coding_problem_id : null),
+    coding_title: stored?.problem.title ?? (typeof row.title === 'string' ? row.title : null),
+    coding_sample_input: stored?.problem.sampleInput ?? rowString(row, 'sample_input', 'sampleInput'),
+    coding_sample_output: stored?.problem.sampleOutput ?? rowString(row, 'sample_output', 'sampleOutput'),
+    coding_input_format: stored?.problem.inputFormat ?? rowString(row, 'input_format', 'inputFormat'),
+    coding_output_format: stored?.problem.outputFormat ?? rowString(row, 'output_format', 'outputFormat'),
+    coding_hint: null,
+    coding_starter_code: null,
+    coding_default_language: stored?.defaultLanguage ?? rowString(row, 'default_language', 'defaultLanguage'),
+    coding_test_cases: stored?.problem.testCases ?? null,
   };
 }
 
@@ -120,8 +144,8 @@ export function isCodingQuestion(question: {
   coding_problem_id?: string | null;
 }): boolean {
   return (
-    question.type === 'coding' ||
-    question.question_type === 'coding' ||
+    looksLikeCodingType(question.type) ||
+    looksLikeCodingType(question.question_type) ||
     Boolean(question.coding_problem_id)
   );
 }

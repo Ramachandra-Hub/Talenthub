@@ -3,6 +3,8 @@ import {
   PROGRAMMING_SAMPLE_PROBLEMS,
   type ProgrammingProblem,
 } from '@/lib/coding/sample-problems';
+import { getJavaArrayProblemById } from '@/lib/coding/java-array-problems';
+import { getJavaCore50ProblemById } from '@/lib/coding/java-core50-problems';
 
 export const PROGRAMMING_SYLLABUS_SLUGS = new Set([
   'technical-programming',
@@ -20,6 +22,9 @@ export type FacultyCodingQuestion = {
   input_format?: string;
   output_format?: string;
   hint?: string;
+  starter_code?: string;
+  default_language?: 'c' | 'python' | 'java';
+  test_cases?: Array<{ input: string; expectedOutput: string; explanation?: string }>;
   pro_subject?: string;
   pro_subject_slug?: string;
   pro_topic_slug?: string;
@@ -58,6 +63,8 @@ export function facultyQuestionFromProblem(problem: ProgrammingProblem): Faculty
     input_format: problem.inputFormat,
     output_format: problem.outputFormat,
     hint: problem.hint,
+    default_language: problem.defaultLanguage,
+    test_cases: problem.testCases,
   };
 }
 
@@ -99,5 +106,9 @@ export function augmentExamQuestionsWithCoding(
 }
 
 export function getProgrammingProblemById(id: string): ProgrammingProblem | undefined {
-  return PROGRAMMING_SAMPLE_PROBLEMS.find((p) => p.id === id);
+  return (
+    PROGRAMMING_SAMPLE_PROBLEMS.find((p) => p.id === id) ??
+    getJavaCore50ProblemById(id) ??
+    getJavaArrayProblemById(id)
+  );
 }

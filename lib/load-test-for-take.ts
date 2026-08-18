@@ -5,7 +5,7 @@ import {
   isFacultyCodingQuestion,
 } from '@/lib/exam-builder/programming-syllabus';
 import { parseQuestionsJson, type FacultyExamQuestion } from '@/lib/faculty-exams';
-import { adaptQuestionRow, adaptTestRow, extractJoinedQuestion } from '@/lib/practice-mappers';
+import { adaptQuestionRow, adaptTestRow, extractJoinedQuestion, isCodingQuestion } from '@/lib/practice-mappers';
 import type { Question, Test } from '@/lib/types';
 
 function testIdVariants(testId: string): (string | number)[] {
@@ -44,7 +44,10 @@ export function facultyQuestionsToUiQuestions(
         coding_sample_output: q.sample_output ?? null,
         coding_input_format: q.input_format ?? null,
         coding_output_format: q.output_format ?? null,
-        coding_hint: q.hint ?? null,
+        coding_hint: null,
+        coding_starter_code: null,
+        coding_default_language: q.default_language ?? null,
+        coding_test_cases: q.test_cases ?? null,
       };
     }
     return {
@@ -66,6 +69,55 @@ export function facultyQuestionsToUiQuestions(
       option_d: q.option_d,
     };
   });
+}
+
+/** Insert coding items from the published exam JSON when the questions table only has MCQs. */
+export function mergeMissingCodingQuestions(
+  loaded: Question[],
+  facultyItems: FacultyExamQuestion[],
+  testId: string,
+): Question[] {
+  const codingItems = facultyItems.filter(isFacultyCodingQuestion);
+  if (!codingItems.length) return loaded;
+  if (loaded.some(isCodingQuestion)) return loaded;
+
+  const codingUi = facultyQuestionsToUiQuestions(facultyItems, testId).filter(isCodingQuestion);
+  if (!loaded.length) return codingUi;
+
+  const mcqs = loaded.filter((q) => !isCodingQuestion(q));
+  let mcqIndex = 0;
+  let codingIndex = 0;
+  const merged: Question[] = [];
+  for (const item of facultyItems) {
+    if (isFacultyCodingQuestion(item)) {
+      if (codingIndex < codingUi.length) merged.push(codingUi[codingIndex++]);
+    } else if (mcqIndex < mcqs.length) {
+      merged.push(mcqs[mcqIndex++]);
+    }
+  }
+  while (mcqIndex < mcqs.length) merged.push(mcqs[mcqIndex++]);
+  while (codingIndex < codingUi.length) merged.push(codingUi[codingIndex++]);
+  return merged;
+}
+
+async function attachFacultyCodingIfMissing(
+  client: DbServiceClient,
+  testId: string,
+  loaded: Question[],
+): Promise<Question[]> {
+  if (!loaded.length || loaded.some(isCodingQuestion)) return loaded;
+  for (const id of testIdVariants(testId)) {
+    const { data: fer } = await client
+      .from('faculty_exam_requests')
+      .select('questions_json')
+      .eq('published_test_id', String(id))
+      .eq('status', 'approved')
+      .limit(1)
+      .maybeSingle();
+    if (!fer?.questions_json) continue;
+    return mergeMissingCodingQuestions(loaded, parseQuestionsJson(fer.questions_json), String(testId));
+  }
+  return loaded;
 }
 
 async function resolveSyllabusSlugs(
@@ -179,8 +231,12 @@ export async function loadQuestionsForTake(
       .order('id', { ascending: true });
 
     if (!directErr && directQs?.length) {
-      return dedupeQuestionsByStem(
-        directQs.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
+      return attachFacultyCodingIfMissing(
+        client,
+        testId,
+        dedupeQuestionsByStem(
+          directQs.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
+        ),
       );
     }
   }
@@ -209,7 +265,9 @@ export async function loadQuestionsForTake(
       const row = byId.get(String(link.question_id));
       if (row) ordered.push(adaptQuestionRow(row as Record<string, unknown>));
     }
-    if (ordered.length) return dedupeQuestionsByStem(ordered);
+    if (ordered.length) {
+      return attachFacultyCodingIfMissing(client, testId, dedupeQuestionsByStem(ordered));
+    }
 
     const { data: joined, error: joinErr } = await client
       .from('test_questions')
@@ -222,7 +280,9 @@ export async function loadQuestionsForTake(
         .map(extractJoinedQuestion)
         .filter((q): q is Record<string, unknown> => q != null)
         .map(adaptQuestionRow);
-      if (fromJoin.length) return dedupeQuestionsByStem(fromJoin);
+      if (fromJoin.length) {
+        return attachFacultyCodingIfMissing(client, testId, dedupeQuestionsByStem(fromJoin));
+      }
     }
   }
 

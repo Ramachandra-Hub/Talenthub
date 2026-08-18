@@ -12,6 +12,9 @@ export function sanitizeQuestionsForStudent(questions: Question[]): Question[] {
       option_b: undefined,
       option_c: undefined,
       option_d: undefined,
+      coding_starter_code: null,
+      coding_hint: null,
+      coding_test_cases: null,
     };
   });
 }
