@@ -1,8 +1,8 @@
 import { isElevateXAttemptTitle, isElevateXTestId } from '@/lib/elevatex';
-import { EXAM_SCORECARD_ANSWERS_TYPE } from '@/lib/exams/exam-scorecard';
 import type { PlacementScorecard } from '@/lib/placement/types';
 
 export const ELEVATEX_SCORECARD_ANSWERS_TYPE = 'elevatex_scorecard_v1';
+export const EXAM_SCORECARD_ANSWERS_TYPE = 'exam_scorecard_v1';
 
 export function encodeElevateXScorecardAnswers(
   scorecard: PlacementScorecard,

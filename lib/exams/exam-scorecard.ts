@@ -2,6 +2,7 @@ import { roundScorePercent } from '@/lib/format-score';
 import { loadTestSectionsPrisma } from '@/lib/exam-v2/load-sections';
 import { scoreQuestionsOnServer, type QuestionScoreResult } from '@/lib/exam-v2/server-score';
 import { readProSubjectMeta } from '@/lib/exam-v2/subject-progress';
+import { EXAM_SCORECARD_ANSWERS_TYPE } from '@/lib/placement/scorecard-payload';
 import type { Question } from '@/lib/types';
 import type {
   PlacementCandidate,
@@ -9,7 +10,7 @@ import type {
   PlacementSectionScore,
 } from '@/lib/placement/types';
 
-export const EXAM_SCORECARD_ANSWERS_TYPE = 'exam_scorecard_v1';
+export { EXAM_SCORECARD_ANSWERS_TYPE };
 
 function readinessLabel(percent: number): PlacementScorecard['placementReadiness'] {
   if (percent >= 80) return 'Excellent';
