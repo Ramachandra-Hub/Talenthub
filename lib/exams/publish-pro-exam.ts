@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import type { FacultyExamQuestion } from '@/lib/faculty-exams';
 import { createFacultyExamRequestRecord } from '@/lib/exam-builder/create-exam-request';
 import { getExamDetails } from '@/lib/exams/exam-builder-service';
-import { drawQuestionsForProExam } from '@/lib/exams/draw-questions-for-exam';
+import { drawQuestionsForProExam, type ProExamSubjectBlock } from '@/lib/exams/draw-questions-for-exam';
 import {
   parseScheduleSlotsJson,
   filterConfiguredScheduleSlots,

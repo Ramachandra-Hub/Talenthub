@@ -21,7 +21,13 @@ export function ElevateXProgrammingUploadPanel(props: Props) {
       initialProblems={props.initialProblems}
       initialDefaultLanguage={props.initialDefaultLanguage}
       onProblemsChange={props.onProblemsChange}
-      onDefaultLanguageChange={props.onDefaultLanguageChange}
+      onDefaultLanguageChange={
+        props.onDefaultLanguageChange
+          ? (lang) => {
+              if (lang === 'c' || lang === 'python') props.onDefaultLanguageChange?.(lang);
+            }
+          : undefined
+      }
       onSaved={props.onSaved}
     />
   );

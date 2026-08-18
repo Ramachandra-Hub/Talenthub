@@ -8,7 +8,7 @@ import {
 } from '@/lib/exam-builder/parse-coding-upload';
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
 import { saveElevateXExamConfig } from '@/lib/elevatex-admin';
-import { mergeElevateXExamConfig, parseElevateXExamConfig } from '@/lib/placement/elevatex-exam-config';
+import type { ElevateXProgrammingLanguage } from '@/lib/placement/elevatex-exam-config';
 import {
   insertCodingProblemsIntoBank,
   loadCodingBankFromDb,
@@ -39,7 +39,9 @@ export async function POST(request: NextRequest) {
   const file = form.get('file');
   const pasteText = String(form.get('pasteText') ?? '').trim();
   const requestId = String(form.get('requestId') ?? '').trim();
-  const defaultLanguage = String(form.get('defaultLanguage') ?? 'c').trim() === 'python' ? 'python' : 'c';
+  const defaultLanguageRaw = String(form.get('defaultLanguage') ?? 'c').trim();
+  const defaultLanguage =
+    defaultLanguageRaw === 'python' || defaultLanguageRaw === 'java' ? defaultLanguageRaw : 'c';
 
   let parsed: { problems: ProgrammingProblem[]; warnings: string[] };
 
@@ -74,19 +76,12 @@ export async function POST(request: NextRequest) {
   const bankProblems = await loadCodingBankFromDb({ language: 'all' });
 
   if (requestId) {
-    const { data: existing } = await admin
-      .from('faculty_exam_requests')
-      .select('topic')
-      .eq('id', requestId)
-      .maybeSingle();
-
-    const current = mergeElevateXExamConfig(
-      parseElevateXExamConfig(existing?.topic as string | null | undefined),
-    );
+    const programmingDefaultLanguage: ElevateXProgrammingLanguage =
+      defaultLanguage === 'python' ? 'python' : 'c';
 
     await saveElevateXExamConfig(admin, requestId, {
       programmingProblems: bankProblems,
-      programmingDefaultLanguage: defaultLanguage,
+      programmingDefaultLanguage,
     });
   }
 
