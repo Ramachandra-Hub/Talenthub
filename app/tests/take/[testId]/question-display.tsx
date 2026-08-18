@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { Question } from '@/lib/types';
 import { useTest } from './test-context';
 import { Button } from '@/components/ui/button';
@@ -18,9 +19,12 @@ export default function QuestionDisplay({ question, speedMode }: QuestionDisplay
   const currentAnswer = answers[question.id]?.userAnswer;
   const isMarked = answers[question.id]?.isMarkedForReview || false;
 
-  const handleAnswerChange = (value: string) => {
-    setAnswer(question.id, value);
-  };
+  const handleAnswerChange = useCallback(
+    (value: string) => {
+      setAnswer(question.id, value);
+    },
+    [question.id, setAnswer],
+  );
 
   const coding = isCodingQuestion(question);
 

@@ -34,15 +34,21 @@ export function TestProvider({ children }: { children: React.ReactNode }) {
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   const setAnswer = useCallback((questionId: string, answer: string) => {
-    setAnswers(prev => ({
-      ...prev,
-      [questionId]: {
-        ...prev[questionId],
-        questionId,
-        userAnswer: answer,
-        isMarkedForReview: prev[questionId]?.isMarkedForReview || false,
-      },
-    }));
+    setAnswers((prev) => {
+      const current = prev[questionId];
+      if (current?.userAnswer === answer && current.questionId === questionId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [questionId]: {
+          ...current,
+          questionId,
+          userAnswer: answer,
+          isMarkedForReview: current?.isMarkedForReview || false,
+        },
+      };
+    });
   }, []);
 
   const markForReview = useCallback((questionId: string, marked: boolean) => {

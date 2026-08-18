@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
@@ -56,56 +56,90 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
       getProgrammingProblemById(question.coding_problem_id ?? '') ?? {
         id: 'inline',
         title: question.coding_title ?? 'Coding problem',
-        difficulty: 'Easy' as const,
+        difficulty: 'Hard' as const,
         statement: question.question_text,
         inputFormat: question.coding_input_format ?? 'See problem statement.',
         outputFormat: question.coding_output_format ?? 'See problem statement.',
         sampleInput: question.coding_sample_input ?? '',
         sampleOutput: question.coding_sample_output ?? '',
-        hint: question.coding_hint,
-        testCases: [],
+        hint: question.coding_hint ?? undefined,
+        starterCode: question.coding_starter_code ?? undefined,
+        defaultLanguage:
+          question.coding_default_language === 'java' ||
+          question.coding_default_language === 'python' ||
+          question.coding_default_language === 'c'
+            ? question.coding_default_language
+            : undefined,
+        testCases: question.coding_test_cases ?? [],
       },
     [question],
   );
 
+  const lockedLanguage: CodingLanguageId | null =
+    problem.defaultLanguage === 'java' || question.coding_default_language === 'java'
+      ? 'java'
+      : null;
+  const languages = lockedLanguage
+    ? CODING_LANGUAGES.filter((l) => l.id === lockedLanguage)
+    : CODING_LANGUAGES;
+
   const saved = parseCodingAnswer(answer);
-  const [language, setLanguage] = useState<CodingLanguageId>(
-    saved?.language ?? CODING_LANGUAGES[0].id,
-  );
-  const [code, setCode] = useState(saved?.sourceCode ?? CODING_LANGUAGES[0].stub);
+  const initialLang = lockedLanguage ?? saved?.language ?? languages[0]?.id ?? 'java';
+  const initialCode =
+    saved?.sourceCode ??
+    problem.starterCode ??
+    getCodingLanguage(initialLang).stub;
+  const [language, setLanguage] = useState<CodingLanguageId>(initialLang);
+  const [code, setCode] = useState(initialCode);
   const [stdin, setStdin] = useState(problem.sampleInput);
   const [output, setOutput] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const autoRanRef = useRef<string | null>(null);
 
   useEffect(() => {
     setStdin(problem.sampleInput);
-  }, [question.id, problem.sampleInput]);
+    const nextLang = lockedLanguage ?? 'java';
+    const savedAnswer = parseCodingAnswer(answer);
+    const nextCode =
+      savedAnswer?.sourceCode ??
+      problem.starterCode ??
+      getCodingLanguage(nextLang).stub;
+    setLanguage(savedAnswer?.language && !lockedLanguage ? savedAnswer.language : nextLang);
+    setCode(nextCode);
+    setOutput(null);
+    setMeta(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the question changes
+  }, [question.id]);
 
-  const persistAnswer = useCallback(
-    (lang: CodingLanguageId, source: string) => {
-      onAnswerChange(JSON.stringify({ language: lang, sourceCode: source }));
-    },
-    [onAnswerChange],
-  );
+  const onAnswerChangeRef = useRef(onAnswerChange);
+  onAnswerChangeRef.current = onAnswerChange;
+  const lastPersistedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    persistAnswer(language, code);
-  }, [language, code, persistAnswer]);
+    const payload = JSON.stringify({ language, sourceCode: code });
+    if (lastPersistedRef.current === payload) return;
+    lastPersistedRef.current = payload;
+    onAnswerChangeRef.current(payload);
+  }, [language, code]);
 
   const onLanguageChange = (value: string) => {
+    if (lockedLanguage) return;
     const lang = getCodingLanguage(value);
     setLanguage(lang.id);
-    setCode(lang.stub);
+    setCode(problem.starterCode && lang.id === 'java' ? problem.starterCode : lang.stub);
     setOutput(null);
     setMeta(null);
   };
 
-  const runCode = async (input: string) => {
+  const runCode = useCallback(async (input: string) => {
     setRunning(true);
     setOutput(null);
     setMeta(null);
-    const source = effectiveSourceCode(code, language);
+    const source =
+      code.trim() ||
+      problem.starterCode ||
+      getCodingLanguage(language).stub;
     try {
       const data = await runCodingOnServer(language, source, input);
       setMeta(
@@ -123,18 +157,31 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
     } finally {
       setRunning(false);
     }
-  };
+  }, [code, language, problem.starterCode]);
+
+  useEffect(() => {
+    if (lockedLanguage !== 'java') return;
+    if (autoRanRef.current === question.id) return;
+    if (!problem.sampleInput) return;
+    autoRanRef.current = question.id;
+    void runCode(problem.sampleInput);
+  }, [question.id, lockedLanguage, problem.sampleInput, runCode]);
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-[#1e3a5f]/20 bg-slate-50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span className="text-xs font-bold uppercase tracking-wide text-[#1e3a5f]">
-            Programming · write code
+            {lockedLanguage === 'java' ? 'Java · auto-run' : 'Programming · write code'}
           </span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-[#1e3a5f]/10 text-[#0c2340] font-semibold">
             {problem.title}
           </span>
+          {problem.difficulty ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-semibold">
+              {problem.difficulty}
+            </span>
+          ) : null}
         </div>
         <p className="text-sm text-gray-800 leading-relaxed">{problem.statement}</p>
         {problem.hint ? (
@@ -157,12 +204,12 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
       <div className="grid lg:grid-cols-2 gap-4">
         <Card className="p-4 border-gray-200 shadow-sm">
           <div className="flex flex-wrap gap-2 items-center justify-between mb-3">
-            <Select value={language} onValueChange={onLanguageChange}>
+            <Select value={language} onValueChange={onLanguageChange} disabled={Boolean(lockedLanguage)}>
               <SelectTrigger className="w-[150px] h-9 bg-white text-sm">
                 <SelectValue placeholder="Language" />
               </SelectTrigger>
               <SelectContent className="z-[10000] bg-white">
-                {CODING_LANGUAGES.map((l) => (
+                {languages.map((l) => (
                   <SelectItem key={l.id} value={l.id}>
                     {l.label}
                   </SelectItem>
