@@ -103,16 +103,19 @@ if (!dbUrl) {
   console.log('✓ DATABASE_URL is set\n');
 }
 
-run('prisma', ['generate'], { label: 'prisma generate' });
+// On Vercel the client must be freshly generated. Locally the DLL may be
+// locked by a running dev server, so treat it as optional and carry on.
+run('prisma', ['generate'], { label: 'prisma generate', optional: !isVercel });
 
 const pushAtBuild =
   process.env.VERCEL_DB_PUSH_AT_BUILD === 'true' ||
   (!isVercel && process.env.SKIP_DB_PUSH_AT_BUILD !== 'true');
 
 if (dbUrl && isValidPostgresUrl(dbUrl) && pushAtBuild) {
+  // Always optional locally — the local DB may not be running during a build check.
   run('prisma', ['db', 'push', '--accept-data-loss', '--skip-generate'], {
-    optional: isVercel,
-    label: 'prisma db push (optional on Vercel)',
+    optional: true,
+    label: 'prisma db push (optional)',
   });
 } else if (dbUrl && isValidPostgresUrl(dbUrl) && isVercel) {
   console.log(
