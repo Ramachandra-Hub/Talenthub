@@ -184,73 +184,70 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card className="p-4 border-gray-200 shadow-sm">
-          <div className="flex flex-wrap gap-2 items-center justify-between mb-3">
-            <Select value={language} onValueChange={onLanguageChange} disabled={Boolean(lockedLanguage)}>
-              <SelectTrigger className="w-[150px] h-9 bg-white text-sm">
-                <SelectValue placeholder="Language" />
-              </SelectTrigger>
-              <SelectContent className="z-[10000] bg-white">
-                {languages.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={running}
-                onClick={() => void runCode(problem.sampleInput)}
-              >
-                Run sample
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={running}
-                onClick={() => void runCode(stdin)}
-              >
-                {running ? 'Compiling…' : 'Compile & run'}
-              </Button>
-            </div>
+      <Card className="p-3 sm:p-4 border-gray-200 shadow-sm">
+        <div className="flex flex-wrap gap-2 items-center justify-between mb-3">
+          <Select value={language} onValueChange={onLanguageChange} disabled={Boolean(lockedLanguage)}>
+            <SelectTrigger className="w-[150px] h-9 bg-white text-sm">
+              <SelectValue placeholder="Language" />
+            </SelectTrigger>
+            <SelectContent className="z-[10000] bg-white">
+              {languages.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={running}
+              onClick={() => void runCode(problem.sampleInput)}
+            >
+              Run sample
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={running}
+              onClick={() => void runCode(stdin)}
+            >
+              {running ? 'Compiling…' : 'Compile & run'}
+            </Button>
           </div>
-          <CodeEditor
-            key={`${question.id}-${language}`}
-            language={language}
-            value={code}
-            onChange={(value) => {
-              if (!value.trim() && !code.trim()) return;
-              setCode(value);
-            }}
-            height="min(52vh, 420px)"
-          />
-        </Card>
-
-        <div className="flex flex-col gap-3 min-h-[280px]">
-          <Card className="p-3 border-gray-200 flex-1">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Custom input</h3>
+        </div>
+        <CodeEditor
+          key={`${question.id}-${language}`}
+          language={language}
+          value={code}
+          onChange={(value) => {
+            if (!value.trim() && !code.trim()) return;
+            setCode(value);
+          }}
+          height="min(62vh, 560px)"
+        />
+        <div className="mt-3 grid sm:grid-cols-2 gap-2">
+          <div>
+            <h3 className="text-xs font-semibold text-gray-900 mb-1">Custom input</h3>
             <Textarea
               value={stdin}
               onChange={(e) => setStdin(e.target.value)}
-              rows={4}
-              className="font-mono text-sm"
+              rows={2}
+              className="font-mono text-xs min-h-[56px] max-h-[72px] resize-none"
               placeholder="stdin"
             />
-          </Card>
-          <Card className="p-3 border-gray-200 flex-[2] min-h-[160px]">
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Output</h3>
-            {meta ? <p className="text-xs text-slate-600 mb-2">{meta}</p> : null}
-            <pre className="text-sm text-slate-800 whitespace-pre-wrap font-mono max-h-[240px] overflow-auto bg-slate-50 border rounded-lg p-3">
-              {output ?? 'Write your code, then compile to see output here.'}
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-gray-900 mb-1">Output</h3>
+            {meta ? <p className="text-[10px] text-slate-600 mb-1 truncate">{meta}</p> : null}
+            <pre className="text-xs text-slate-800 whitespace-pre-wrap font-mono h-[56px] overflow-auto bg-slate-50 border rounded-md px-2 py-1">
+              {output ?? 'Compile to see output.'}
             </pre>
-          </Card>
+          </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

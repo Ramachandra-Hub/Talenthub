@@ -917,24 +917,7 @@ export default function TestInterface({
         />
       ) : null}
 
-      <div
-        className={`sticky z-20 border-b border-gray-200 bg-white/95 backdrop-blur-sm shadow-sm ${
-          proctorActive ? 'top-[7.5rem]' : 'top-16'
-        }`}
-      >
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <QuestionNavigation
-            questions={questions}
-            currentIndex={currentQuestionIndex}
-            answers={answers}
-            unlockedCount={unlockedCount}
-            loginHref={loginHref}
-            layout="horizontal"
-          />
-        </div>
-      </div>
-
-      <div className="flex-1 max-w-7xl mx-auto w-full grid md:grid-cols-4 gap-4 p-4 pb-8">
+      <div className="flex-1 max-w-7xl mx-auto w-full grid md:grid-cols-4 gap-4 p-4 pt-24 pb-8">
         {/* Question Display */}
         <div className="md:col-span-3 min-w-0">
           <Card
@@ -1012,9 +995,9 @@ export default function TestInterface({
           </div>
         </div>
 
-        {/* Sidebar — test status only; question palette is above */}
+        {/* Sidebar — progress, then question numbers at the bottom */}
         <div className="md:col-span-1">
-          <Card className="p-4 md:sticky md:top-40 bg-white border-gray-200 text-gray-900 shadow-sm backdrop-blur-none">
+          <Card className="p-4 md:sticky md:top-24 bg-white border-gray-200 text-gray-900 shadow-sm backdrop-blur-none">
             <h3 className="font-semibold text-gray-900 mb-4">Test Status</h3>
 
             {sectionMode && sectionProgress ? (
@@ -1088,6 +1071,16 @@ export default function TestInterface({
               )}
             </div>
 
+            <div className="border-t border-gray-200 pt-4">
+              <QuestionNavigation
+                questions={questions}
+                currentIndex={currentQuestionIndex}
+                answers={answers}
+                unlockedCount={unlockedCount}
+                loginHref={loginHref}
+                layout="grid"
+              />
+            </div>
           </Card>
         </div>
       </div>

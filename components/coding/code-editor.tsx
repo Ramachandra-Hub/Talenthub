@@ -17,7 +17,7 @@ export function CodeEditor({ language, value, onChange, height = '360px', readOn
   const monacoLang = getCodingLanguage(language).monaco;
 
   return (
-    <div className="rounded-lg border border-slate-200 overflow-hidden min-h-[280px] bg-[#1e1e1e]">
+    <div className="rounded-lg border border-slate-200 overflow-hidden min-h-[420px] bg-[#1e1e1e]">
       <Monaco
         height={height}
         language={monacoLang}

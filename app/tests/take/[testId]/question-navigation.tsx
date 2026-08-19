@@ -37,7 +37,7 @@ export default function QuestionNavigation({
         className={
           isHorizontal
             ? 'flex flex-wrap gap-1.5 max-h-[7.5rem] overflow-y-auto pr-1'
-            : 'grid grid-cols-5 gap-1.5 max-h-[min(60vh,560px)] overflow-y-auto pr-1'
+            : 'grid grid-cols-5 gap-1.5 max-h-[min(42vh,360px)] overflow-y-auto pr-1'
         }
       >
         {questions.map((question, index) => {
