@@ -49,9 +49,11 @@ import {
 import { formatScorePercentLabel, averageScorePercent, roundRatePercent, roundScorePercent } from '@/lib/format-score';
 import { cn } from '@/lib/utils';
 
-type StatusFilter = 'all' | 'in_progress' | 'completed';
+type StatusFilter = 'all' | 'in_progress' | 'completed' | 'auto_submitted';
 
 function canOpenStudentReport(row: TestReportsPayload['rows'][0]): boolean {
+  // Auto-submitted students always have a completed scorecard — allow the report.
+  if (row.proctor_auto_submit) return true;
   return isCompletedAttemptStatus(row.status, row.completed_at);
 }
 
@@ -225,7 +227,9 @@ export function TestReportsDashboard() {
     if (statusFilter === 'in_progress') {
       rows = rows.filter((r) => isInProgressStatus(r.status) && !r.completed_at);
     } else if (statusFilter === 'completed') {
-      rows = rows.filter((r) => isCompletedAttemptStatus(r.status, r.completed_at));
+      rows = rows.filter((r) => isCompletedAttemptStatus(r.status, r.completed_at) && !r.proctor_auto_submit);
+    } else if (statusFilter === 'auto_submitted') {
+      rows = rows.filter((r) => r.proctor_auto_submit);
     }
     if (Object.keys(scoreOverrides).length === 0) return rows;
     return rows.map((row) =>
@@ -1074,7 +1078,8 @@ export function TestReportsDashboard() {
                 >
                   <option value="all">All statuses</option>
                   <option value="in_progress">In progress</option>
-                  <option value="completed">Completed</option>
+                  <option value="completed">Completed (manual submit)</option>
+                  <option value="auto_submitted">Auto-submitted (proctoring)</option>
                 </select>
               </div>
             </div>
@@ -1178,10 +1183,14 @@ export function TestReportsDashboard() {
                           <span
                             className={cn(
                               'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-                              attemptStatusBadgeClass(row.status),
+                              row.proctor_auto_submit
+                                ? 'bg-red-100 text-red-800 border-red-200'
+                                : attemptStatusBadgeClass(row.status),
                             )}
                           >
-                            {formatAttemptStatus(row.status)}
+                            {row.proctor_auto_submit
+                              ? 'Auto-submitted'
+                              : formatAttemptStatus(row.status)}
                           </span>
                         </td>
                         <td className="hidden md:table-cell text-sm text-slate-600">
@@ -1200,7 +1209,12 @@ export function TestReportsDashboard() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-[#1e3a5f] border-[#1e3a5f]/30"
+                              className={cn(
+                                'border-[#1e3a5f]/30',
+                                row.proctor_auto_submit
+                                  ? 'text-red-700 border-red-300'
+                                  : 'text-[#1e3a5f]',
+                              )}
                               disabled={scorecardModal.loading}
                               onClick={() => openStudentReport(row)}
                             >

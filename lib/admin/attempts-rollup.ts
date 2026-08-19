@@ -17,6 +17,7 @@ export type RollupAttempt = {
   source: 'test_attempts' | 'dashboard_stats';
   schedule_id?: string | null;
   slot_number?: number | null;
+  proctor_auto_submit?: boolean;
 };
 
 export type RollupStudent = {
@@ -72,6 +73,7 @@ function attemptFromRow(row: AttemptRow, testName: string): RollupAttempt {
     source: 'test_attempts',
     schedule_id: row.schedule_id != null ? String(row.schedule_id) : null,
     slot_number: row.slot_number != null ? Number(row.slot_number) : null,
+    proctor_auto_submit: Boolean((row as Record<string, unknown>).proctor_auto_submit),
   };
 }
 

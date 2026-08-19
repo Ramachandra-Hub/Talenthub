@@ -52,6 +52,7 @@ export type TestReportRow = {
   rank?: number;
   slot_number?: number | null;
   schedule_title?: string | null;
+  proctor_auto_submit?: boolean;
 };
 
 export type TestOption = {
@@ -294,6 +295,7 @@ export async function loadTestReportsPayload(
         time_taken_sec: a.time_taken,
         slot_number: a.slot_number ?? slotNumber,
         schedule_title: scheduleTitle,
+        proctor_auto_submit: a.proctor_auto_submit ?? false,
       };
     }),
   );
