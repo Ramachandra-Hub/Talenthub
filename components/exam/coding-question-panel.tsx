@@ -19,6 +19,7 @@ import {
 } from '@/lib/coding/languages';
 import { formatCodingRunOutput, runCodingOnServer } from '@/lib/coding/run-client';
 import { getProgrammingProblemById } from '@/lib/exam-builder/programming-syllabus';
+import { codingLanguageFromQuestion } from '@/lib/exams/enforce-subject-paper';
 import type { Question } from '@/lib/types';
 
 type CodingAnswerPayload = {
@@ -51,7 +52,11 @@ type Props = {
 /** In-exam coding workspace. Students write the code; Run compiles and shows output only. */
 export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props) {
   const problem = useMemo(() => {
-    const catalog = getProgrammingProblemById(question.coding_problem_id ?? '');
+    let catalog: ReturnType<typeof getProgrammingProblemById> | undefined =
+      getProgrammingProblemById(question.coding_problem_id ?? '');
+    if (catalog && codingLanguageFromQuestion(question) === 'java' && catalog.defaultLanguage !== 'java') {
+      catalog = undefined;
+    }
     return {
       id: catalog?.id ?? 'inline',
       title: question.coding_title ?? catalog?.title ?? 'Coding problem',
@@ -71,9 +76,12 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
   }, [question]);
 
   const lockedLanguage: CodingLanguageId | null =
-    problem.defaultLanguage === 'java' || question.coding_default_language === 'java'
-      ? 'java'
-      : null;
+    codingLanguageFromQuestion(question) ??
+    (problem.defaultLanguage === 'java' ||
+    problem.defaultLanguage === 'python' ||
+    problem.defaultLanguage === 'c'
+      ? problem.defaultLanguage
+      : null);
   const languages = lockedLanguage
     ? CODING_LANGUAGES.filter((l) => l.id === lockedLanguage)
     : CODING_LANGUAGES;

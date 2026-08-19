@@ -1,6 +1,5 @@
 import { formatScorePercent, roundScorePercent } from '@/lib/format-score';
 import { buildCodingDeepAnalysis, type CodingDeepAnalysis } from '@/lib/exam-v2/coding-rubric';
-import { loadTestSectionsPrisma } from '@/lib/exam-v2/load-sections';
 import { scoreQuestionsOnServer, type QuestionScoreResult } from '@/lib/exam-v2/server-score';
 import { readProSubjectMeta } from '@/lib/exam-v2/subject-progress';
 import { EXAM_SCORECARD_ANSWERS_TYPE } from '@/lib/placement/scorecard-payload';
@@ -23,8 +22,14 @@ function readinessLabel(percent: number): PlacementScorecard['placementReadiness
 function subjectKey(question: Question): { slug: string; name: string } {
   const meta = readProSubjectMeta(question);
   if (meta) return meta;
-  if (question.coding_default_language === 'java' || question.type === 'coding') {
-    return { slug: 'coding', name: 'Coding' };
+  if (question.coding_default_language === 'java' || /\bjava\b/i.test(question.question_text)) {
+    return { slug: 'java', name: 'Java' };
+  }
+  if (question.coding_default_language === 'python') {
+    return { slug: 'python', name: 'Python' };
+  }
+  if (question.coding_default_language === 'c') {
+    return { slug: 'c-programming', name: 'C Programming' };
   }
   return { slug: 'general', name: 'Exam' };
 }
@@ -111,57 +116,22 @@ export async function buildExamScorecard(input: {
   let earnedMarks = 0;
   let totalMarks = 0;
 
-  if (buckets.size === 1 && buckets.has('general')) {
-    const sectionsRows = await loadTestSectionsPrisma(input.testId);
-    if (sectionsRows.length) {
-      const per = Math.max(1, Math.ceil(scored.questions.length / sectionsRows.length));
-      let offset = 0;
-      for (const section of sectionsRows) {
-        const slice = scored.questions.slice(offset, offset + per);
-        offset += per;
-        const rows = slice.map((q) => byId.get(q.id)).filter(Boolean) as QuestionScoreResult[];
-        const marks = rows.length;
-        const earned = rows.reduce((sum, row) => sum + row.earned, 0);
-        const correct = rows.filter((row) => row.correct).length;
-        const wrong = rows.filter((row) => row.wrong).length;
-        const skipped = rows.filter((row) => row.skipped).length;
-        earnedMarks += earned;
-        totalMarks += marks;
-        sections.push({
-          sectionId: section.id as PlacementSectionScore['sectionId'],
-          name: section.name,
-          marks,
-          earned: roundScorePercent(earned),
-          percent: marks > 0 ? roundScorePercent((earned / marks) * 100) : 0,
-          correct,
-          wrong,
-          skipped,
-          total: marks,
-        });
-      }
-    }
-  }
-
-  if (!sections.length) {
-    earnedMarks = 0;
-    totalMarks = 0;
-    for (const [slug, bucket] of buckets) {
-      const marks = bucket.rows.length;
-      const earned = bucket.rows.reduce((sum, row) => sum + row.earned, 0);
-      earnedMarks += earned;
-      totalMarks += marks;
-      sections.push({
-        sectionId: slug as PlacementSectionScore['sectionId'],
-        name: bucket.name,
-        marks,
-        earned: roundScorePercent(earned),
-        percent: marks > 0 ? roundScorePercent((earned / marks) * 100) : 0,
-        correct: bucket.rows.filter((row) => row.correct).length,
-        wrong: bucket.rows.filter((row) => row.wrong).length,
-        skipped: bucket.rows.filter((row) => row.skipped).length,
-        total: marks,
-      });
-    }
+  for (const [slug, bucket] of buckets) {
+    const marks = bucket.rows.length;
+    const earned = bucket.rows.reduce((sum, row) => sum + row.earned, 0);
+    earnedMarks += earned;
+    totalMarks += marks;
+    sections.push({
+      sectionId: slug as PlacementSectionScore['sectionId'],
+      name: bucket.name,
+      marks,
+      earned: roundScorePercent(earned),
+      percent: marks > 0 ? roundScorePercent((earned / marks) * 100) : 0,
+      correct: bucket.rows.filter((row) => row.correct).length,
+      wrong: bucket.rows.filter((row) => row.wrong).length,
+      skipped: bucket.rows.filter((row) => row.skipped).length,
+      total: marks,
+    });
   }
 
   const percentage =

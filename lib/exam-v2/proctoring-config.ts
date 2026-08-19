@@ -13,8 +13,8 @@ export const PROCTOR_FACE_ABSENT_SEC = 5;
 /** Camera scan interval — ~2.5 FPS keeps CPU low at scale (1000+ concurrent clients). */
 export const PROCTOR_FACE_CHECK_MS = 400;
 
-/** Debounce duplicate tab/focus signals (blur + visibilitychange fire together). */
-export const PROCTOR_FOCUS_DEBOUNCE_MS = 2500;
+/** Debounce duplicate tab/focus signals (blur + visibilitychange fire together, OS lock fires both). */
+export const PROCTOR_FOCUS_DEBOUNCE_MS = 4000;
 
 /** Minimum gap between repeated suspicious-face incidents. */
 export const PROCTOR_SUSPICIOUS_DEBOUNCE_MS = 12000;

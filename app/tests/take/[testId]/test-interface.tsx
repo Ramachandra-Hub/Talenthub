@@ -171,6 +171,17 @@ export default function TestInterface({
     liveAttemptIdRef.current = liveAttemptId;
   }, [liveAttemptId]);
 
+  // Prevent accidental page leave / close during an active exam
+  useEffect(() => {
+    if (!fullAccess || isSubmitted) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [fullAccess, isSubmitted]);
+
   useEffect(() => {
     if (!fullAccess || isSubmitted || test.id.startsWith('fallback-')) return;
     clearExamDraft(test.id);

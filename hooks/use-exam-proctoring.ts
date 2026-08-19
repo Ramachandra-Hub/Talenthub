@@ -166,16 +166,43 @@ export function useExamProctoring({
     };
 
     const onVisibility = () => {
-      if (document.hidden) recordTabSwitch({ reason: 'visibility_hidden' });
+      if (document.hidden) {
+        recordTabSwitch({ reason: 'visibility_hidden' });
+      } else {
+        // Student returned (from lock screen, alt-tab, etc.) — re-enter fullscreen silently
+        try {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            void document.documentElement.requestFullscreen().catch(() => {});
+          }
+        } catch { /* ignore */ }
+      }
     };
-    const onBlur = () => recordTabSwitch({ reason: 'window_blur' });
+
+    // Only count blur if visibility is still visible (avoids double-count with lock screen)
+    const onBlur = () => {
+      if (document.hidden) return;
+      recordTabSwitch({ reason: 'window_blur' });
+    };
+
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement && !document.hidden) {
+        // Fullscreen exited while page visible (Esc key, etc.) — re-request after short delay
+        setTimeout(() => {
+          if (!document.fullscreenElement && !document.hidden && document.documentElement.requestFullscreen) {
+            void document.documentElement.requestFullscreen().catch(() => {});
+          }
+        }, 300);
+      }
+    };
 
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('blur', onBlur);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('blur', onBlur);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
       if (flushTimerRef.current != null) {
         clearTimeout(flushTimerRef.current);
       }

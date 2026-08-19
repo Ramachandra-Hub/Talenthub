@@ -86,7 +86,7 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
             badgeClass={readinessClass}
             subtitle={
               isExamReport
-                ? `${scorecard.earnedMarks} / ${scorecard.totalMarks} from selected subjects`
+                ? scorecard.sections.map((s) => s.name).join(' · ') || 'Selected exam subjects'
                 : `${formatScorePercentLabel(scorecard.percentage)} composite`
             }
           />
@@ -97,10 +97,10 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
           />
           {isExamReport ? (
             <RatingTile
-              label="Sections"
-              value={String(scorecard.sections.length)}
+              label="Subjects"
+              value={scorecard.sections.map((s) => s.name).join(', ') || String(scorecard.sections.length)}
               badgeClass="bg-indigo-600"
-              subtitle="Exam Builder subjects"
+              subtitle="Only subjects selected for this exam"
             />
           ) : (
             <RatingTile
@@ -123,7 +123,7 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
             {isExamReport
-              ? 'Section scores follow Exam Builder subjects. Coding uses the nine-parameter deep analysis rubric below.'
+              ? 'This report covers only the subjects selected when the exam was built and conducted.'
               : '50% Technical · 25% Communication · 25% Cognitive (Aptitude + Logic + IQ)'}
           </p>
         </div>
