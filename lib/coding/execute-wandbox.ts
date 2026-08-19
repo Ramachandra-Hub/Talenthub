@@ -9,26 +9,24 @@ const COMPILER_BY_LANGUAGE: Record<CodingLanguageId, string> = {
   javascript: 'nodejs-20.17.0',
   c: 'gcc-13.2.0-c',
   cpp: 'gcc-13.2.0',
-  java: 'openjdk-jdk-17+35',
+  java: 'openjdk-jdk-21+35',
   go: 'go-1.23.2',
   csharp: 'mono-6.12.0.199',
 };
 
 // Fallback compilers tried if the primary returns HTTP 400 (version not available)
 const COMPILER_FALLBACKS: Partial<Record<CodingLanguageId, string[]>> = {
-  java: ['openjdk-jdk-21+35', 'openjdk-jdk-11.0.3+7'],
+  java: ['openjdk-jdk-11.0.3+7'],
   python: ['cpython-3.11.7', 'cpython-3.10.10'],
 };
 
 function prepareSource(languageId: CodingLanguageId, source: string): string {
   if (languageId === 'java') {
-    // Wandbox compiles Java without saving to a named file, so the class name
-    // must match what the JVM expects. Keep "public class Main" as-is.
-    // Only ensure the class is named Main (rename if student used a different name).
-    const hasMain = /\bclass\s+Main\b/.test(source);
-    if (!hasMain) {
-      // If student wrote a different public class name, rename first occurrence
-      return source.replace(/\bpublic\s+class\s+\w+/, 'public class Main');
+    // Wandbox compiles Java as "prog.java". Public classes must match the file
+    // name there, so convert the first public class to `prog`. If there is no
+    // public class, Java accepts any class name that contains main().
+    if (/\bpublic\s+class\s+\w+/.test(source)) {
+      return source.replace(/\bpublic\s+class\s+\w+/, 'public class prog');
     }
     return source;
   }
