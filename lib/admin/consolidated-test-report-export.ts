@@ -2,9 +2,12 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatAttemptStatus, isCompletedAttemptStatus } from '@/lib/attempt-status';
-import { formatScorePercentLabel } from '@/lib/format-score';
+import { fetchElevateXScorecardForAdmin } from '@/lib/admin/fetch-elevatex-scorecard-client';
+import { formatScorePercent, formatScorePercentLabel } from '@/lib/format-score';
+import { codingRubricCsvHeaders, codingRubricCsvValues } from '@/lib/exam-v2/coding-rubric';
 import type { TestReportRow, TestReportsPayload } from '@/lib/admin/test-reports-data';
 import { sortTestReportRows } from '@/lib/admin/schedule-report-filter';
+import type { PlacementScorecard } from '@/lib/placement/types';
 
 export type ConsolidatedReportOptions = {
   examLabel: string;
@@ -50,38 +53,45 @@ function reportFileBase(options: ConsolidatedReportOptions): string {
   return `exam-leaderboard-${namePart}${slotPart}${rangePart}`;
 }
 
-function sheetRow(row: TestReportRow): (string | number)[] {
+const SHEET_HEADERS = [
+  'Rank',
+  'Tier',
+  'Student',
+  'Roll',
+  'Email',
+  'Branch',
+  'Year',
+  'Test',
+  'Score %',
+  ...codingRubricCsvHeaders(),
+  'Coding Total',
+  'Status',
+  'Completed (IST)',
+  'Time (min)',
+] as const;
+
+function sheetRow(row: TestReportRow, scorecard?: PlacementScorecard | null): (string | number)[] {
+  const rubric = scorecard?.codingAnalysis?.aggregate;
   return [
     row.rank ?? '—',
     rankTierLabel(row.rank),
     row.student_name,
     row.roll_number || '—',
+    scorecard?.candidate.email || row.email || '—',
     row.branch ?? '—',
     row.academic_year ?? '—',
     row.test_name,
     formatScorePercentLabel(row.score),
+    ...codingRubricCsvValues(rubric),
+    rubric ? formatScorePercent(rubric.totalEarned) : '—',
     formatAttemptStatus(row.status),
     row.completed_at ? new Date(row.completed_at).toLocaleString('en-IN') : '—',
     row.time_taken_sec != null ? Math.max(1, Math.round(row.time_taken_sec / 60)) : '—',
   ];
 }
 
-const SHEET_HEADERS = [
-  'Rank',
-  'Tier',
-  'Student',
-  'Roll',
-  'Branch',
-  'Year',
-  'Test',
-  'Score %',
-  'Status',
-  'Completed (IST)',
-  'Time (min)',
-] as const;
-
-function buildSheetAoA(rows: TestReportRow[]): (string | number)[][] {
-  return [[...SHEET_HEADERS], ...rows.map(sheetRow)];
+function buildSheetAoA(rows: TestReportRow[], scorecards?: Map<string, PlacementScorecard>): (string | number)[][] {
+  return [[...SHEET_HEADERS], ...rows.map((row) => sheetRow(row, scorecards?.get(row.attempt_id)))];
 }
 
 /** Ranked leaderboard PDF — highest score first, with tier column for winners / top 100 / top 200. */
@@ -140,6 +150,7 @@ export function downloadConsolidatedTestReportPdf(options: ConsolidatedReportOpt
         rankTierLabel(row.rank),
         row.student_name,
         row.roll_number || '—',
+        row.email || '—',
         row.branch ?? '—',
         formatScorePercentLabel(row.score),
       ]),
@@ -159,7 +170,7 @@ export function downloadConsolidatedTestReportPdf(options: ConsolidatedReportOpt
   autoTable(doc, {
     startY: y,
     head: [SHEET_HEADERS.slice()],
-    body: ranked.map(sheetRow),
+    body: ranked.map((row) => sheetRow(row)),
     styles: { fontSize: 7, cellPadding: 2 },
     headStyles: { fillColor: [12, 35, 64], fontSize: 7 },
     theme: 'striped',
@@ -169,9 +180,23 @@ export function downloadConsolidatedTestReportPdf(options: ConsolidatedReportOpt
   doc.save(`${reportFileBase(options)}.pdf`);
 }
 
-/** Multi-sheet Excel: All ranked, Winners, Top 100, Top 200. */
-export function downloadConsolidatedTestReportExcel(options: ConsolidatedReportOptions): void {
+/** Multi-sheet Excel: All ranked, Winners, Top 100, Top 200 — includes coding rubric columns when available. */
+export async function downloadConsolidatedTestReportExcel(
+  options: ConsolidatedReportOptions,
+): Promise<void> {
   const ranked = rankedCompletedRows(options.rows);
+  const scorecards = new Map<string, PlacementScorecard>();
+  for (const row of ranked) {
+    try {
+      const result = await fetchElevateXScorecardForAdmin(row.attempt_id, {
+        rollNumber: row.roll_number || undefined,
+      });
+      if (!('error' in result)) scorecards.set(row.attempt_id, result.scorecard);
+    } catch {
+      /* keep row without rubric */
+    }
+  }
+
   const base = reportFileBase(options);
   const meta = [
     ['Exam Leaderboard — Consolidated Report'],
@@ -186,14 +211,14 @@ export function downloadConsolidatedTestReportExcel(options: ConsolidatedReportO
 
   const wb = XLSX.utils.book_new();
 
-  const allSheet = XLSX.utils.aoa_to_sheet([...meta, ...buildSheetAoA(ranked)]);
+  const allSheet = XLSX.utils.aoa_to_sheet([...meta, ...buildSheetAoA(ranked, scorecards)]);
   XLSX.utils.book_append_sheet(wb, allSheet, 'All ranked');
 
   const winners = ranked.filter((r) => r.rank != null && r.rank <= 3);
   if (winners.length) {
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.aoa_to_sheet(buildSheetAoA(winners)),
+      XLSX.utils.aoa_to_sheet(buildSheetAoA(winners, scorecards)),
       'Winners',
     );
   }
@@ -202,7 +227,7 @@ export function downloadConsolidatedTestReportExcel(options: ConsolidatedReportO
   if (top100.length) {
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.aoa_to_sheet(buildSheetAoA(top100)),
+      XLSX.utils.aoa_to_sheet(buildSheetAoA(top100, scorecards)),
       'Top 100',
     );
   }
@@ -211,7 +236,7 @@ export function downloadConsolidatedTestReportExcel(options: ConsolidatedReportO
   if (top200.length) {
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.aoa_to_sheet(buildSheetAoA(top200)),
+      XLSX.utils.aoa_to_sheet(buildSheetAoA(top200, scorecards)),
       'Top 200',
     );
   }

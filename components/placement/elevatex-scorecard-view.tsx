@@ -6,6 +6,7 @@ import { formatScorePercent, formatScorePercentLabel } from '@/lib/format-score'
 import { cn } from '@/lib/utils';
 import { findDepartment } from '@/lib/placement/config';
 import type { PlacementScorecard } from '@/lib/placement/types';
+import { CodingDeepAnalysisView } from '@/components/placement/coding-deep-analysis-view';
 
 function formatHms(totalSec: number): string {
   const safe = Math.max(0, Math.floor(totalSec));
@@ -53,8 +54,14 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
             </h2>
             <p className="text-sm text-slate-600 mt-1">
               {scorecard.candidate.fullName} ·{' '}
-              <span className="font-mono">{scorecard.candidate.hallTicket}</span> ·{' '}
-              {dept?.name ?? 'Custom department'}
+              <span className="font-mono">{scorecard.candidate.hallTicket}</span>
+              {scorecard.candidate.email ? (
+                <>
+                  {' '}
+                  · <span>{scorecard.candidate.email}</span>
+                </>
+              ) : null}{' '}
+              · {dept?.name ?? 'Custom department'}
             </p>
             <p className="text-xs text-slate-500 mt-1">
               Completed {new Date(scorecard.completedAt).toLocaleString()} ·{' '}
@@ -116,7 +123,7 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
             {isExamReport
-              ? 'Section scores follow the subjects selected in Exam Builder. Coding marks are awarded only for passing test cases; compile errors and wrong output score 0.'
+              ? 'Section scores follow Exam Builder subjects. Coding uses the nine-parameter deep analysis rubric below.'
               : '50% Technical · 25% Communication · 25% Cognitive (Aptitude + Logic + IQ)'}
           </p>
         </div>
@@ -157,6 +164,12 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
           ))}
         </div>
       </Card>
+
+      {scorecard.codingAnalysis ? (
+        <Card className={cn('shadow-md border-slate-200', compact ? 'p-4' : 'p-6')}>
+          <CodingDeepAnalysisView analysis={scorecard.codingAnalysis} compact={compact} />
+        </Card>
+      ) : null}
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card className={cn('shadow-md border-slate-200', compact ? 'p-4' : 'p-6')}>

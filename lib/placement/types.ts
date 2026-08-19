@@ -1,4 +1,5 @@
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
+import type { CodingDeepAnalysis } from '@/lib/exam-v2/coding-rubric';
 import type { Question } from '@/lib/types';
 import type { CodingLanguageId } from '@/lib/coding/languages';
 
@@ -70,6 +71,7 @@ export type PlacementCandidate = {
   hallTicket: string;
   departmentId: string;
   collegeName?: string | null;
+  email?: string | null;
   examName?: string | null;
   startedAt: string;
   /** Seed for deterministic question selection. */
@@ -183,4 +185,6 @@ export type PlacementScorecard = {
   recommendations: string[];
   /** Exam Builder / generic exams use subject sections instead of ElevateX employability weights. */
   reportKind?: 'elevatex' | 'exam';
+  /** Nine-parameter coding deep analysis when the exam includes coding questions. */
+  codingAnalysis?: CodingDeepAnalysis | null;
 };

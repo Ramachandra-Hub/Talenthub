@@ -6,6 +6,7 @@ import { fetchElevateXScorecardForAdmin } from '@/lib/admin/fetch-elevatex-score
 import type { TestReportRow } from '@/lib/admin/test-reports-data';
 import { buildElevateXScorecardPdfBlob } from '@/lib/placement/elevatex-scorecard-pdf';
 import type { PlacementScorecard } from '@/lib/placement/types';
+import { codingRubricCsvHeaders, codingRubricCsvValues } from '@/lib/exam-v2/coding-rubric';
 
 export type BulkIndividualFormat = 'pdf' | 'csv';
 
@@ -82,13 +83,22 @@ function buildGenericAttemptCsv(row: TestReportRow): string {
 }
 
 function buildElevateXScorecardCsv(scorecard: PlacementScorecard, row: TestReportRow): string {
+  const rubricHeaders = codingRubricCsvHeaders();
+  const rubricValues = codingRubricCsvValues(scorecard.codingAnalysis?.aggregate);
   const lines = [
     'Exam Individual Report',
     `Student,${escapeCsv(scorecard.candidate.fullName || row.student_name)}`,
     `Roll,${escapeCsv(scorecard.candidate.hallTicket || row.roll_number)}`,
+    `Email,${escapeCsv(scorecard.candidate.email || row.email)}`,
     `Overall %,${formatScorePercent(scorecard.percentage)}`,
     `Marks,${scorecard.earnedMarks} / ${scorecard.totalMarks}`,
+    `Coding total,${scorecard.codingAnalysis ? formatScorePercent(scorecard.codingAnalysis.aggregate.totalEarned) : '—'}`,
     `Readiness,${escapeCsv(scorecard.placementReadiness)}`,
+    '',
+    ['Parameter', 'Earned', 'Max'].join(','),
+    ...(scorecard.codingAnalysis?.aggregate.parameters.map((p) =>
+      [escapeCsv(p.label), formatScorePercent(p.earned), String(p.maxPoints)].join(','),
+    ) ?? []),
     '',
     'Section,Earned,Max,%,Correct,Wrong,Skipped',
     ...scorecard.sections.map((s) =>
@@ -102,6 +112,17 @@ function buildElevateXScorecardCsv(scorecard: PlacementScorecard, row: TestRepor
         s.skipped ?? '—',
       ].join(','),
     ),
+    '',
+    'Leaderboard coding columns',
+    ['Student', 'Roll', 'Email', ...rubricHeaders, 'Coding Total', 'Overall %'].join(','),
+    [
+      escapeCsv(scorecard.candidate.fullName || row.student_name),
+      escapeCsv(scorecard.candidate.hallTicket || row.roll_number),
+      escapeCsv(scorecard.candidate.email || row.email),
+      ...rubricValues,
+      scorecard.codingAnalysis ? formatScorePercent(scorecard.codingAnalysis.aggregate.totalEarned) : '',
+      formatScorePercent(scorecard.percentage),
+    ].join(','),
   ];
   return lines.join('\n');
 }

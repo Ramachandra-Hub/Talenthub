@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { formatScorePercent, formatScorePercentLabel } from '@/lib/format-score';
 import { findDepartment } from '@/lib/placement/config';
 import type { PlacementScorecard } from '@/lib/placement/types';
+import { codingRubricCsvHeaders, codingRubricCsvValues } from '@/lib/exam-v2/coding-rubric';
 
 function formatHms(totalSec: number): string {
   const safe = Math.max(0, Math.floor(totalSec));
@@ -25,32 +26,36 @@ export function buildElevateXScorecardPdfDoc(scorecard: PlacementScorecard): jsP
   doc.setFontSize(10);
   doc.text(scorecard.candidate.collegeName ?? 'Campus Assessment', 14, 26);
   doc.text(`${scorecard.candidate.fullName} · ${hall} · ${dept?.name ?? 'Department'}`, 14, 32);
+  if (scorecard.candidate.email) {
+    doc.text(`Email: ${scorecard.candidate.email}`, 14, 38);
+  }
   doc.text(
     `Completed ${new Date(scorecard.completedAt).toLocaleString()} · ${formatHms(scorecard.totalElapsedSec)}`,
     14,
-    38,
+    scorecard.candidate.email ? 44 : 38,
   );
 
   doc.setFontSize(12);
-  doc.text(`Overall: ${formatScorePercentLabel(scorecard.percentage)}`, 14, 48);
+  doc.text(`Overall: ${formatScorePercentLabel(scorecard.percentage)}`, 14, scorecard.candidate.email ? 54 : 48);
   doc.setFontSize(10);
   doc.text(
     `${scorecard.earnedMarks} / ${scorecard.totalMarks} marks · Readiness: ${scorecard.placementReadiness}`,
     14,
-    54,
+    scorecard.candidate.email ? 60 : 54,
   );
+  const detailY = scorecard.candidate.email ? 66 : 60;
   if (scorecard.reportKind === 'exam') {
-    doc.text('Subject scores follow Exam Builder selections. Coding is graded by test cases.', 14, 60);
+    doc.text('Subject scores follow Exam Builder selections. Coding uses nine-parameter deep analysis.', 14, detailY);
   } else {
     doc.text(
       `Technical ${formatScorePercentLabel(scorecard.technicalRating)} · Communication ${formatScorePercentLabel(scorecard.communicationRating)} · Employability ${formatScorePercent(scorecard.employabilityScore)}`,
       14,
-      60,
+      detailY,
     );
   }
 
   autoTable(doc, {
-    startY: 68,
+    startY: detailY + 8,
     head: [['Section', 'Earned', 'Max', '%', 'Correct', 'Wrong', 'Skipped']],
     body: scorecard.sections.map((s) => [
       s.name,
@@ -66,6 +71,29 @@ export function buildElevateXScorecardPdfDoc(scorecard: PlacementScorecard): jsP
 
   let y = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 120;
   y += 10;
+
+  if (scorecard.codingAnalysis) {
+    doc.setFontSize(11);
+    doc.text('Coding deep analysis (parameter marks)', 14, y);
+    y += 6;
+    autoTable(doc, {
+      startY: y,
+      head: [['Parameter', 'Earned', 'Max']],
+      body: scorecard.codingAnalysis.aggregate.parameters.map((p) => [
+        p.label,
+        formatScorePercent(p.earned),
+        String(p.maxPoints),
+      ]),
+      foot: [[
+        'Total',
+        formatScorePercent(scorecard.codingAnalysis.aggregate.totalEarned),
+        String(scorecard.codingAnalysis.aggregate.totalMax),
+      ]],
+      styles: { fontSize: 8 },
+    });
+    y = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 40;
+    y += 10;
+  }
 
   if (scorecard.strengths.length) {
     doc.setFontSize(11);

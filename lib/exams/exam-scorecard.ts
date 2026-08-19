@@ -1,4 +1,5 @@
-import { roundScorePercent } from '@/lib/format-score';
+import { formatScorePercent, roundScorePercent } from '@/lib/format-score';
+import { buildCodingDeepAnalysis, type CodingDeepAnalysis } from '@/lib/exam-v2/coding-rubric';
 import { loadTestSectionsPrisma } from '@/lib/exam-v2/load-sections';
 import { scoreQuestionsOnServer, type QuestionScoreResult } from '@/lib/exam-v2/server-score';
 import { readProSubjectMeta } from '@/lib/exam-v2/subject-progress';
@@ -30,6 +31,7 @@ function subjectKey(question: Question): { slug: string; name: string } {
 
 function insightsForSections(
   sections: PlacementSectionScore[],
+  codingAnalysis?: CodingDeepAnalysis | null,
 ): { strengths: string[]; weaknesses: string[]; recommendations: string[] } {
   const strengths: string[] = [];
   const weaknesses: string[] = [];
@@ -39,6 +41,16 @@ function insightsForSections(
     else if (section.percent < 40) {
       weaknesses.push(`Needs work in ${section.name} (${section.percent}%).`);
       recommendations.push(`Revise ${section.name} and practise similar questions.`);
+    }
+  }
+  if (codingAnalysis) {
+    for (const param of codingAnalysis.aggregate.parameters) {
+      const pct = param.maxPoints > 0 ? Math.round((param.earned / param.maxPoints) * 100) : 0;
+      if (pct >= 70) strengths.push(`Coding: ${param.label} (${formatScorePercent(param.earned)}/${param.maxPoints}).`);
+      else if (pct < 40) {
+        weaknesses.push(`Coding: ${param.label} needs improvement (${formatScorePercent(param.earned)}/${param.maxPoints}).`);
+        recommendations.push(`Practise ${param.label.toLowerCase()} with similar coding problems.`);
+      }
     }
   }
   if (!strengths.length && sections.length) {
@@ -68,6 +80,7 @@ export async function buildExamScorecard(input: {
   candidate: {
     fullName: string;
     hallTicket: string;
+    email?: string | null;
     departmentId?: string | null;
     collegeName?: string | null;
   };
@@ -153,10 +166,19 @@ export async function buildExamScorecard(input: {
 
   const percentage =
     totalMarks > 0 ? roundScorePercent((earnedMarks / totalMarks) * 100) : scored.scorePercent;
+  const codingRows = scored.results
+    .filter((row) => row.isCoding && row.codingRubric)
+    .map((row) => ({
+      questionId: row.questionId,
+      title: row.codingTitle ?? row.questionId,
+      rubric: row.codingRubric!,
+    }));
+  const codingAnalysis = buildCodingDeepAnalysis(codingRows);
   const nowIso = new Date().toISOString();
   const candidate: PlacementCandidate = {
     fullName: input.candidate.fullName,
     hallTicket: input.candidate.hallTicket,
+    email: input.candidate.email ?? null,
     departmentId: input.candidate.departmentId || 'generic',
     collegeName: input.candidate.collegeName ?? null,
     examName: input.testName,
@@ -165,7 +187,7 @@ export async function buildExamScorecard(input: {
     technicalFormat: 'both',
     examTotalMarks: totalMarks,
   };
-  const { strengths, weaknesses, recommendations } = insightsForSections(sections);
+  const { strengths, weaknesses, recommendations } = insightsForSections(sections, codingAnalysis);
 
   const scorecard: PlacementScorecard = {
     candidate,
@@ -184,6 +206,7 @@ export async function buildExamScorecard(input: {
     weaknesses,
     recommendations,
     reportKind: 'exam',
+    codingAnalysis,
   };
 
   return {

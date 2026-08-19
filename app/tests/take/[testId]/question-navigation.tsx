@@ -13,6 +13,8 @@ interface QuestionNavigationProps {
   /** First unlocked index is 0; indices &gt;= this require sign-in. */
   unlockedCount: number;
   loginHref: string;
+  /** Horizontal strip below proctor bar, or grid in sidebar. */
+  layout?: 'grid' | 'horizontal';
 }
 
 export default function QuestionNavigation({
@@ -21,14 +23,23 @@ export default function QuestionNavigation({
   answers,
   unlockedCount,
   loginHref,
+  layout = 'grid',
 }: QuestionNavigationProps) {
   const { setCurrentQuestionIndex } = useTest();
   const router = useRouter();
 
+  const isHorizontal = layout === 'horizontal';
+
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-900 mb-3">Questions</p>
-      <div className="grid grid-cols-5 gap-1.5 max-h-[min(60vh,560px)] overflow-y-auto pr-1">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-900 mb-2 sm:mb-3">Questions</p>
+      <div
+        className={
+          isHorizontal
+            ? 'flex flex-wrap gap-1.5 max-h-[7.5rem] overflow-y-auto pr-1'
+            : 'grid grid-cols-5 gap-1.5 max-h-[min(60vh,560px)] overflow-y-auto pr-1'
+        }
+      >
         {questions.map((question, index) => {
           const locked = index >= unlockedCount;
           const record = answers[question.id] as { userAnswer?: unknown; isMarkedForReview?: boolean } | undefined;

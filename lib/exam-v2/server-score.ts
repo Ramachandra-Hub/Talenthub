@@ -1,5 +1,6 @@
 import type { TestAnswer } from '@/app/tests/take/[testId]/test-context';
 import { gradeCodingAnswerOnServer } from '@/lib/exam-v2/grade-coding-server';
+import type { CodingRubricReport } from '@/lib/exam-v2/coding-rubric';
 import { loadQuestionsForScoringCached } from '@/lib/exam-v2/question-score-cache';
 import { answersMatchMcq, isCodingQuestion } from '@/lib/practice-mappers';
 import { roundScorePercent } from '@/lib/format-score';
@@ -12,6 +13,8 @@ export type QuestionScoreResult = {
   wrong: boolean;
   skipped: boolean;
   isCoding: boolean;
+  codingRubric?: CodingRubricReport;
+  codingTitle?: string;
 };
 
 function answersMapToRecord(
@@ -60,13 +63,15 @@ export async function scoreQuestionsOnServer(
       const hasCode = Boolean(ua && String(ua).trim());
       results.push({
         questionId: q.id,
-        earned: grade.fraction,
-        correct: grade.fraction === 1,
-        wrong: hasCode && grade.fraction < 1,
+        earned: grade.rubric.totalEarned / 100,
+        correct: grade.rubric.totalEarned >= 99.5,
+        wrong: hasCode && grade.rubric.totalEarned < 99.5,
         skipped: !hasCode,
         isCoding: true,
+        codingRubric: grade.rubric,
+        codingTitle: q.coding_title ?? q.coding_problem_id ?? `Coding ${q.id.slice(-4)}`,
       });
-      earned += grade.fraction;
+      earned += grade.rubric.totalEarned / 100;
       continue;
     }
     if (ua === null || ua === undefined || ua === '') {

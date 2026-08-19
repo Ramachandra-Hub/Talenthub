@@ -197,6 +197,7 @@ export async function POST(request: Request) {
           candidate: {
             fullName: profile.full_name || profile.email || 'Student',
             hallTicket: profile.roll_number || rollNumberFromUser(profile.email || ''),
+            email: profile.email,
             departmentId: profile.branch,
           },
           elapsedSec: clientElapsedSec,

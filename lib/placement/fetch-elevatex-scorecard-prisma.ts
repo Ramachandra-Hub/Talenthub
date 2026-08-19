@@ -59,6 +59,7 @@ async function rebuildExamScorecardForAttempt(row: {
     candidate: {
       fullName: user?.fullName || user?.email || 'Student',
       hallTicket: user?.rollNumber || rollNumberFromUser(user?.email || ''),
+      email: user?.email,
       departmentId: user?.branch,
     },
     startedAt: row.startedAt?.toISOString(),

@@ -353,7 +353,15 @@ export function TestReportsDashboard() {
 
   const downloadConsolidatedExcel = () => {
     if (!payload || completedRows.length === 0) return;
-    downloadConsolidatedTestReportExcel(consolidatedExportOptions);
+    setBulkExportBusy('excel');
+    setBulkProgress('Building Excel with coding analysis…');
+    void downloadConsolidatedTestReportExcel(consolidatedExportOptions)
+      .then(() => setBulkProgress('Excel downloaded'))
+      .catch((err) => {
+        setBulkProgress(null);
+        alert(err instanceof Error ? err.message : 'Excel export failed');
+      })
+      .finally(() => setBulkExportBusy(null));
   };
 
   const downloadAllIndividual = async () => {
@@ -401,7 +409,8 @@ export function TestReportsDashboard() {
   const downloadExamLeaderboardExcel = (test: TestOption) => {
     const rows = rowsForConductedExam(test);
     if (!rows.length) return;
-    downloadConsolidatedTestReportExcel({
+    setBulkExportBusy(`excel-${test.id}`);
+    void downloadConsolidatedTestReportExcel({
       examLabel: test.name,
       testName: test.name,
       scheduleLabel: activeScheduleLabel,
@@ -409,7 +418,7 @@ export function TestReportsDashboard() {
         payload?.report_date_range_label ??
         (hasDateFilter ? payload?.report_date_label ?? dateRangeLabel : undefined),
       rows,
-    });
+    }).finally(() => setBulkExportBusy(null));
   };
 
   const downloadExamIndividualZip = async (test: TestOption) => {
