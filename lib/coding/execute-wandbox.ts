@@ -42,12 +42,20 @@ async function liveJavaCompilers(): Promise<string[]> {
     return javaCompilerCache.names;
   }
   try {
-    const res = await fetchWithTimeout(WANDBOX_LIST_URL, { cache: 'no-store' }, 4000);
+    const res = await fetchWithTimeout(WANDBOX_LIST_URL, { cache: 'no-store' }, 3500);
     if (!res.ok) return COMPILER_FALLBACKS.java ?? [];
     const list = (await res.json()) as Array<{ name?: string; language?: string }>;
     const names = list
       .filter((row) => String(row.language ?? '').toLowerCase() === 'java' && row.name)
       .map((row) => String(row.name));
+    // Prefer newer OpenJDK first.
+    names.sort((a, b) => {
+      const score = (n: string) => {
+        const m = n.match(/(\d+)/);
+        return m ? Number(m[1]) : 0;
+      };
+      return score(b) - score(a);
+    });
     if (names.length) {
       javaCompilerCache = { names, fetchedAt: now };
       return names;
@@ -74,16 +82,19 @@ function prepareSource(languageId: CodingLanguageId, source: string): string {
   return source;
 }
 
-function compilersFor(languageId: CodingLanguageId, liveJava: string[], fast?: boolean): string[] {
+function compilersFor(languageId: CodingLanguageId, liveJava: string[]): string[] {
   if (languageId === 'java') {
-    const preferred = [COMPILER_BY_LANGUAGE.java, ...liveJava, ...(COMPILER_FALLBACKS.java ?? [])];
-    const unique = [...new Set(preferred.filter(Boolean))];
-    return unique.slice(0, fast ? 1 : 3);
+    const preferred = [
+      liveJava[0],
+      COMPILER_BY_LANGUAGE.java,
+      liveJava[1],
+      ...(COMPILER_FALLBACKS.java ?? []),
+    ];
+    return [...new Set(preferred.filter(Boolean))].slice(0, 2);
   }
-  const list = [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])].filter(
-    Boolean,
-  ) as string[];
-  return fast ? list.slice(0, 1) : list;
+  return [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])]
+    .filter(Boolean)
+    .slice(0, 2) as string[];
 }
 
 function isRetryableCompilerError(message: string): boolean {
@@ -124,6 +135,7 @@ async function tryWandboxCompiler(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin: string,
+  timeoutMs: number,
 ): Promise<WandboxResponse> {
   const res = await fetchWithTimeout(
     WANDBOX_URL,
@@ -136,7 +148,7 @@ async function tryWandboxCompiler(
         stdin: stdin ?? '',
       }),
     },
-    10_000,
+    timeoutMs,
   );
 
   if (!res.ok) {
@@ -147,45 +159,36 @@ async function tryWandboxCompiler(
   return (await res.json()) as WandboxResponse;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function executeViaWandbox(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin: string,
-  options?: { fast?: boolean },
+  _options?: { fast?: boolean },
 ): Promise<ExecuteResult> {
-  const fast = Boolean(options?.fast);
-  const liveJava = languageId === 'java' && !fast ? await liveJavaCompilers() : [];
-  const compilers = compilersFor(languageId, liveJava, fast);
+  const liveJava = languageId === 'java' ? await liveJavaCompilers() : [];
+  const compilers = compilersFor(languageId, liveJava);
   const lang = getCodingLanguage(languageId);
   const started = Date.now();
+  const perCompilerMs = 16_000;
 
   let data: WandboxResponse | null = null;
   let lastError: Error | null = null;
-  const rounds = fast ? 1 : 2;
 
-  for (let attempt = 0; attempt < rounds && !data; attempt += 1) {
-    if (attempt > 0) await sleep(400 * attempt);
-
-    for (const compiler of compilers) {
-      try {
-        data = await tryWandboxCompiler(compiler, languageId, sourceCode, stdin);
-        const unknown =
-          `${data.compiler_error ?? ''} ${data.compiler_message ?? ''} ${data.compiler_output ?? ''}`.toLowerCase();
-        if (unknown.includes('unknown compiler') || unknown.includes('compiler is not found')) {
-          lastError = new Error(`Unknown compiler: ${compiler}`);
-          data = null;
-          continue;
-        }
-        break;
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        if (!isRetryableCompilerError(lastError.message)) {
-          throw lastError;
-        }
+  for (const compiler of compilers) {
+    try {
+      data = await tryWandboxCompiler(compiler, languageId, sourceCode, stdin, perCompilerMs);
+      const unknown =
+        `${data.compiler_error ?? ''} ${data.compiler_message ?? ''} ${data.compiler_output ?? ''}`.toLowerCase();
+      if (unknown.includes('unknown compiler') || unknown.includes('compiler is not found')) {
+        lastError = new Error(`Unknown compiler: ${compiler}`);
+        data = null;
+        continue;
+      }
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (!isRetryableCompilerError(lastError.message)) {
+        throw lastError;
       }
     }
   }

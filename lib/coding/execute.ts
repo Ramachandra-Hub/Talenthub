@@ -5,18 +5,18 @@ import {
 import { isServerlessHost } from '@/lib/coding/execute-environment';
 import { executeJavaScriptInProcess } from '@/lib/coding/execute-inprocess-js';
 import { executeCodeLocal } from '@/lib/coding/execute-local';
-import {
-  executeViaWandbox,
-  prepareJavaSourceForWandbox,
-} from '@/lib/coding/execute-wandbox';
+import { executeViaWandbox } from '@/lib/coding/execute-wandbox';
 import type { ExecuteResult } from '@/lib/coding/types';
 
 export type { CodingLanguageId as CodingLanguage };
 export type { ExecuteResult } from '@/lib/coding/types';
 
-const PUBLIC_PISTON_URL = 'https://emkc.org/api/v2/piston/execute';
 const PUBLIC_PISTON_HOST = 'emkc.org';
 
+/**
+ * Self-hosted Piston only. Public emkc.org Piston is whitelist-only since 2026-02-15
+ * and returns HTTP 401 for unlisted apps — do not call it during exams.
+ */
 function pistonUrl(): string | null {
   const url = process.env.PISTON_API_URL?.trim();
   if (!url || url.includes('YOUR_')) return null;
@@ -31,13 +31,6 @@ function pistonUrl(): string | null {
 
 function wandboxDisabled(): boolean {
   return process.env.CODING_DISABLE_WANDBOX === '1' || process.env.CODING_DISABLE_WANDBOX === 'true';
-}
-
-function publicPistonDisabled(): boolean {
-  return (
-    process.env.CODING_DISABLE_PUBLIC_PISTON === '1' ||
-    process.env.CODING_DISABLE_PUBLIC_PISTON === 'true'
-  );
 }
 
 /** Piston executes Java as Main.java — public/main class must be Main. */
@@ -76,8 +69,8 @@ async function executeViaPiston(
         version: lang.piston.version,
         files: [{ name: lang.fileName, content: prepareSourceForPiston(languageId, sourceCode) }],
         stdin,
-        run_timeout: Math.min(6_000, Math.max(3_000, timeoutMs - 2_000)),
-        compile_timeout: Math.min(8_000, Math.max(4_000, timeoutMs - 1_000)),
+        run_timeout: Math.min(8_000, Math.max(3_000, timeoutMs - 2_000)),
+        compile_timeout: Math.min(10_000, Math.max(4_000, timeoutMs - 1_000)),
       }),
       signal: controller.signal,
     });
@@ -102,7 +95,7 @@ async function executeViaPiston(
       exitCode: data.run?.code ?? (compileErr ? 1 : 0),
       runtimeMs: Date.now() - started,
       memoryKb: data.run?.memory ?? null,
-      engine: url.includes('emkc.org') ? 'piston-public' : 'piston',
+      engine: 'piston',
     };
   } finally {
     clearTimeout(timer);
@@ -128,10 +121,14 @@ function localRuntimeMissing(result: ExecuteResult): boolean {
 
 function softFailure(languageId: CodingLanguageId, message: string, started: number): ExecuteResult {
   const lang = getCodingLanguage(languageId);
-  const clean = message.replace(/this operation was aborted/gi, 'remote compiler timed out');
+  const clean = message
+    .replace(/this operation was aborted/gi, 'remote compiler timed out')
+    .replace(/piston http 401[^|]*/gi, '')
+    .replace(/\s*\|\s*/g, ' ')
+    .trim();
   return {
     stdout: '',
-    stderr: `${lang.label}: ${clean}\n\nClick Compile & run again. If this keeps happening, wait a few seconds and retry.`,
+    stderr: `${lang.label}: ${clean || 'Remote compiler unavailable'}\n\nClick Compile & run again. Paste sample input if your program reads stdin.`,
     exitCode: 1,
     runtimeMs: Date.now() - started,
     memoryKb: null,
@@ -140,8 +137,8 @@ function softFailure(languageId: CodingLanguageId, message: string, started: num
 }
 
 /**
- * Interactive Compile & run: prefer public Piston (faster/reliable for Java),
- * then Wandbox. Batch grading can use Wandbox more heavily.
+ * Vercel / serverless: Wandbox is the public runner (no whitelist).
+ * Optional self-hosted PISTON_API_URL is tried first when configured.
  */
 async function executeRemote(
   languageId: CodingLanguageId,
@@ -159,22 +156,7 @@ async function executeRemote(
         sourceCode,
         stdin,
         piston,
-        interactive ? 9_000 : 12_000,
-      );
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  // Interactive: try public Piston before Wandbox so students get output quickly.
-  if (!publicPistonDisabled()) {
-    try {
-      return await executeViaPiston(
-        languageId,
-        sourceCode,
-        stdin,
-        PUBLIC_PISTON_URL,
-        interactive ? 9_000 : 12_000,
+        interactive ? 12_000 : 15_000,
       );
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -183,16 +165,16 @@ async function executeRemote(
 
   if (!wandboxDisabled()) {
     try {
-      // Ensure Java source is Wandbox-safe even if caller sent Main.
-      const code =
-        languageId === 'java' ? prepareJavaSourceForWandbox(sourceCode) : sourceCode;
-      return await executeViaWandbox(languageId, code, stdin, { fast: interactive });
+      return await executeViaWandbox(languageId, sourceCode, stdin);
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
   }
 
-  throw new Error(errors.filter(Boolean).join(' | ') || 'All remote runners failed');
+  const detail = errors
+    .filter((e) => !/piston http 401|whitelist only/i.test(e))
+    .join(' | ');
+  throw new Error(detail || 'Remote compiler unavailable. Try again in a few seconds.');
 }
 
 function normalizeStdin(stdin: string): string {

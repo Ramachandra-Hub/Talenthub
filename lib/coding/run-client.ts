@@ -34,7 +34,7 @@ export async function runCodingOnServer(
   stdin: string,
 ): Promise<CodingRunResponse> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 18_000);
+  const timer = window.setTimeout(() => controller.abort(), 28_000);
   try {
     const res = await fetchWithSession('/api/v2/coding/run', {
       method: 'POST',

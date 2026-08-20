@@ -8,10 +8,10 @@ import { useAwsStack } from '@/lib/aws/stack';
 import type { ExecuteResult } from '@/lib/coding/types';
 
 export const runtime = 'nodejs';
-export const maxDuration = 20;
+export const maxDuration = 30;
 
-/** Allow enough time for public Piston Java compile + run, under Vercel limits. */
-const INTERACTIVE_BUDGET_MS = 16_000;
+/** Wandbox Java needs headroom; stay under common Vercel gateway limits. */
+const INTERACTIVE_BUDGET_MS = 26_000;
 
 function timeoutResult(): ExecuteResult {
   return {
