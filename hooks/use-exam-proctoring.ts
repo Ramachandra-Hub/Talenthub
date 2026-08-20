@@ -50,6 +50,10 @@ export function useExamProctoring({
   const lastFocusViolationRef = useRef(0);
   const autoSubmitRef = useRef(false);
   const maxViolationsRef = useRef(onMaxViolations);
+  // Browsers only allow requestFullscreen() from a user gesture.
+  // After lock/unlock or Esc, we mark fullscreen as "needed" and retry
+  // only after the student clicks/presses a key.
+  const needsFullscreenRef = useRef(false);
   maxViolationsRef.current = onMaxViolations;
 
   useEffect(() => {
@@ -158,6 +162,15 @@ export function useExamProctoring({
   useEffect(() => {
     if (!enabled || typeof document === 'undefined') return;
 
+    const canAttemptFullscreen = () => {
+      return (
+        typeof document !== 'undefined' &&
+        !document.hidden &&
+        Boolean(document.documentElement.requestFullscreen) &&
+        !document.fullscreenElement
+      );
+    };
+
     const recordTabSwitch = (metadata?: Record<string, unknown>) => {
       const now = Date.now();
       if (now - lastFocusViolationRef.current < PROCTOR_FOCUS_DEBOUNCE_MS) return;
@@ -169,12 +182,12 @@ export function useExamProctoring({
       if (document.hidden) {
         recordTabSwitch({ reason: 'visibility_hidden' });
       } else {
-        // Student returned (from lock screen, alt-tab, etc.) — re-enter fullscreen silently
-        try {
-          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-            void document.documentElement.requestFullscreen().catch(() => {});
-          }
-        } catch { /* ignore */ }
+        // Student returned (from lock screen, alt-tab, etc.).
+        // Do NOT call requestFullscreen() here: it is not a user gesture
+        // and will be blocked by the browser.
+        if (canAttemptFullscreen()) {
+          needsFullscreenRef.current = true;
+        }
       }
     };
 
@@ -186,12 +199,9 @@ export function useExamProctoring({
 
     const onFullscreenChange = () => {
       if (!document.fullscreenElement && !document.hidden) {
-        // Fullscreen exited while page visible (Esc key, etc.) — re-request after short delay
-        setTimeout(() => {
-          if (!document.fullscreenElement && !document.hidden && document.documentElement.requestFullscreen) {
-            void document.documentElement.requestFullscreen().catch(() => {});
-          }
-        }, 300);
+        // Fullscreen exited while page visible (Esc key, etc.)
+        // Again: don't call requestFullscreen() automatically; wait for a gesture.
+        needsFullscreenRef.current = true;
       }
     };
 
@@ -199,10 +209,29 @@ export function useExamProctoring({
     window.addEventListener('blur', onBlur);
     document.addEventListener('fullscreenchange', onFullscreenChange);
 
+    const tryEnterFullscreenAfterGesture = () => {
+      if (!needsFullscreenRef.current) return;
+      if (!canAttemptFullscreen()) return;
+      needsFullscreenRef.current = false;
+      void document.documentElement.requestFullscreen().catch(() => {
+        // If still denied, allow another user gesture attempt.
+        needsFullscreenRef.current = true;
+      });
+    };
+
+    // These listeners only fire after real user interaction and therefore satisfy
+    // the "user gesture" requirement for requestFullscreen().
+    window.addEventListener('pointerdown', tryEnterFullscreenAfterGesture, true);
+    window.addEventListener('keydown', tryEnterFullscreenAfterGesture, true);
+    window.addEventListener('touchstart', tryEnterFullscreenAfterGesture, true);
+
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
+      window.removeEventListener('pointerdown', tryEnterFullscreenAfterGesture, true);
+      window.removeEventListener('keydown', tryEnterFullscreenAfterGesture, true);
+      window.removeEventListener('touchstart', tryEnterFullscreenAfterGesture, true);
       if (flushTimerRef.current != null) {
         clearTimeout(flushTimerRef.current);
       }
