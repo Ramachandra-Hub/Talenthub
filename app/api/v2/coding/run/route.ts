@@ -7,7 +7,7 @@ import { auth } from '@/auth';
 import { useAwsStack } from '@/lib/aws/stack';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 15;
 
 export async function POST(request: Request) {
   const authResult = await requireAuth(['student', 'admin'], request);
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     }
 
     const { language, sourceCode, stdin } = parsed;
-    const result = await executeCode(language, sourceCode, stdin);
+    const result = await executeCode(language, sourceCode, stdin, { interactive: true });
 
     // Optional run log (never block execution on DB / schema errors)
     try {

@@ -300,7 +300,7 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
             {meta ? (
               <p className="text-[11px] text-slate-600 mb-1 font-mono break-all">{meta}</p>
             ) : null}
-            <pre className="text-xs sm:text-sm text-slate-900 whitespace-pre-wrap font-mono min-h-[180px] max-h-[320px] overflow-auto bg-slate-950 text-emerald-100 border border-slate-700 rounded-md px-3 py-2.5 leading-relaxed">
+            <pre className="text-xs sm:text-sm whitespace-pre-wrap font-mono min-h-[180px] max-h-[320px] overflow-auto bg-slate-950 text-white border border-slate-700 rounded-md px-3 py-2.5 leading-relaxed">
               {output ?? 'Compile & run to see stdout / stderr here.'}
             </pre>
           </div>

@@ -42,11 +42,12 @@ async function executeViaPiston(
   sourceCode: string,
   stdin: string,
   url: string,
+  timeoutMs = 12_000,
 ): Promise<ExecuteResult> {
   const lang = getCodingLanguage(languageId);
   const started = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -122,13 +123,14 @@ async function executeRemote(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin: string,
+  interactive = false,
 ): Promise<ExecuteResult> {
   const errors: string[] = [];
 
   const piston = pistonUrl();
   if (piston) {
     try {
-      return await executeViaPiston(languageId, sourceCode, stdin, piston);
+      return await executeViaPiston(languageId, sourceCode, stdin, piston, interactive ? 8_000 : 12_000);
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
@@ -136,15 +138,15 @@ async function executeRemote(
 
   if (!wandboxDisabled()) {
     try {
-      return await executeViaWandbox(languageId, sourceCode, stdin);
+      return await executeViaWandbox(languageId, sourceCode, stdin, { fast: interactive });
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
   }
 
-  if (!publicPistonDisabled()) {
+  if (!interactive && !publicPistonDisabled()) {
     try {
-      return await executeViaPiston(languageId, sourceCode, stdin, PUBLIC_PISTON_URL);
+      return await executeViaPiston(languageId, sourceCode, stdin, PUBLIC_PISTON_URL, 10_000);
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
@@ -162,9 +164,11 @@ export async function executeCode(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin = '',
+  options?: { interactive?: boolean },
 ): Promise<ExecuteResult> {
   const started = Date.now();
   stdin = normalizeStdin(stdin);
+  const interactive = Boolean(options?.interactive);
 
   if (isServerlessHost()) {
     if (languageId === 'javascript') {
@@ -178,7 +182,7 @@ export async function executeCode(
       }
     }
     try {
-      return await executeRemote(languageId, sourceCode, stdin);
+      return await executeRemote(languageId, sourceCode, stdin, interactive);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Remote execution failed';
       return softFailure(languageId, msg, started);

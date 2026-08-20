@@ -45,11 +45,21 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
     }
 
     try {
-      if (video.paused) await video.play();
+      if (video.paused) {
+        await video.play();
+      }
       setCameraReady(true);
       setCameraError(null);
       return true;
-    } catch {
+    } catch (err) {
+      const interrupted =
+        err instanceof DOMException &&
+        (err.name === 'AbortError' || /interrupted/i.test(err.message));
+      if (interrupted) {
+        setCameraReady(true);
+        setCameraError(null);
+        return true;
+      }
       return false;
     }
   }, [videoRef]);

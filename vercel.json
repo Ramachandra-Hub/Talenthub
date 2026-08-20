@@ -53,7 +53,7 @@
       "maxDuration": 30
     },
     "app/api/v2/coding/run/route.ts": {
-      "maxDuration": 30
+      "maxDuration": 15
     },
     "app/api/v2/coding/run-batch/route.ts": {
       "maxDuration": 60

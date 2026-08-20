@@ -74,14 +74,16 @@ function prepareSource(languageId: CodingLanguageId, source: string): string {
   return source;
 }
 
-function compilersFor(languageId: CodingLanguageId, liveJava: string[]): string[] {
+function compilersFor(languageId: CodingLanguageId, liveJava: string[], fast?: boolean): string[] {
   if (languageId === 'java') {
     const preferred = [COMPILER_BY_LANGUAGE.java, ...liveJava, ...(COMPILER_FALLBACKS.java ?? [])];
-    return [...new Set(preferred.filter(Boolean))].slice(0, 4);
+    const unique = [...new Set(preferred.filter(Boolean))];
+    return unique.slice(0, fast ? 1 : 3);
   }
-  return [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])].filter(
+  const list = [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])].filter(
     Boolean,
   ) as string[];
+  return fast ? list.slice(0, 1) : list;
 }
 
 function isRetryableCompilerError(message: string): boolean {
@@ -134,7 +136,7 @@ async function tryWandboxCompiler(
         stdin: stdin ?? '',
       }),
     },
-    18_000,
+    8_000,
   );
 
   if (!res.ok) {
@@ -153,16 +155,19 @@ export async function executeViaWandbox(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin: string,
+  options?: { fast?: boolean },
 ): Promise<ExecuteResult> {
-  const liveJava = languageId === 'java' ? await liveJavaCompilers() : [];
-  const compilers = compilersFor(languageId, liveJava);
+  const fast = Boolean(options?.fast);
+  const liveJava = languageId === 'java' && !fast ? await liveJavaCompilers() : [];
+  const compilers = compilersFor(languageId, liveJava, fast);
   const lang = getCodingLanguage(languageId);
   const started = Date.now();
 
   let data: WandboxResponse | null = null;
   let lastError: Error | null = null;
+  const rounds = fast ? 1 : 2;
 
-  for (let attempt = 0; attempt < 2 && !data; attempt += 1) {
+  for (let attempt = 0; attempt < rounds && !data; attempt += 1) {
     if (attempt > 0) await sleep(400 * attempt);
 
     for (const compiler of compilers) {

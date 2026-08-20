@@ -51,10 +51,17 @@ export async function GET(request: Request, context: RouteContext) {
   });
 
   if (!row) {
-    return NextResponse.json(
-      { error: 'Submission not found. It may still be saving — refresh in a moment.', confirmed: false },
-      { status: 404 },
-    );
+    return NextResponse.json({
+      id,
+      status: 'pending',
+      confirmed: false,
+      source: 'server',
+      testTitle: 'Examination',
+      scorePercent: null,
+      completedAt: null,
+      referenceId: id,
+      error: 'Submission is still saving. Refresh this page in a moment.',
+    });
   }
 
   const completed = Boolean(row.completedAt) || row.status === 'completed' || row.status === 'submitted';
