@@ -82,7 +82,15 @@ function localRuntimeMissing(result: ExecuteResult): boolean {
     text.includes('was not found') ||
     text.includes('runtime not found') ||
     text.includes('cannot run') ||
-    text.includes('serverless cannot run')
+    text.includes('serverless cannot run') ||
+    // Container runtime pressure on some hosts (podman/crun/runc) can make
+    // local execution fail even for valid code. Treat this as infra failure
+    // so we can fall back to remote execution instead of marking student wrong.
+    text.includes('oci runtime error') ||
+    text.includes('crun: clone') ||
+    text.includes('resource temporarily unavailable') ||
+    text.includes('cannot allocate memory') ||
+    text.includes('failed to create shim task')
   );
 }
 
