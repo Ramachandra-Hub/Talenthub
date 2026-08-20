@@ -31,20 +31,15 @@ export async function runCodingOnServer(
 }
 
 export function formatCodingRunOutput(data: CodingRunResponse): string {
-  const parts: string[] = [];
-  if (data.engine) parts.push(`Engine: ${data.engine}`);
-  if (data.runtimeMs !== undefined) parts.push(`${data.runtimeMs}ms`);
-  if (data.exitCode !== undefined) parts.push(`exit ${data.exitCode}`);
-  const meta = parts.length ? `${parts.join(' · ')}\n\n` : '';
-
   const body = [
-    data.stdout != null && data.stdout !== '' ? `stdout:\n${data.stdout}` : null,
+    data.stdout != null && String(data.stdout).length > 0 ? `stdout:\n${data.stdout}` : null,
     data.stderr ? `stderr:\n${data.stderr}` : null,
+    data.error ? `error:\n${data.error}` : null,
   ]
     .filter(Boolean)
     .join('\n\n');
 
-  return meta + (body || '(no output)');
+  return body || '(no output)';
 }
 
 export async function runCodingBatchOnServer(

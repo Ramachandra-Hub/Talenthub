@@ -43,6 +43,25 @@ function parseCodingAnswer(raw: string | null | undefined): CodingAnswerPayload 
   return null;
 }
 
+function withScannerHint(text: string, usedInput: string): string {
+  const lower = text.toLowerCase();
+  if (
+    !lower.includes('nosuchelementexception') &&
+    !lower.includes('no such element')
+  ) {
+    return text;
+  }
+  const inputNote = usedInput.trim()
+    ? `Current input was:\n${usedInput.trim()}`
+    : 'No input was provided (stdin was empty).';
+  return `${text}
+
+Tip: Scanner.nextInt() / next() failed because input ran out.
+Paste the sample input (or matching custom input) in Custom input, then click Compile & run again.
+
+${inputNote}`;
+}
+
 type Props = {
   question: Question;
   answer: string | null | undefined;
@@ -125,12 +144,24 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
     setMeta(null);
   };
 
-  const runCode = useCallback(async (input: string) => {
+  const resolveInput = useCallback(
+    (preferred?: string) => {
+      const chosen = (preferred ?? stdin).trim();
+      if (chosen) return chosen.endsWith('\n') ? chosen : `${chosen}\n`;
+      const sample = problem.sampleInput.trim();
+      if (sample) return sample.endsWith('\n') ? sample : `${sample}\n`;
+      return '';
+    },
+    [stdin, problem.sampleInput],
+  );
+
+  const runCode = useCallback(async (preferredInput?: string) => {
     if (!code.trim()) {
       setMeta(null);
       setOutput('Write your program in the editor, then click Run to compile and see output.');
       return;
     }
+    const input = resolveInput(preferredInput);
     setRunning(true);
     setOutput(null);
     setMeta(null);
@@ -145,16 +176,16 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
           .filter(Boolean)
           .join(' · '),
       );
-      setOutput(formatCodingRunOutput(data));
+      setOutput(withScannerHint(formatCodingRunOutput(data), input));
     } catch (err) {
       setOutput(err instanceof Error ? err.message : 'Run failed. Sign in and try again.');
     } finally {
       setRunning(false);
     }
-  }, [code, language]);
+  }, [code, language, resolveInput]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="rounded-lg border border-[#1e3a5f]/20 bg-slate-50 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <span className="text-xs font-bold uppercase tracking-wide text-[#1e3a5f]">
@@ -183,11 +214,15 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
         <div className="mt-3 grid sm:grid-cols-2 gap-3 text-xs">
           <div>
             <p className="font-semibold text-slate-800">Sample input</p>
-            <pre className="mt-1 bg-white border rounded p-2 font-mono">{problem.sampleInput}</pre>
+            <pre className="mt-1 bg-white border rounded p-2 font-mono whitespace-pre-wrap max-h-28 overflow-auto">
+              {problem.sampleInput || '(none)'}
+            </pre>
           </div>
           <div>
             <p className="font-semibold text-slate-800">Sample output</p>
-            <pre className="mt-1 bg-white border rounded p-2 font-mono">{problem.sampleOutput}</pre>
+            <pre className="mt-1 bg-white border rounded p-2 font-mono whitespace-pre-wrap max-h-28 overflow-auto">
+              {problem.sampleOutput || '(none)'}
+            </pre>
           </div>
         </div>
       </div>
@@ -220,7 +255,7 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
               type="button"
               size="sm"
               disabled={running}
-              onClick={() => void runCode(stdin.trim() ? stdin : problem.sampleInput)}
+              onClick={() => void runCode()}
             >
               {running ? 'Compiling…' : 'Compile & run'}
             </Button>
@@ -234,24 +269,39 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
             if (!value.trim() && !code.trim()) return;
             setCode(value);
           }}
-          height="min(62vh, 560px)"
+          height="min(42vh, 420px)"
         />
-        <div className="mt-3 grid sm:grid-cols-2 gap-2">
+
+        <div className="mt-3 space-y-3">
           <div>
-            <h3 className="text-xs font-semibold text-gray-900 mb-1">Custom input</h3>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <h3 className="text-xs font-semibold text-gray-900">Custom input (stdin)</h3>
+              {problem.sampleInput.trim() ? (
+                <button
+                  type="button"
+                  className="text-[11px] font-semibold text-[#1e4a7a] hover:underline"
+                  onClick={() => setStdin(problem.sampleInput)}
+                >
+                  Use sample input
+                </button>
+              ) : null}
+            </div>
             <Textarea
               value={stdin}
               onChange={(e) => setStdin(e.target.value)}
-              rows={2}
-              className="font-mono text-xs min-h-[56px] max-h-[72px] resize-none"
-              placeholder="stdin"
+              rows={4}
+              className="font-mono text-xs min-h-[88px] max-h-[140px] resize-y"
+              placeholder="Paste input values here before Compile & run"
             />
           </div>
+
           <div>
             <h3 className="text-xs font-semibold text-gray-900 mb-1">Output</h3>
-            {meta ? <p className="text-[10px] text-slate-600 mb-1 truncate">{meta}</p> : null}
-            <pre className="text-xs text-slate-800 whitespace-pre-wrap font-mono h-[56px] overflow-auto bg-slate-50 border rounded-md px-2 py-1">
-              {output ?? 'Compile to see output.'}
+            {meta ? (
+              <p className="text-[11px] text-slate-600 mb-1 font-mono break-all">{meta}</p>
+            ) : null}
+            <pre className="text-xs sm:text-sm text-slate-900 whitespace-pre-wrap font-mono min-h-[180px] max-h-[320px] overflow-auto bg-slate-950 text-emerald-100 border border-slate-700 rounded-md px-3 py-2.5 leading-relaxed">
+              {output ?? 'Compile & run to see stdout / stderr here.'}
             </pre>
           </div>
         </div>

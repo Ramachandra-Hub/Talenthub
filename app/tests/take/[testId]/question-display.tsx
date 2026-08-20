@@ -37,17 +37,19 @@ export default function QuestionDisplay({ question, speedMode }: QuestionDisplay
           onAnswerChange={handleAnswerChange}
         />
         {!speedMode ? (
-          <div className="flex gap-2 pt-4 mt-4 border-t border-gray-200">
+          <div className="flex justify-end pt-2 mt-2">
             <Button
+              type="button"
+              size="sm"
               onClick={() => markForReview(question.id, !isMarked)}
-              variant="ghost"
-              className={`flex-1 border-2 font-bold ${
+              variant="outline"
+              className={`h-8 px-3 text-xs font-semibold ${
                 isMarked
-                  ? 'border-amber-950 bg-amber-900 text-amber-50'
-                  : 'border-amber-800 bg-amber-100 text-amber-950'
+                  ? 'border-amber-700 bg-amber-100 text-amber-950'
+                  : 'border-slate-300 text-slate-700'
               }`}
             >
-              {isMarked ? '⚑ Marked for Review' : '○ Mark for Review'}
+              {isMarked ? '⚑ Marked' : 'Mark for review'}
             </Button>
           </div>
         ) : null}
