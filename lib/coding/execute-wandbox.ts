@@ -136,7 +136,7 @@ async function tryWandboxCompiler(
         stdin: stdin ?? '',
       }),
     },
-    6_000,
+    10_000,
   );
 
   if (!res.ok) {

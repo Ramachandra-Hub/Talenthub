@@ -8,10 +8,10 @@ import { useAwsStack } from '@/lib/aws/stack';
 import type { ExecuteResult } from '@/lib/coding/types';
 
 export const runtime = 'nodejs';
-/** Keep under common Vercel gateway limits so the client gets JSON, not HTML 504. */
-export const maxDuration = 10;
+export const maxDuration = 20;
 
-const INTERACTIVE_BUDGET_MS = 7_000;
+/** Allow enough time for public Piston Java compile + run, under Vercel limits. */
+const INTERACTIVE_BUDGET_MS = 16_000;
 
 function timeoutResult(): ExecuteResult {
   return {
@@ -51,7 +51,6 @@ export async function POST(request: Request) {
       ),
     ]);
 
-    // Optional run log (never block execution on DB / schema errors)
     try {
       const service = getDbService();
       let userId: string | undefined;

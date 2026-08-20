@@ -53,7 +53,7 @@
       "maxDuration": 30
     },
     "app/api/v2/coding/run/route.ts": {
-      "maxDuration": 10
+      "maxDuration": 20
     },
     "app/api/student/test-attempts/[attemptId]/route.ts": {
       "maxDuration": 15

@@ -5,7 +5,10 @@ import {
 import { isServerlessHost } from '@/lib/coding/execute-environment';
 import { executeJavaScriptInProcess } from '@/lib/coding/execute-inprocess-js';
 import { executeCodeLocal } from '@/lib/coding/execute-local';
-import { executeViaWandbox } from '@/lib/coding/execute-wandbox';
+import {
+  executeViaWandbox,
+  prepareJavaSourceForWandbox,
+} from '@/lib/coding/execute-wandbox';
 import type { ExecuteResult } from '@/lib/coding/types';
 
 export type { CodingLanguageId as CodingLanguage };
@@ -37,6 +40,22 @@ function publicPistonDisabled(): boolean {
   );
 }
 
+/** Piston executes Java as Main.java — public/main class must be Main. */
+function prepareJavaSourceForPiston(source: string): string {
+  let next = source.replace(/\r\n/g, '\n');
+  if (/\bpublic\s+class\s+\w+/.test(next)) {
+    next = next.replace(/\bpublic\s+class\s+\w+/, 'public class Main');
+  } else if (/\bclass\s+\w+/.test(next)) {
+    next = next.replace(/\bclass\s+\w+/, 'class Main');
+  }
+  return next;
+}
+
+function prepareSourceForPiston(languageId: CodingLanguageId, source: string): string {
+  if (languageId === 'java') return prepareJavaSourceForPiston(source);
+  return source;
+}
+
 async function executeViaPiston(
   languageId: CodingLanguageId,
   sourceCode: string,
@@ -55,10 +74,10 @@ async function executeViaPiston(
       body: JSON.stringify({
         language: lang.piston.language,
         version: lang.piston.version,
-        files: [{ name: lang.fileName, content: sourceCode }],
+        files: [{ name: lang.fileName, content: prepareSourceForPiston(languageId, sourceCode) }],
         stdin,
-        run_timeout: 8000,
-        compile_timeout: 12000,
+        run_timeout: Math.min(6_000, Math.max(3_000, timeoutMs - 2_000)),
+        compile_timeout: Math.min(8_000, Math.max(4_000, timeoutMs - 1_000)),
       }),
       signal: controller.signal,
     });
@@ -109,9 +128,10 @@ function localRuntimeMissing(result: ExecuteResult): boolean {
 
 function softFailure(languageId: CodingLanguageId, message: string, started: number): ExecuteResult {
   const lang = getCodingLanguage(languageId);
+  const clean = message.replace(/this operation was aborted/gi, 'remote compiler timed out');
   return {
     stdout: '',
-    stderr: `${lang.label}: ${message}\n\nClick Compile & run again. If this keeps happening, wait a few seconds and retry.`,
+    stderr: `${lang.label}: ${clean}\n\nClick Compile & run again. If this keeps happening, wait a few seconds and retry.`,
     exitCode: 1,
     runtimeMs: Date.now() - started,
     memoryKb: null,
@@ -119,6 +139,10 @@ function softFailure(languageId: CodingLanguageId, message: string, started: num
   };
 }
 
+/**
+ * Interactive Compile & run: prefer public Piston (faster/reliable for Java),
+ * then Wandbox. Batch grading can use Wandbox more heavily.
+ */
 async function executeRemote(
   languageId: CodingLanguageId,
   sourceCode: string,
@@ -130,7 +154,28 @@ async function executeRemote(
   const piston = pistonUrl();
   if (piston) {
     try {
-      return await executeViaPiston(languageId, sourceCode, stdin, piston, interactive ? 8_000 : 12_000);
+      return await executeViaPiston(
+        languageId,
+        sourceCode,
+        stdin,
+        piston,
+        interactive ? 9_000 : 12_000,
+      );
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // Interactive: try public Piston before Wandbox so students get output quickly.
+  if (!publicPistonDisabled()) {
+    try {
+      return await executeViaPiston(
+        languageId,
+        sourceCode,
+        stdin,
+        PUBLIC_PISTON_URL,
+        interactive ? 9_000 : 12_000,
+      );
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
@@ -138,15 +183,10 @@ async function executeRemote(
 
   if (!wandboxDisabled()) {
     try {
-      return await executeViaWandbox(languageId, sourceCode, stdin, { fast: interactive });
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  if (!interactive && !publicPistonDisabled()) {
-    try {
-      return await executeViaPiston(languageId, sourceCode, stdin, PUBLIC_PISTON_URL, 10_000);
+      // Ensure Java source is Wandbox-safe even if caller sent Main.
+      const code =
+        languageId === 'java' ? prepareJavaSourceForWandbox(sourceCode) : sourceCode;
+      return await executeViaWandbox(languageId, code, stdin, { fast: interactive });
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
