@@ -33,6 +33,20 @@ export type ElevateXScorecardLookupResult =
     }
   | { error: string; status: number };
 
+function hasCodingPayload(answers: Record<string, unknown>): boolean {
+  return Object.values(answers).some((value) => {
+    if (typeof value === 'string') {
+      return value.includes('sourceCode');
+    }
+    if (!value || typeof value !== 'object') return false;
+    const row = value as Record<string, unknown>;
+    const directSource = row.sourceCode;
+    if (typeof directSource === 'string' && directSource.trim()) return true;
+    const ua = row.userAnswer;
+    return typeof ua === 'string' && ua.includes('sourceCode');
+  });
+}
+
 async function rebuildExamScorecardForAttempt(row: {
   id: string;
   userId: string;
@@ -110,15 +124,14 @@ export async function fetchElevateXScorecardForAttemptPrisma(
           row.answers && typeof row.answers === 'object' && !Array.isArray(row.answers)
             ? (row.answers as Record<string, unknown>)
             : {};
-        const hasCoding = Object.values(answers).some((value) => {
-          if (!value || typeof value !== 'object') return false;
-          const ua = (value as { userAnswer?: unknown }).userAnswer;
-          return typeof ua === 'string' && ua.includes('sourceCode');
-        });
+        const hasCoding = hasCodingPayload(answers);
+        const needsCodingDetail =
+          hasCoding &&
+          (!scorecard?.codingAnalysis || Boolean(scorecard.gradingPending));
         const staleCard =
           !scorecard ||
           scorecard.reportKind !== 'exam' ||
-          (hasCoding && scorecard.percentage >= 99);
+          needsCodingDetail;
         if (staleCard) {
           const rebuilt = await rebuildExamScorecardForAttempt(row);
           if (rebuilt) return rebuilt;

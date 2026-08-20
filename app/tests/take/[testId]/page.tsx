@@ -107,7 +107,6 @@ export default function TakeTestPage({
       setAccessLocked(null);
       try {
         const user = await getClientUser();
-        let detectedPrior: CompletedAttemptSummary | null = null;
 
         const policyRes = await fetch(`/api/tests/${encodeURIComponent(testId)}/access-policy`);
         if (policyRes.ok) {
@@ -145,19 +144,20 @@ export default function TakeTestPage({
             );
             return;
           }
-          if (json.priorAttempt) {
-            detectedPrior = json.priorAttempt;
-          }
           if (json.schedule) {
             setExamSchedule(json.schedule);
           }
           if (json.test) {
             setTest(json.test);
           }
-          if (json.alreadySubmitted && json.priorAttempt) {
-            setPriorAttempt(json.priorAttempt);
+          // Submitted sitting is over — never open the exam UI again.
+          if (json.priorAttempt || json.alreadySubmitted) {
+            if (json.priorAttempt) {
+              setPriorAttempt(json.priorAttempt);
+            }
             if (json.questions?.length) setQuestions(json.questions);
             if (json.sections?.length) setExamSections(json.sections);
+            setTestStarted(false);
             return;
           }
           if (res.ok && json.questions?.length) {
@@ -202,6 +202,13 @@ export default function TakeTestPage({
     };
 
     void fetchTest();
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      // Back/forward cache can restore a live exam UI after submit — re-check lock.
+      if (event.persisted) void fetchTest();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
   }, [testId]);
 
   if (loading) {

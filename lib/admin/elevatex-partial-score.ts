@@ -21,16 +21,26 @@ export function livePartialScoreFromAttemptRow(row: {
   totalScore?: number | null;
 }): number {
   const scorecard = parseElevateXScorecardFromAnswers(row.answers);
-  if (scorecard && typeof scorecard.percentage === 'number') {
-    return scorecard.percentage;
-  }
-
   const fromColumns = resolveStoredPercent(
     row.percentageScore != null ? Number(row.percentageScore) : null,
     row.score != null ? Number(row.score) : null,
     row.totalScore != null ? Number(row.totalScore) : null,
   );
+
+  // Prefer stored columns while coding grade is still pending (provisional MCQ %).
+  if (scorecard?.gradingPending && fromColumns > 0) {
+    return fromColumns;
+  }
+
+  if (scorecard && typeof scorecard.percentage === 'number' && !scorecard.gradingPending) {
+    return scorecard.percentage;
+  }
+
   if (fromColumns > 0) return fromColumns;
+
+  if (scorecard && typeof scorecard.percentage === 'number') {
+    return scorecard.percentage;
+  }
 
   return partialFromAnswersPayload(row.answers);
 }

@@ -513,7 +513,7 @@ export default function TestInterface({
     });
     clearExamDraft(test.id);
     setIsSubmitted(true);
-    router.push(`/tests/result/${localAttemptId}`);
+    router.replace(`/tests/result/${localAttemptId}`);
   };
 
   async function handleSubmitTest(options?: SubmitOptions) {
@@ -714,7 +714,7 @@ export default function TestInterface({
         window.sessionStorage.removeItem(`exam:start:${test.id}`);
         window.sessionStorage.removeItem(`exam:serverStart:${test.id}`);
         setIsSubmitted(true);
-        router.push(`/tests/result/${localAttemptId}?pending=1`);
+        router.replace(`/tests/result/${localAttemptId}?pending=1`);
         return;
       }
 
@@ -777,7 +777,7 @@ export default function TestInterface({
       window.sessionStorage.removeItem(`exam:start:${test.id}`);
       window.sessionStorage.removeItem(`exam:serverStart:${test.id}`);
       setIsSubmitted(true);
-      router.push(`/tests/result/${attemptId}`);
+      router.replace(`/tests/result/${attemptId}`);
     } catch (error) {
       if (
         isSchemaMissingError(error) ||

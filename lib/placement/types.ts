@@ -187,4 +187,6 @@ export type PlacementScorecard = {
   reportKind?: 'elevatex' | 'exam';
   /** Nine-parameter coding deep analysis when the exam includes coding questions. */
   codingAnalysis?: CodingDeepAnalysis | null;
+  /** True when coding was deferred at submit and full rubrics are still pending. */
+  gradingPending?: boolean;
 };

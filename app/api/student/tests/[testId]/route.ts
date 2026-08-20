@@ -79,6 +79,7 @@ export async function GET(_request: Request, context: RouteContext) {
       questions: sanitizeQuestionsForStudent(questions),
       sections,
       priorAttempt,
+      alreadySubmitted: Boolean(priorAttempt),
       schedule: access.schedule,
     });
   }
@@ -141,6 +142,7 @@ export async function GET(_request: Request, context: RouteContext) {
     questions: sanitizeQuestionsForStudent(questions),
     sections,
     priorAttempt,
+    alreadySubmitted: Boolean(priorAttempt),
     schedule: access.schedule,
   });
 }

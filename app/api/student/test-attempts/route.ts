@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { requireAuth } from '@/lib/server-auth';
 import { fallbackTestForAttempt, normalizeAttemptRow } from '@/lib/test-attempts';
 import {
@@ -238,17 +238,10 @@ export async function POST(request: Request) {
           scorePercent = built.scorePercent;
           rawNetScore = built.rawNetScore;
           Object.assign(answersIn, encodeExamScorecardAnswers(built.scorecard, answersIn));
-        } else if (codingPresent && scorePercent >= 99) {
-          // Do not keep fake 100% when coding has not been graded yet.
-          scorePercent = 0;
-          rawNetScore = 0;
         }
+        // If scoring timed out, keep the client MCQ provisional % — never force 0.
       } catch (err) {
         console.warn('[test-attempts/submit] server scoring skipped:', err);
-        if (codingPresent && scorePercent >= 99) {
-          scorePercent = 0;
-          rawNetScore = 0;
-        }
       }
     }
 
@@ -302,7 +295,7 @@ export async function POST(request: Request) {
       console.warn('[test-attempts/submit] dashboard stat append skipped:', err);
     }
 
-    void (async () => {
+    after(async () => {
       if (proctorSessionId) {
         try {
           await linkProctorViolationsPrisma(userId, id, testId || null, proctorSessionId);
@@ -316,7 +309,7 @@ export async function POST(request: Request) {
         console.warn('[test-attempts/submit] session release skipped:', err);
       }
 
-      // Full coding grade after response — report path also recomputes if needed.
+      // Full coding grade after response — keeps live dashboard + reports accurate.
       if (
         codingPresent &&
         testId &&
@@ -358,7 +351,7 @@ export async function POST(request: Request) {
           console.warn('[test-attempts/submit] background coding grade skipped:', err);
         }
       }
-    })();
+    });
 
     const attempt: TestAttempt & { test: { name: string } } = {
       ...normalizeAttemptRow({

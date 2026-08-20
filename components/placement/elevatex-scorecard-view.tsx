@@ -169,6 +169,14 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
         <Card className={cn('shadow-md border-slate-200', compact ? 'p-4' : 'p-6')}>
           <CodingDeepAnalysisView analysis={scorecard.codingAnalysis} compact={compact} />
         </Card>
+      ) : scorecard.gradingPending ? (
+        <Card className={cn('shadow-md border-amber-200 bg-amber-50/50', compact ? 'p-4' : 'p-6')}>
+          <h4 className="text-sm font-bold text-slate-900 mb-1">Coding deep analysis</h4>
+          <p className="text-xs text-slate-600">
+            Parameter-wise coding marks are still being calculated. Open this report again in a
+            moment for test cases, logic, complexity, and quality scores.
+          </p>
+        </Card>
       ) : null}
 
       <div className="grid md:grid-cols-2 gap-6">

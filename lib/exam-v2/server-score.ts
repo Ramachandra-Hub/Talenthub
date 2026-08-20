@@ -150,8 +150,13 @@ export async function scoreQuestionsOnServer(
   }
 
   const totalQuestions = questions.length;
+  const scoredForPercent = deferCoding
+    ? results.filter((row) => !row.isCoding)
+    : results;
+  const earnedForPercent = scoredForPercent.reduce((sum, row) => sum + row.earned, 0);
+  const denom = scoredForPercent.length > 0 ? scoredForPercent.length : totalQuestions;
   const scorePercent =
-    totalQuestions > 0 ? roundScorePercent((earned / totalQuestions) * 100) : 0;
+    denom > 0 ? roundScorePercent((earnedForPercent / denom) * 100) : 0;
   return {
     results,
     questions: questions as Question[],

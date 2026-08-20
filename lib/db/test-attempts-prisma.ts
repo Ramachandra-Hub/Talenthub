@@ -742,8 +742,36 @@ export async function findCompletedAttemptForTestPrisma(
   testId: string,
   scheduleId?: string | null,
 ): Promise<CompletedAttemptSummary | null> {
-  if (scheduleId?.trim()) {
-    return findCompletedAttemptForSchedulePrisma(userId, scheduleId.trim());
+  const trimmedSchedule = scheduleId?.trim() || '';
+  if (trimmedSchedule) {
+    const bySchedule = await findCompletedAttemptForSchedulePrisma(userId, trimmedSchedule);
+    if (bySchedule) return bySchedule;
+
+    // Submits that never stored scheduleId must still lock this sitting.
+    const orphan = await prisma.testAttempt.findFirst({
+      where: {
+        userId,
+        testId,
+        status: { in: ['completed', 'submitted'] },
+        scheduleId: null,
+        completedAt: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      select: {
+        id: true,
+        percentageScore: true,
+        score: true,
+        completedAt: true,
+      },
+    });
+    if (orphan) {
+      return {
+        id: orphan.id,
+        score: Number(orphan.percentageScore ?? orphan.score ?? 0),
+        completed_at: orphan.completedAt?.toISOString() ?? null,
+      };
+    }
+    return null;
   }
 
   const rows = await queryAttemptsPrisma(userId);

@@ -121,8 +121,26 @@ export async function buildExamScorecard(input: {
   let totalMarks = 0;
 
   for (const [slug, bucket] of buckets) {
-    const marks = bucket.rows.length;
-    const earned = bucket.rows.reduce((sum, row) => sum + row.earned, 0);
+    const rowsForMarks = input.deferCoding
+      ? bucket.rows.filter((row) => !row.isCoding)
+      : bucket.rows;
+    if (input.deferCoding && rowsForMarks.length === 0 && bucket.rows.every((r) => r.isCoding)) {
+      // Keep a coding subject tile visible while remote grading is pending.
+      sections.push({
+        sectionId: slug as PlacementSectionScore['sectionId'],
+        name: bucket.name,
+        marks: bucket.rows.length,
+        earned: 0,
+        percent: 0,
+        correct: 0,
+        wrong: 0,
+        skipped: bucket.rows.filter((row) => row.skipped).length,
+        total: bucket.rows.length,
+      });
+      continue;
+    }
+    const marks = rowsForMarks.length || bucket.rows.length;
+    const earned = rowsForMarks.reduce((sum, row) => sum + row.earned, 0);
     earnedMarks += earned;
     totalMarks += marks;
     sections.push({
@@ -131,9 +149,9 @@ export async function buildExamScorecard(input: {
       marks,
       earned: roundScorePercent(earned),
       percent: marks > 0 ? roundScorePercent((earned / marks) * 100) : 0,
-      correct: bucket.rows.filter((row) => row.correct).length,
-      wrong: bucket.rows.filter((row) => row.wrong).length,
-      skipped: bucket.rows.filter((row) => row.skipped).length,
+      correct: rowsForMarks.filter((row) => row.correct).length,
+      wrong: rowsForMarks.filter((row) => row.wrong).length,
+      skipped: rowsForMarks.filter((row) => row.skipped).length,
       total: marks,
     });
   }
@@ -148,6 +166,9 @@ export async function buildExamScorecard(input: {
       rubric: row.codingRubric!,
     }));
   const codingAnalysis = buildCodingDeepAnalysis(codingRows);
+  const gradingPending = Boolean(
+    input.deferCoding && scored.results.some((row) => row.isCoding),
+  );
   const nowIso = new Date().toISOString();
   const candidate: PlacementCandidate = {
     fullName: input.candidate.fullName,
@@ -181,6 +202,7 @@ export async function buildExamScorecard(input: {
     recommendations,
     reportKind: 'exam',
     codingAnalysis,
+    gradingPending: gradingPending || undefined,
   };
 
   return {

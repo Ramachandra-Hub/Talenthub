@@ -151,6 +151,26 @@ export async function POST(request: Request) {
       }
     }
 
+    // Block progress writes after this sitting is already submitted.
+    const priorEarly = await findCompletedAttemptForTestPrisma(
+      userId,
+      testId,
+      scheduleId || undefined,
+    );
+    if (priorEarly) {
+      return NextResponse.json(
+        {
+          error: 'You have already submitted this exam sitting and cannot take it again.',
+          attemptId: priorEarly.id,
+          priorAttempt: priorEarly,
+          locked: true,
+          saved: false,
+          completed: true,
+        },
+        { status: 200 },
+      );
+    }
+
     if (!attemptId && elapsedSec > 0) {
       try {
         const lean = await withPrismaRetry(() =>
