@@ -16,11 +16,25 @@ const COMPILER_BY_LANGUAGE: Record<CodingLanguageId, string> = {
 };
 
 const COMPILER_FALLBACKS: Partial<Record<CodingLanguageId, string[]>> = {
-  java: ['openjdk-jdk-22+36', 'openjdk-jdk-21+35'],
+  java: ['openjdk-jdk-22+36', 'openjdk-jdk-21+35', 'openjdk'],
   python: ['cpython-3.11.7', 'cpython-3.10.10'],
 };
 
 let javaCompilerCache: { names: string[]; fetchedAt: number } | null = null;
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function liveJavaCompilers(): Promise<string[]> {
   const now = Date.now();
@@ -28,7 +42,7 @@ async function liveJavaCompilers(): Promise<string[]> {
     return javaCompilerCache.names;
   }
   try {
-    const res = await fetch(WANDBOX_LIST_URL, { cache: 'no-store' });
+    const res = await fetchWithTimeout(WANDBOX_LIST_URL, { cache: 'no-store' }, 4000);
     if (!res.ok) return COMPILER_FALLBACKS.java ?? [];
     const list = (await res.json()) as Array<{ name?: string; language?: string }>;
     const names = list
@@ -63,7 +77,7 @@ function prepareSource(languageId: CodingLanguageId, source: string): string {
 function compilersFor(languageId: CodingLanguageId, liveJava: string[]): string[] {
   if (languageId === 'java') {
     const preferred = [COMPILER_BY_LANGUAGE.java, ...liveJava, ...(COMPILER_FALLBACKS.java ?? [])];
-    return [...new Set(preferred.filter(Boolean))];
+    return [...new Set(preferred.filter(Boolean))].slice(0, 4);
   }
   return [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])].filter(
     Boolean,
@@ -75,10 +89,20 @@ function isRetryableCompilerError(message: string): boolean {
   return (
     text.includes('http 400') ||
     text.includes('http 404') ||
+    text.includes('http 429') ||
     text.includes('http 500') ||
+    text.includes('http 502') ||
+    text.includes('http 503') ||
+    text.includes('http 504') ||
     text.includes('unknown compiler') ||
     text.includes('compiler is not found') ||
-    text.includes('not found')
+    text.includes('not found') ||
+    text.includes('fetch failed') ||
+    text.includes('network') ||
+    text.includes('aborted') ||
+    text.includes('timeout') ||
+    text.includes('econnreset') ||
+    text.includes('enotfound')
   );
 }
 
@@ -98,18 +122,20 @@ async function tryWandboxCompiler(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin: string,
-  signal: AbortSignal,
 ): Promise<WandboxResponse> {
-  const res = await fetch(WANDBOX_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      compiler,
-      code: prepareSource(languageId, sourceCode),
-      stdin: stdin ?? '',
-    }),
-    signal,
-  });
+  const res = await fetchWithTimeout(
+    WANDBOX_URL,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        compiler,
+        code: prepareSource(languageId, sourceCode),
+        stdin: stdin ?? '',
+      }),
+    },
+    18_000,
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -117,6 +143,10 @@ async function tryWandboxCompiler(
   }
 
   return (await res.json()) as WandboxResponse;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function executeViaWandbox(
@@ -129,53 +159,51 @@ export async function executeViaWandbox(
   const lang = getCodingLanguage(languageId);
   const started = Date.now();
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 22000);
+  let data: WandboxResponse | null = null;
+  let lastError: Error | null = null;
 
-  try {
-    let data: WandboxResponse | null = null;
-    let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 2 && !data; attempt += 1) {
+    if (attempt > 0) await sleep(400 * attempt);
 
     for (const compiler of compilers) {
       try {
-        data = await tryWandboxCompiler(compiler, languageId, sourceCode, stdin, controller.signal);
+        data = await tryWandboxCompiler(compiler, languageId, sourceCode, stdin);
         const unknown =
           `${data.compiler_error ?? ''} ${data.compiler_message ?? ''} ${data.compiler_output ?? ''}`.toLowerCase();
         if (unknown.includes('unknown compiler') || unknown.includes('compiler is not found')) {
           lastError = new Error(`Unknown compiler: ${compiler}`);
+          data = null;
           continue;
         }
         break;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        if (!isRetryableCompilerError(lastError.message)) throw lastError;
+        if (!isRetryableCompilerError(lastError.message)) {
+          throw lastError;
+        }
       }
     }
-
-    if (!data) throw lastError ?? new Error('Wandbox unavailable');
-
-    const compileErr = String(data.compiler_error ?? '').trim();
-    const runErr = String(data.program_error ?? '').trim();
-    const stderr = [compileErr, runErr].filter(Boolean).join('\n').trim();
-    const stdoutRaw = data.program_output ?? '';
-    const stdout = stdoutRaw.trimEnd();
-    const statusOk = String(data.status ?? '') === '0';
-    const exitCode = compileErr ? 1 : statusOk ? 0 : 1;
-
-    return {
-      stdout: stdout ? `${stdout}\n` : '',
-      stderr,
-      exitCode,
-      runtimeMs: Date.now() - started,
-      memoryKb: null,
-      engine: 'wandbox',
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`${lang.label} execution timed out. Check your code for infinite loops.`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
   }
+
+  if (!data) {
+    const detail = lastError?.message ?? 'Wandbox unavailable';
+    throw new Error(`${lang.label} remote runner failed (${detail}). Try Compile & run again.`);
+  }
+
+  const compileErr = String(data.compiler_error ?? '').trim();
+  const runErr = String(data.program_error ?? '').trim();
+  const stderr = [compileErr, runErr].filter(Boolean).join('\n').trim();
+  const stdoutRaw = data.program_output ?? '';
+  const stdout = stdoutRaw.trimEnd();
+  const statusOk = String(data.status ?? '') === '0';
+  const exitCode = compileErr ? 1 : statusOk ? 0 : 1;
+
+  return {
+    stdout: stdout ? `${stdout}\n` : '',
+    stderr,
+    exitCode,
+    runtimeMs: Date.now() - started,
+    memoryKb: null,
+    engine: 'wandbox',
+  };
 }

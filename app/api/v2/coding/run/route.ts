@@ -64,7 +64,20 @@ export async function POST(request: Request) {
       engine: result.engine,
     });
   } catch (error) {
+    // Never hard-fail the exam UI with a raw 500 for runner/infra issues.
     const message = error instanceof Error ? error.message : 'Execution failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('[coding/run]', message, error);
+    return NextResponse.json(
+      {
+        stdout: '',
+        stderr: `${message}\n\nClick Compile & run again.`,
+        exitCode: 1,
+        runtimeMs: 0,
+        memoryKb: null,
+        engine: 'fallback',
+        error: message,
+      },
+      { status: 200 },
+    );
   }
 }

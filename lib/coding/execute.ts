@@ -11,6 +11,7 @@ import type { ExecuteResult } from '@/lib/coding/types';
 export type { CodingLanguageId as CodingLanguage };
 export type { ExecuteResult } from '@/lib/coding/types';
 
+const PUBLIC_PISTON_URL = 'https://emkc.org/api/v2/piston/execute';
 const PUBLIC_PISTON_HOST = 'emkc.org';
 
 function pistonUrl(): string | null {
@@ -29,6 +30,13 @@ function wandboxDisabled(): boolean {
   return process.env.CODING_DISABLE_WANDBOX === '1' || process.env.CODING_DISABLE_WANDBOX === 'true';
 }
 
+function publicPistonDisabled(): boolean {
+  return (
+    process.env.CODING_DISABLE_PUBLIC_PISTON === '1' ||
+    process.env.CODING_DISABLE_PUBLIC_PISTON === 'true'
+  );
+}
+
 async function executeViaPiston(
   languageId: CodingLanguageId,
   sourceCode: string,
@@ -37,41 +45,48 @@ async function executeViaPiston(
 ): Promise<ExecuteResult> {
   const lang = getCodingLanguage(languageId);
   const started = Date.now();
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      language: lang.piston.language,
-      version: lang.piston.version,
-      files: [{ name: lang.fileName, content: sourceCode }],
-      stdin,
-      run_timeout: 8000,
-      compile_timeout: 12000,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language: lang.piston.language,
+        version: lang.piston.version,
+        files: [{ name: lang.fileName, content: sourceCode }],
+        stdin,
+        run_timeout: 8000,
+        compile_timeout: 12000,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Piston HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Piston HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+    }
+
+    const data = (await res.json()) as {
+      run?: { stdout?: string; stderr?: string; code?: number; memory?: number };
+      compile?: { stdout?: string; stderr?: string; code?: number };
+    };
+
+    const compileErr = data.compile?.stderr ?? '';
+    const runOut = data.run?.stdout ?? '';
+    const runErr = data.run?.stderr ?? '';
+    const stderr = [compileErr, runErr].filter(Boolean).join('\n');
+    return {
+      stdout: runOut,
+      stderr,
+      exitCode: data.run?.code ?? (compileErr ? 1 : 0),
+      runtimeMs: Date.now() - started,
+      memoryKb: data.run?.memory ?? null,
+      engine: url.includes('emkc.org') ? 'piston-public' : 'piston',
+    };
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = (await res.json()) as {
-    run?: { stdout?: string; stderr?: string; code?: number; memory?: number };
-    compile?: { stdout?: string; stderr?: string; code?: number };
-  };
-
-  const compileErr = data.compile?.stderr ?? '';
-  const runOut = data.run?.stdout ?? '';
-  const runErr = data.run?.stderr ?? '';
-  const stderr = [compileErr, runErr].filter(Boolean).join('\n');
-  return {
-    stdout: runOut,
-    stderr,
-    exitCode: data.run?.code ?? (compileErr ? 1 : 0),
-    runtimeMs: Date.now() - started,
-    memoryKb: data.run?.memory ?? null,
-    engine: 'piston',
-  };
 }
 
 function localRuntimeMissing(result: ExecuteResult): boolean {
@@ -83,9 +98,6 @@ function localRuntimeMissing(result: ExecuteResult): boolean {
     text.includes('runtime not found') ||
     text.includes('cannot run') ||
     text.includes('serverless cannot run') ||
-    // Container runtime pressure on some hosts (podman/crun/runc) can make
-    // local execution fail even for valid code. Treat this as infra failure
-    // so we can fall back to remote execution instead of marking student wrong.
     text.includes('oci runtime error') ||
     text.includes('crun: clone') ||
     text.includes('resource temporarily unavailable') ||
@@ -94,28 +106,51 @@ function localRuntimeMissing(result: ExecuteResult): boolean {
   );
 }
 
+function softFailure(languageId: CodingLanguageId, message: string, started: number): ExecuteResult {
+  const lang = getCodingLanguage(languageId);
+  return {
+    stdout: '',
+    stderr: `${lang.label}: ${message}\n\nClick Compile & run again. If this keeps happening, wait a few seconds and retry.`,
+    exitCode: 1,
+    runtimeMs: Date.now() - started,
+    memoryKb: null,
+    engine: 'fallback',
+  };
+}
+
 async function executeRemote(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin: string,
 ): Promise<ExecuteResult> {
+  const errors: string[] = [];
+
   const piston = pistonUrl();
   if (piston) {
     try {
       return await executeViaPiston(languageId, sourceCode, stdin, piston);
-    } catch {
-      /* try wandbox */
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
     }
   }
 
   if (!wandboxDisabled()) {
-    return executeViaWandbox(languageId, sourceCode, stdin);
+    try {
+      return await executeViaWandbox(languageId, sourceCode, stdin);
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
   }
 
-  const lang = getCodingLanguage(languageId);
-  throw new Error(
-    `${lang.label} cannot run on this host. Set PISTON_API_URL (self-hosted Piston) or allow Wandbox (default on Vercel).`,
-  );
+  if (!publicPistonDisabled()) {
+    try {
+      return await executeViaPiston(languageId, sourceCode, stdin, PUBLIC_PISTON_URL);
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  throw new Error(errors.filter(Boolean).join(' | ') || 'All remote runners failed');
 }
 
 function normalizeStdin(stdin: string): string {
@@ -128,7 +163,7 @@ export async function executeCode(
   sourceCode: string,
   stdin = '',
 ): Promise<ExecuteResult> {
-  const lang = getCodingLanguage(languageId);
+  const started = Date.now();
   stdin = normalizeStdin(stdin);
 
   if (isServerlessHost()) {
@@ -146,7 +181,7 @@ export async function executeCode(
       return await executeRemote(languageId, sourceCode, stdin);
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Remote execution failed';
-      throw new Error(`${lang.label}: ${msg}`);
+      return softFailure(languageId, msg, started);
     }
   }
 
@@ -181,9 +216,7 @@ export async function executeCode(
       return await executeRemote(languageId, sourceCode, stdin);
     } catch {
       const msg = error instanceof Error ? error.message : 'Execution failed';
-      throw new Error(
-        `${lang.label}: ${msg}. Install the runtime locally or set PISTON_API_URL.`,
-      );
+      return softFailure(languageId, msg, started);
     }
   }
 }
