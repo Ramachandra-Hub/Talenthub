@@ -110,12 +110,18 @@ async function executeRemote(
   );
 }
 
+function normalizeStdin(stdin: string): string {
+  if (!stdin) return '';
+  return stdin.endsWith('\n') ? stdin : `${stdin}\n`;
+}
+
 export async function executeCode(
   languageId: CodingLanguageId,
   sourceCode: string,
   stdin = '',
 ): Promise<ExecuteResult> {
   const lang = getCodingLanguage(languageId);
+  stdin = normalizeStdin(stdin);
 
   if (isServerlessHost()) {
     if (languageId === 'javascript') {

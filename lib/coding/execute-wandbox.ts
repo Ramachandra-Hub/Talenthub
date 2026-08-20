@@ -3,6 +3,7 @@ import type { ExecuteResult } from '@/lib/coding/types';
 
 const WANDBOX_URL =
   process.env.WANDBOX_API_URL?.trim() || 'https://wandbox.org/api/compile.json';
+const WANDBOX_LIST_URL = 'https://wandbox.org/api/list.json';
 
 const COMPILER_BY_LANGUAGE: Record<CodingLanguageId, string> = {
   python: 'cpython-3.12.7',
@@ -14,23 +15,71 @@ const COMPILER_BY_LANGUAGE: Record<CodingLanguageId, string> = {
   csharp: 'mono-6.12.0.199',
 };
 
-// Fallback compilers tried if the primary returns HTTP 400 (version not available)
 const COMPILER_FALLBACKS: Partial<Record<CodingLanguageId, string[]>> = {
-  java: ['openjdk-jdk-11.0.3+7'],
+  java: ['openjdk-jdk-22+36', 'openjdk-jdk-21+35'],
   python: ['cpython-3.11.7', 'cpython-3.10.10'],
 };
 
-function prepareSource(languageId: CodingLanguageId, source: string): string {
-  if (languageId === 'java') {
-    // Wandbox compiles Java as "prog.java". Public classes must match the file
-    // name there, so convert the first public class to `prog`. If there is no
-    // public class, Java accepts any class name that contains main().
-    if (/\bpublic\s+class\s+\w+/.test(source)) {
-      return source.replace(/\bpublic\s+class\s+\w+/, 'public class prog');
-    }
-    return source;
+let javaCompilerCache: { names: string[]; fetchedAt: number } | null = null;
+
+async function liveJavaCompilers(): Promise<string[]> {
+  const now = Date.now();
+  if (javaCompilerCache && now - javaCompilerCache.fetchedAt < 6 * 60 * 60 * 1000) {
+    return javaCompilerCache.names;
   }
+  try {
+    const res = await fetch(WANDBOX_LIST_URL, { cache: 'no-store' });
+    if (!res.ok) return COMPILER_FALLBACKS.java ?? [];
+    const list = (await res.json()) as Array<{ name?: string; language?: string }>;
+    const names = list
+      .filter((row) => String(row.language ?? '').toLowerCase() === 'java' && row.name)
+      .map((row) => String(row.name));
+    if (names.length) {
+      javaCompilerCache = { names, fetchedAt: now };
+      return names;
+    }
+  } catch {
+    /* use static list */
+  }
+  return COMPILER_FALLBACKS.java ?? [];
+}
+
+/** Wandbox compiles Java as prog.java, so the public/main class must be `prog`. */
+export function prepareJavaSourceForWandbox(source: string): string {
+  let next = source.replace(/\r\n/g, '\n');
+  if (/\bpublic\s+class\s+\w+/.test(next)) {
+    next = next.replace(/\bpublic\s+class\s+\w+/, 'public class prog');
+  } else if (/\bclass\s+\w+/.test(next)) {
+    next = next.replace(/\bclass\s+\w+/, 'class prog');
+  }
+  return next;
+}
+
+function prepareSource(languageId: CodingLanguageId, source: string): string {
+  if (languageId === 'java') return prepareJavaSourceForWandbox(source);
   return source;
+}
+
+function compilersFor(languageId: CodingLanguageId, liveJava: string[]): string[] {
+  if (languageId === 'java') {
+    const preferred = [COMPILER_BY_LANGUAGE.java, ...liveJava, ...(COMPILER_FALLBACKS.java ?? [])];
+    return [...new Set(preferred.filter(Boolean))];
+  }
+  return [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])].filter(
+    Boolean,
+  ) as string[];
+}
+
+function isRetryableCompilerError(message: string): boolean {
+  const text = message.toLowerCase();
+  return (
+    text.includes('http 400') ||
+    text.includes('http 404') ||
+    text.includes('http 500') ||
+    text.includes('unknown compiler') ||
+    text.includes('compiler is not found') ||
+    text.includes('not found')
+  );
 }
 
 type WandboxResponse = {
@@ -41,6 +90,7 @@ type WandboxResponse = {
   compiler_error?: string;
   compiler_message?: string;
   program_message?: string;
+  signal?: string;
 };
 
 async function tryWandboxCompiler(
@@ -74,39 +124,42 @@ export async function executeViaWandbox(
   sourceCode: string,
   stdin: string,
 ): Promise<ExecuteResult> {
-  const primaryCompiler = COMPILER_BY_LANGUAGE[languageId];
-  const fallbacks = COMPILER_FALLBACKS[languageId] ?? [];
+  const liveJava = languageId === 'java' ? await liveJavaCompilers() : [];
+  const compilers = compilersFor(languageId, liveJava);
   const lang = getCodingLanguage(languageId);
   const started = Date.now();
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18000);
+  const timer = setTimeout(() => controller.abort(), 22000);
 
   try {
     let data: WandboxResponse | null = null;
     let lastError: Error | null = null;
 
-    for (const compiler of [primaryCompiler, ...fallbacks]) {
+    for (const compiler of compilers) {
       try {
         data = await tryWandboxCompiler(compiler, languageId, sourceCode, stdin, controller.signal);
+        const unknown =
+          `${data.compiler_error ?? ''} ${data.compiler_message ?? ''} ${data.compiler_output ?? ''}`.toLowerCase();
+        if (unknown.includes('unknown compiler') || unknown.includes('compiler is not found')) {
+          lastError = new Error(`Unknown compiler: ${compiler}`);
+          continue;
+        }
         break;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        // Only retry on HTTP 400 (unknown compiler version) — other errors propagate
-        if (!lastError.message.includes('HTTP 400')) throw lastError;
+        if (!isRetryableCompilerError(lastError.message)) throw lastError;
       }
     }
 
     if (!data) throw lastError ?? new Error('Wandbox unavailable');
 
-    const compileErr = [data.compiler_error, data.compiler_output].filter(Boolean).join('\n');
-    const runErr = data.program_error ?? '';
+    const compileErr = String(data.compiler_error ?? '').trim();
+    const runErr = String(data.program_error ?? '').trim();
     const stderr = [compileErr, runErr].filter(Boolean).join('\n').trim();
-    const stdout = (data.program_output ?? data.program_message ?? '').trimEnd();
-
-    // Wandbox returns status as string "0" or number 0 on success
-    const statusOk =
-      String(data.status ?? '') === '0' || (!data.status && !compileErr && !stderr);
+    const stdoutRaw = data.program_output ?? '';
+    const stdout = stdoutRaw.trimEnd();
+    const statusOk = String(data.status ?? '') === '0';
     const exitCode = compileErr ? 1 : statusOk ? 0 : 1;
 
     return {

@@ -177,8 +177,16 @@ async function runCpp(dir: string, source: string, stdin: string): Promise<Execu
   };
 }
 
+function javaEntryClassName(source: string): string {
+  const publicMatch = source.match(/\bpublic\s+class\s+(\w+)/);
+  if (publicMatch?.[1]) return publicMatch[1];
+  const anyMatch = source.match(/\bclass\s+(\w+)/);
+  return anyMatch?.[1] ?? 'Main';
+}
+
 async function runJava(dir: string, source: string, stdin: string): Promise<ExecuteResult> {
-  const file = join(dir, 'Main.java');
+  const className = javaEntryClassName(source);
+  const file = join(dir, `${className}.java`);
   const started = Date.now();
   await writeFile(file, source, 'utf8');
   const javac = resolveCommand('javac', [process.env.JAVAC_PATH, 'javac', '/usr/bin/javac']);
@@ -194,7 +202,7 @@ async function runJava(dir: string, source: string, stdin: string): Promise<Exec
     };
   }
   const java = resolveCommand('java', [process.env.JAVA_PATH, 'java', '/usr/bin/java']);
-  const run = await runProcess(java, ['-cp', dir, 'Main'], stdin, dir, 'Java');
+  const run = await runProcess(java, ['-cp', dir, className], stdin, dir, 'Java');
   return {
     stdout: run.stdout,
     stderr: run.stderr,

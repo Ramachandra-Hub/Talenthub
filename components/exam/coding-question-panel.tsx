@@ -220,7 +220,7 @@ export function CodingQuestionPanel({ question, answer, onAnswerChange }: Props)
               type="button"
               size="sm"
               disabled={running}
-              onClick={() => void runCode(stdin)}
+              onClick={() => void runCode(stdin.trim() ? stdin : problem.sampleInput)}
             >
               {running ? 'Compiling…' : 'Compile & run'}
             </Button>
