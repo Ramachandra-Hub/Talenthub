@@ -102,21 +102,30 @@ async function executeViaPiston(
   }
 }
 
-function localRuntimeMissing(result: ExecuteResult): boolean {
-  const text = `${result.stderr} ${result.stdout}`.toLowerCase();
+/** Host/container infra failures — not student code errors; retry another runner. */
+function isInfraRunnerFailure(text: string): boolean {
+  const t = text.toLowerCase();
   return (
-    text.includes('enoent') ||
-    text.includes('not found') ||
-    text.includes('was not found') ||
-    text.includes('runtime not found') ||
-    text.includes('cannot run') ||
-    text.includes('serverless cannot run') ||
-    text.includes('oci runtime error') ||
-    text.includes('crun: clone') ||
-    text.includes('resource temporarily unavailable') ||
-    text.includes('cannot allocate memory') ||
-    text.includes('failed to create shim task')
+    t.includes('enoent') ||
+    t.includes('not found') ||
+    t.includes('was not found') ||
+    t.includes('runtime not found') ||
+    t.includes('cannot run') ||
+    t.includes('serverless cannot run') ||
+    t.includes('oci runtime error') ||
+    t.includes('crun: clone') ||
+    t.includes('crun:') ||
+    t.includes('resource temporarily unavailable') ||
+    t.includes('cannot allocate memory') ||
+    t.includes('failed to create shim task') ||
+    t.includes('container create failed') ||
+    t.includes('runc:') ||
+    t.includes('no space left')
   );
+}
+
+function localRuntimeMissing(result: ExecuteResult): boolean {
+  return isInfraRunnerFailure(`${result.stderr} ${result.stdout}`);
 }
 
 function softFailure(languageId: CodingLanguageId, message: string, started: number): ExecuteResult {
@@ -124,7 +133,11 @@ function softFailure(languageId: CodingLanguageId, message: string, started: num
   const clean = message
     .replace(/this operation was aborted/gi, 'remote compiler timed out')
     .replace(/piston http 401[^|]*/gi, '')
+    .replace(/oci runtime error[^|]*/gi, '')
+    .replace(/crun:[^|]*/gi, '')
+    .replace(/resource temporarily unavailable[^|]*/gi, '')
     .replace(/\s*\|\s*/g, ' ')
+    .replace(/\s{2,}/g, ' ')
     .trim();
   return {
     stdout: '',
@@ -151,13 +164,18 @@ async function executeRemote(
   const piston = pistonUrl();
   if (piston) {
     try {
-      return await executeViaPiston(
+      const pistonResult = await executeViaPiston(
         languageId,
         sourceCode,
         stdin,
         piston,
         interactive ? 12_000 : 15_000,
       );
+      // Self-hosted Piston often returns HTTP 200 with OCI/crun errors in stderr.
+      if (!localRuntimeMissing(pistonResult)) {
+        return pistonResult;
+      }
+      errors.push(pistonResult.stderr || 'Piston container unavailable');
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
@@ -172,7 +190,12 @@ async function executeRemote(
   }
 
   const detail = errors
-    .filter((e) => !/piston http 401|whitelist only/i.test(e))
+    .filter(
+      (e) =>
+        !/piston http 401|whitelist only|oci runtime|crun:|resource temporarily unavailable/i.test(
+          e,
+        ),
+    )
     .join(' | ');
   throw new Error(detail || 'Remote compiler unavailable. Try again in a few seconds.');
 }
@@ -214,9 +237,12 @@ export async function executeCode(
   const piston = pistonUrl();
   if (piston) {
     try {
-      return await executeViaPiston(languageId, sourceCode, stdin, piston);
+      const pistonResult = await executeViaPiston(languageId, sourceCode, stdin, piston);
+      if (!localRuntimeMissing(pistonResult)) {
+        return pistonResult;
+      }
     } catch {
-      /* local */
+      /* local / wandbox */
     }
   }
 
@@ -232,8 +258,9 @@ export async function executeCode(
       }
       try {
         return await executeRemote(languageId, sourceCode, stdin);
-      } catch {
-        return local;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Remote execution failed';
+        return softFailure(languageId, msg, started);
       }
     }
     return local;
