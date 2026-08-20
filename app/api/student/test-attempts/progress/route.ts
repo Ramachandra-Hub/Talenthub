@@ -232,8 +232,10 @@ export async function POST(request: Request) {
             attemptId: prior.id,
             priorAttempt: prior,
             locked: true,
+            saved: false,
+            completed: true,
           },
-          { status: 409 },
+          { status: 200 },
         );
       }
     } else if (isElevateXTestId(testId)) {
@@ -250,8 +252,10 @@ export async function POST(request: Request) {
             attemptId: prior.id,
             priorAttempt: prior,
             locked: true,
+            saved: false,
+            completed: true,
           },
-          { status: 409 },
+          { status: 200 },
         );
       }
     } else {
@@ -263,8 +267,10 @@ export async function POST(request: Request) {
             attemptId: prior.id,
             priorAttempt: prior,
             locked: true,
+            saved: false,
+            completed: true,
           },
-          { status: 409 },
+          { status: 200 },
         );
       }
     }
