@@ -7,6 +7,7 @@ import {
 import { questionTagsFromProMetadata } from '@/lib/exam-v2/subject-progress';
 import { parseQuestionsJson, type FacultyExamQuestion } from '@/lib/faculty-exams';
 import { adaptQuestionRow, adaptTestRow, extractJoinedQuestion, isCodingQuestion } from '@/lib/practice-mappers';
+import { enforceJavaFacultyPaper, enforceJavaUiPaper, nameLooksLikeJava } from '@/lib/exams/enforce-subject-paper';
 import type { Question, Test } from '@/lib/types';
 
 function testIdVariants(testId: string): (string | number)[] {
@@ -48,7 +49,8 @@ export function facultyQuestionsToUiQuestions(
   testId: string,
 ): Question[] {
   const now = new Date().toISOString();
-  return items.map((q, index) => {
+  const sanitized = enforceJavaFacultyPaper(items);
+  return sanitized.map((q, index) => {
     const id = `${testId}-q${index + 1}`;
     if (isFacultyCodingQuestion(q)) {
       return {
@@ -103,13 +105,13 @@ export function mergeMissingCodingQuestions(
   facultyItems: FacultyExamQuestion[],
   testId: string,
 ): Question[] {
-  const withSubjects = overlayFacultySubjectTags(loaded, facultyItems);
+  const withSubjects = overlayFacultySubjectTags(loaded, enforceJavaFacultyPaper(facultyItems));
   const codingItems = facultyItems.filter(isFacultyCodingQuestion);
-  if (!codingItems.length) return withSubjects;
-  if (withSubjects.some(isCodingQuestion)) return withSubjects;
+  if (!codingItems.length) return enforceJavaUiPaper(withSubjects);
+  if (withSubjects.some(isCodingQuestion)) return enforceJavaUiPaper(withSubjects);
 
   const codingUi = facultyQuestionsToUiQuestions(facultyItems, testId).filter(isCodingQuestion);
-  if (!withSubjects.length) return overlayFacultySubjectTags(codingUi, facultyItems);
+  if (!withSubjects.length) return enforceJavaUiPaper(overlayFacultySubjectTags(codingUi, facultyItems));
 
   const mcqs = withSubjects.filter((q) => !isCodingQuestion(q));
   let mcqIndex = 0;
@@ -124,7 +126,7 @@ export function mergeMissingCodingQuestions(
   }
   while (mcqIndex < mcqs.length) merged.push(mcqs[mcqIndex++]);
   while (codingIndex < codingUi.length) merged.push(codingUi[codingIndex++]);
-  return overlayFacultySubjectTags(merged, facultyItems);
+  return enforceJavaUiPaper(overlayFacultySubjectTags(merged, facultyItems));
 }
 
 async function attachFacultyCodingIfMissing(
@@ -142,9 +144,11 @@ async function attachFacultyCodingIfMissing(
       .limit(1)
       .maybeSingle();
     if (!fer?.questions_json) continue;
-    return mergeMissingCodingQuestions(loaded, parseQuestionsJson(fer.questions_json), String(testId));
+    return enforceJavaUiPaper(
+      mergeMissingCodingQuestions(loaded, parseQuestionsJson(fer.questions_json), String(testId)),
+    );
   }
-  return loaded;
+  return enforceJavaUiPaper(loaded);
 }
 
 async function resolveSyllabusSlugs(
@@ -171,12 +175,16 @@ function facultyQuestionsForTake(
   topicSlugs: string[],
   testType: string | null | undefined,
 ): FacultyExamQuestion[] {
-  const parsed = parseQuestionsJson(rawJson);
+  const forceJava = topicSlugs.some((slug) => slug.toLowerCase().includes('java'));
+  const parsed = enforceJavaFacultyPaper(parseQuestionsJson(rawJson), { forceJava });
   const hasCoding = parsed.some(isFacultyCodingQuestion);
   if (hasCoding || !examShouldIncludeCodingQuestions(testType, topicSlugs)) {
     return parsed;
   }
-  return augmentExamQuestionsWithCoding(parsed, topicSlugs, testType);
+  return enforceJavaFacultyPaper(
+    augmentExamQuestionsWithCoding(parsed, topicSlugs, testType),
+    { forceJava },
+  );
 }
 
 /** Load a test row (legacy schemas: bigint id, title vs name, optional category embed). */
@@ -331,7 +339,7 @@ export async function loadQuestionsForTake(
         (fer.test_type as string | null) ?? null,
       );
       if (items.length) {
-        return dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, String(testId)));
+        return enforceJavaUiPaper(dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, String(testId))));
       }
     }
   }
@@ -345,5 +353,8 @@ export async function loadTestBundleForTake(
 ): Promise<{ test: Test | null; questions: Question[] }> {
   const test = await loadTestRowForTake(client, testId);
   const questions = await loadQuestionsForTake(client, testId);
-  return { test, questions };
+  return {
+    test,
+    questions: enforceJavaUiPaper(questions, { forceJava: nameLooksLikeJava(test?.name) }),
+  };
 }

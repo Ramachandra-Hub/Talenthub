@@ -1679,6 +1679,22 @@ async function mergeCodingFromFacultyRequestPrisma(testId: string, questions: Qu
 
 export async function loadQuestionsForTakePrisma(testId: string) {
   const { dedupeQuestionsByStem } = await import('@/lib/questions/dedupe-questions');
+  const { enforceJavaUiPaper, nameLooksLikeJava } = await import('@/lib/exams/enforce-subject-paper');
+
+  const testRow = await prisma.test.findUnique({
+    where: { id: testId },
+    select: { title: true, name: true },
+  }).catch(() => null);
+  const ferTitle = await prisma.facultyExamRequest.findFirst({
+    where: { publishedTestId: testId, status: 'approved' },
+    select: { title: true },
+  }).catch(() => null);
+  const forceJava =
+    nameLooksLikeJava(testRow?.title) ||
+    nameLooksLikeJava(testRow?.name) ||
+    nameLooksLikeJava(ferTitle?.title);
+
+  const applyJava = (questions: Question[]) => enforceJavaUiPaper(questions, { forceJava });
 
   const links = await prisma.testQuestion.findMany({
     where: { testId },
@@ -1695,7 +1711,7 @@ export async function loadQuestionsForTakePrisma(testId: string) {
       const questions = dedupeQuestionsByStem(
         ordered.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
       );
-      return mergeCodingFromFacultyRequestPrisma(testId, questions);
+      return applyJava(await mergeCodingFromFacultyRequestPrisma(testId, questions));
     }
   }
 
@@ -1707,7 +1723,7 @@ export async function loadQuestionsForTakePrisma(testId: string) {
     const questions = dedupeQuestionsByStem(
       direct.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
     );
-    return mergeCodingFromFacultyRequestPrisma(testId, questions);
+    return applyJava(await mergeCodingFromFacultyRequestPrisma(testId, questions));
   }
 
   const fer = await prisma.facultyExamRequest.findFirst({
@@ -1719,7 +1735,7 @@ export async function loadQuestionsForTakePrisma(testId: string) {
     const { parseQuestionsJson } = await import('@/lib/faculty-exams');
     const items = parseQuestionsJson(fer.questionsJson);
     if (items.length) {
-      return dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, testId));
+      return applyJava(dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, testId)));
     }
   }
 

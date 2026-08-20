@@ -3,8 +3,8 @@ import {
   PROGRAMMING_SAMPLE_PROBLEMS,
   type ProgrammingProblem,
 } from '@/lib/coding/sample-problems';
-import { getJavaArrayProblemById } from '@/lib/coding/java-array-problems';
-import { getJavaCore50ProblemById } from '@/lib/coding/java-core50-problems';
+import { getJavaArrayProblemById, JAVA_ARRAY_PROBLEMS } from '@/lib/coding/java-array-problems';
+import { getJavaCore50ProblemById, JAVA_CORE_50_PROBLEMS } from '@/lib/coding/java-core50-problems';
 
 export const PROGRAMMING_SYLLABUS_SLUGS = new Set([
   'technical-programming',
@@ -47,12 +47,17 @@ export function examShouldIncludeCodingQuestions(
   testType: string | null | undefined,
   topicSlugs: string[],
 ): boolean {
+  if (topicSlugs.some((slug) => slug.toLowerCase().includes('java'))) return true;
   if (topicSlugs.some(slugLooksLikeProgramming)) return true;
   if (testType === 'technical' && topicSlugs.length === 0) return false;
   return false;
 }
 
-export function facultyQuestionFromProblem(problem: ProgrammingProblem): FacultyCodingQuestion {
+export function facultyQuestionFromProblem(
+  problem: ProgrammingProblem,
+  language?: 'c' | 'python' | 'java',
+): FacultyCodingQuestion {
+  const lang = language ?? problem.defaultLanguage ?? 'java';
   return {
     question_type: 'coding',
     question_text: problem.statement,
@@ -63,7 +68,7 @@ export function facultyQuestionFromProblem(problem: ProgrammingProblem): Faculty
     input_format: problem.inputFormat,
     output_format: problem.outputFormat,
     hint: problem.hint,
-    default_language: problem.defaultLanguage,
+    default_language: lang,
     test_cases: problem.testCases,
   };
 }
@@ -77,11 +82,11 @@ export function augmentExamQuestionsWithCoding(
   if (!examShouldIncludeCodingQuestions(testType, topicSlugs)) return mcqs;
 
   const programmingTopicCount = topicSlugs.filter(slugLooksLikeProgramming).length;
-  const codingCount = Math.min(
-    PROGRAMMING_SAMPLE_PROBLEMS.length,
-    Math.max(1, programmingTopicCount),
-  );
-  const coding = PROGRAMMING_SAMPLE_PROBLEMS.slice(0, codingCount).map(facultyQuestionFromProblem);
+  const javaPaper = topicSlugs.some((slug) => slug.toLowerCase().includes('java'));
+  const pool = javaPaper ? [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY_PROBLEMS] : PROGRAMMING_SAMPLE_PROBLEMS;
+  const lang = javaPaper ? 'java' : undefined;
+  const codingCount = Math.min(pool.length, Math.max(1, programmingTopicCount));
+  const coding = pool.slice(0, codingCount).map((p) => facultyQuestionFromProblem(p, lang));
 
   if (!mcqs.length) return coding;
 

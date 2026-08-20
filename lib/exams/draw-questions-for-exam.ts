@@ -20,6 +20,7 @@ import {
   type SubjectRubricConfig,
 } from '@/lib/exams/pro-exam-rubric';
 import { codingLanguageForSubjectSlug } from '@/lib/exams/subject-syllabus-map';
+import { enforceJavaFacultyPaper, isJavaCodingProblem, looksLikeCLanguageText } from '@/lib/exams/enforce-subject-paper';
 
 export type ProExamSubjectRow = {
   subjectId?: string;
@@ -67,16 +68,38 @@ function tagQuestion(
   return { ...q, ...base };
 }
 
+function hashSeed(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededShuffle<T>(items: T[], seed: string): T[] {
+  const copy = [...items];
+  let state = hashSeed(seed) || 1;
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    const j = state % (i + 1);
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 function codingQuestionsForLanguage(
   lang: 'c' | 'python' | 'java',
   count: number,
+  seed: string,
 ): FacultyCodingQuestion[] {
   const pool =
     lang === 'java'
-      ? [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY_PROBLEMS]
+      ? [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY_PROBLEMS].filter(isJavaCodingProblem)
       : PROGRAMMING_SAMPLE_PROBLEMS;
-  const problems = pool.slice(0, Math.max(1, count));
-  return problems.map((p) => facultyQuestionFromProblem(p));
+  return seededShuffle(uniqueProblemsByTitle(pool), seed)
+    .slice(0, Math.max(1, count))
+    .map((p) => facultyQuestionFromProblem(p, lang));
 }
 
 function uniqueProblemsByTitle<T extends { title: string }>(problems: T[]): T[] {
@@ -94,6 +117,7 @@ function uniqueProblemsByTitle<T extends { title: string }>(problems: T[]): T[] 
 async function codingFromBank(
   lang: 'c' | 'python' | 'java',
   count: number,
+  seed: string,
 ): Promise<FacultyCodingQuestion[]> {
   if (lang === 'java') {
     await ensureJavaCore50CodingBank();
@@ -101,15 +125,21 @@ async function codingFromBank(
     const bank = await loadCodingBankFromDb({ language: 'java', limit: 1000 });
     const catalog = [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY_PROBLEMS];
     const byTitle = new Map(bank.map((p) => [p.title.trim().toLowerCase(), p]));
-    const ordered = uniqueProblemsByTitle([
-      ...catalog.map((p) => byTitle.get(p.title.trim().toLowerCase()) ?? p),
-      ...bank,
-    ]);
-    return ordered.slice(0, Math.max(1, count)).map((p) => facultyQuestionFromProblem(p));
+    const ordered = uniqueProblemsByTitle(
+      [
+        ...catalog.map((p) => byTitle.get(p.title.trim().toLowerCase()) ?? p),
+        ...bank,
+      ].filter(isJavaCodingProblem),
+    );
+    return seededShuffle(ordered, seed)
+      .slice(0, Math.max(1, count))
+      .map((p) => facultyQuestionFromProblem(p, 'java'));
   }
-  const bank = await loadCodingBankFromDb({ language: lang, limit: count });
-  if (!bank.length) return codingQuestionsForLanguage(lang, count);
-  return bank.slice(0, count).map((p) => facultyQuestionFromProblem(p));
+  const bank = await loadCodingBankFromDb({ language: lang, limit: Math.max(count * 4, 20) });
+  if (!bank.length) return codingQuestionsForLanguage(lang, count, seed);
+  return seededShuffle(uniqueProblemsByTitle(bank), seed)
+    .slice(0, count)
+    .map((p) => facultyQuestionFromProblem(p, lang));
 }
 
 function resolveRubric(
@@ -154,7 +184,7 @@ export async function drawQuestionsForProExam(
     for (const row of rubric.topics) {
       topicSlugs.push(row.topicSlug);
 
-      if (needsMcq && row.mcqCount > 0) {
+      if (needsMcq && row.mcqCount > 0 && row.topicSlug !== 'coding-java') {
         const drawn = await drawExamQuestionsFromTopics(admin, {
           testType: input.testType,
           topicIds: [row.topicSlug],
@@ -163,7 +193,9 @@ export async function drawQuestionsForProExam(
           createdBy: input.createdBy,
         });
         warnings.push(...drawn.warnings);
-        const tagged = drawn.questions.map((q) =>
+        const tagged = drawn.questions
+          .filter((q) => lang !== 'java' || !looksLikeCLanguageText(q.question_text))
+          .map((q) =>
           tagQuestion(q, {
             subjectName: subject.subjectName,
             subjectSlug: subject.slug,
@@ -175,7 +207,7 @@ export async function drawQuestionsForProExam(
 
       const codingCount = needsCoding ? (row.codingCount ?? 0) : 0;
       if (codingCount > 0) {
-        const coding = await codingFromBank(lang, codingCount);
+        const coding = await codingFromBank(lang, codingCount, `${input.slotKey}-${subject.slug}-${row.topicSlug}`);
         blockQuestions.push(
           ...coding.map((q) =>
             tagQuestion(q, {
@@ -189,7 +221,12 @@ export async function drawQuestionsForProExam(
       }
     }
 
-    const shuffled = shuffleIfEnabled(blockQuestions, rubric.shuffleQuestions !== false);
+    const shuffled = shuffleIfEnabled(
+      enforceJavaFacultyPaper(blockQuestions, {
+        forceJava: lang === 'java' || subject.slug.toLowerCase().includes('java'),
+      }),
+      rubric.shuffleQuestions !== false,
+    );
     subjectBlocks.push({
       subjectName: subject.subjectName,
       subjectSlug: subject.slug,

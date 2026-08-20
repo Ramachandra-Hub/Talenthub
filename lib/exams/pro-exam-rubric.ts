@@ -29,6 +29,31 @@ export function defaultRubricForSubject(input: {
   questionsPerSubject: number;
   codingCount?: number;
 }): SubjectRubricConfig {
+  const slug = input.slug.trim().toLowerCase();
+  const codingCount = input.codingCount ?? 0;
+  if (slug.includes('java') || /\bjava\b/i.test(input.subjectName)) {
+    const topics: RubricTopicRow[] = [
+      {
+        topicSlug: 'technical-java',
+        topicName: 'Java language, OOP & arrays',
+        mcqCount: input.questionsPerSubject,
+        codingCount: 0,
+      },
+    ];
+    if (codingCount > 0) {
+      topics.push({
+        topicSlug: 'coding-java',
+        topicName: 'Java coding problems',
+        mcqCount: 0,
+        codingCount,
+      });
+    }
+    return {
+      topics,
+      shuffleQuestions: true,
+      logicOnlyCoding: false,
+    };
+  }
   const subtopics = subtopicsForSubject(input);
   if (subtopics.length) {
     const first = subtopics[0];

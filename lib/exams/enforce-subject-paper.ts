@@ -16,7 +16,11 @@ const JAVA_POOL: ProgrammingProblem[] = [...JAVA_CORE_50_PROBLEMS, ...JAVA_ARRAY
 const C_SAMPLE_IDS = new Set(PROGRAMMING_SAMPLE_PROBLEMS.map((p) => p.id));
 
 const C_TEXT =
-  /\b(stdio\.h|printf\s*\(|scanf\s*\(|malloc\s*\(|pointer|pointers|#include\s*<|write a c program|c program|in c language|c language|header file)\b/i;
+  /\b(stdio\.h|printf\s*\(|scanf\s*\(|malloc\s*\(|pointers?|#include\s*<|write\s+(a|the)\s+c\s+program+e?|c\s+program+e?|in\s+c\s+language|c\s+language|header\s+file)\b/i;
+
+export type EnforceSubjectPaperOptions = {
+  forceJava?: boolean;
+};
 
 function textOfFaculty(q: FacultyExamQuestion): string {
   if (isFacultyCodingQuestion(q)) {
@@ -40,6 +44,24 @@ export function nameLooksLikeJava(name: string | null | undefined): boolean {
   return /\bjava\b/i.test(String(name ?? ''));
 }
 
+export function looksLikeCLanguageText(text: string): boolean {
+  return C_TEXT.test(text);
+}
+
+export function isJavaCodingProblem(problem: {
+  id?: string;
+  title?: string;
+  statement?: string;
+  defaultLanguage?: string;
+}): boolean {
+  const id = String(problem.id ?? '');
+  if (C_SAMPLE_IDS.has(id)) return false;
+  if (problem.defaultLanguage === 'c' || problem.defaultLanguage === 'python') return false;
+  if (looksLikeCLanguageText(`${problem.title ?? ''} ${problem.statement ?? ''}`)) return false;
+  if (problem.defaultLanguage === 'java' || id.startsWith('java')) return true;
+  return /\bjava\b/i.test(`${problem.title ?? ''} ${problem.statement ?? ''}`);
+}
+
 function facultySubjectSlug(q: FacultyExamQuestion): string {
   return String(q.pro_subject_slug ?? '').trim().toLowerCase();
 }
@@ -55,36 +77,44 @@ function isJavaTaggedUi(q: Question): boolean {
 }
 
 function isCCodingFaculty(q: FacultyCodingQuestion): boolean {
-  if (q.default_language === 'java') return false;
-  if (q.coding_problem_id.startsWith('java')) return false;
-  if (C_SAMPLE_IDS.has(q.coding_problem_id)) return true;
-  if (q.default_language === 'c' || q.default_language === 'python') return true;
-  return C_TEXT.test(textOfFaculty(q));
-}
-
-function isCMcqFaculty(q: FacultyMcqQuestion): boolean {
-  return C_TEXT.test(q.question_text);
-}
-
-function isCCodingUi(q: Question): boolean {
-  if (q.coding_default_language === 'java') return false;
   const id = q.coding_problem_id ?? '';
   if (id.startsWith('java')) return false;
   if (C_SAMPLE_IDS.has(id)) return true;
+  if (looksLikeCLanguageText(textOfFaculty(q))) return true;
+  if (q.default_language === 'c' || q.default_language === 'python') return true;
+  return false;
+}
+
+function isCMcqFaculty(q: FacultyMcqQuestion): boolean {
+  return looksLikeCLanguageText(q.question_text);
+}
+
+function isCCodingUi(q: Question): boolean {
+  const id = q.coding_problem_id ?? '';
+  if (id.startsWith('java')) return false;
+  if (C_SAMPLE_IDS.has(id)) return true;
+  if (looksLikeCLanguageText(textOfUi(q))) return true;
   if (q.coding_default_language === 'c' || q.coding_default_language === 'python') return true;
-  return C_TEXT.test(textOfUi(q));
+  return false;
 }
 
 function isCMcqUi(q: Question): boolean {
-  return C_TEXT.test(q.question_text);
+  return looksLikeCLanguageText(q.question_text);
 }
 
-function javaProblemAt(index: number): ProgrammingProblem {
-  return JAVA_POOL[index % JAVA_POOL.length]!;
+function nextJavaProblem(used: Set<string>): ProgrammingProblem {
+  const unused = JAVA_POOL.filter((p) => !used.has(p.id));
+  const pool = unused.length ? unused : JAVA_POOL;
+  const problem = pool[used.size % pool.length]!;
+  used.add(problem.id);
+  return problem;
 }
 
-function javaMcqAt(index: number): FacultyMcqQuestion {
-  const item = JAVA_ARRAY_MCQS[index % JAVA_ARRAY_MCQS.length]!;
+function nextJavaMcq(used: Set<string>): FacultyMcqQuestion {
+  const unused = JAVA_ARRAY_MCQS.filter((item) => !used.has(item.q));
+  const pool = unused.length ? unused : JAVA_ARRAY_MCQS;
+  const item = pool[used.size % pool.length]!;
+  used.add(item.q);
   return {
     question_type: 'mcq',
     question_text: item.q,
@@ -102,7 +132,7 @@ function codingFromJavaProblem(
   meta: { pro_subject?: string; pro_subject_slug?: string; pro_topic_slug?: string },
 ): FacultyCodingQuestion {
   return {
-    ...facultyQuestionFromProblem(problem),
+    ...facultyQuestionFromProblem(problem, 'java'),
     default_language: 'java',
     question_text: problem.statement,
     pro_subject: meta.pro_subject ?? 'Java',
@@ -111,7 +141,8 @@ function codingFromJavaProblem(
   };
 }
 
-function paperIsJavaFaculty(items: FacultyExamQuestion[]): boolean {
+function paperIsJavaFaculty(items: FacultyExamQuestion[], forceJava?: boolean): boolean {
+  if (forceJava) return true;
   const tagged = items.filter(isJavaTaggedFaculty);
   if (tagged.length) return tagged.length >= Math.ceil(items.length / 2);
   return items.some(
@@ -122,7 +153,8 @@ function paperIsJavaFaculty(items: FacultyExamQuestion[]): boolean {
   );
 }
 
-function paperIsJavaUi(items: Question[]): boolean {
+function paperIsJavaUi(items: Question[], forceJava?: boolean): boolean {
+  if (forceJava) return true;
   const tagged = items.filter(isJavaTaggedUi);
   if (tagged.length) return tagged.length >= Math.ceil(items.length / 2);
   return items.some(
@@ -144,13 +176,16 @@ function shouldRewriteUi(q: Question, wholePaperJava: boolean): boolean {
 }
 
 /** Replace leaked C items with Java MCQs/coding when the conducted subject is Java. */
-export function enforceJavaFacultyPaper(items: FacultyExamQuestion[]): FacultyExamQuestion[] {
+export function enforceJavaFacultyPaper(
+  items: FacultyExamQuestion[],
+  options?: EnforceSubjectPaperOptions,
+): FacultyExamQuestion[] {
   if (!items.length) return items;
-  const wholePaperJava = paperIsJavaFaculty(items);
+  const wholePaperJava = paperIsJavaFaculty(items, options?.forceJava);
   if (!wholePaperJava && !items.some(isJavaTaggedFaculty)) return items;
 
-  let javaCodingIndex = 0;
-  let javaMcqIndex = 0;
+  const usedCoding = new Set<string>();
+  const usedMcq = new Set<string>();
   return items.map((q) => {
     if (!shouldRewriteFaculty(q, wholePaperJava)) return q;
     const meta = {
@@ -159,17 +194,14 @@ export function enforceJavaFacultyPaper(items: FacultyExamQuestion[]): FacultyEx
       pro_topic_slug: q.pro_topic_slug ?? 'technical-java',
     };
     if (isFacultyCodingQuestion(q)) {
-      if (!isCCodingFaculty(q) && q.default_language === 'java') {
+      if (!isCCodingFaculty(q) && (q.default_language === 'java' || q.coding_problem_id.startsWith('java'))) {
+        usedCoding.add(q.coding_problem_id);
         return { ...q, ...meta, default_language: 'java' as const };
       }
-      const next = codingFromJavaProblem(javaProblemAt(javaCodingIndex), meta);
-      javaCodingIndex += 1;
-      return next;
+      return codingFromJavaProblem(nextJavaProblem(usedCoding), meta);
     }
-    if (isCMcqFaculty(q)) {
-      const next: FacultyExamQuestion = { ...javaMcqAt(javaMcqIndex), ...meta };
-      javaMcqIndex += 1;
-      return next;
+    if (isCMcqFaculty(q) || wholePaperJava && looksLikeCLanguageText(q.question_text)) {
+      return { ...nextJavaMcq(usedMcq), ...meta };
     }
     return { ...q, ...meta } as FacultyExamQuestion;
   });
@@ -221,17 +253,21 @@ function javaUiFromMcq(item: FacultyMcqQuestion, base: Question): Question {
 }
 
 /** Same rewrite for student-facing Question objects (already published papers). */
-export function enforceJavaUiPaper(items: Question[]): Question[] {
+export function enforceJavaUiPaper(
+  items: Question[],
+  options?: EnforceSubjectPaperOptions,
+): Question[] {
   if (!items.length) return items;
-  const wholePaperJava = paperIsJavaUi(items);
+  const wholePaperJava = paperIsJavaUi(items, options?.forceJava);
   if (!wholePaperJava && !items.some(isJavaTaggedUi)) return items;
 
-  let javaCodingIndex = 0;
-  let javaMcqIndex = 0;
+  const usedCoding = new Set<string>();
+  const usedMcq = new Set<string>();
   return items.map((q) => {
     if (!shouldRewriteUi(q, wholePaperJava)) return q;
     if (isCodingQuestion(q)) {
-      if (!isCCodingUi(q) && q.coding_default_language === 'java') {
+      if (!isCCodingUi(q) && (q.coding_default_language === 'java' || String(q.coding_problem_id ?? '').startsWith('java'))) {
+        if (q.coding_problem_id) usedCoding.add(q.coding_problem_id);
         return {
           ...q,
           coding_default_language: 'java',
@@ -240,14 +276,10 @@ export function enforceJavaUiPaper(items: Question[]): Question[] {
           ],
         };
       }
-      const next = javaUiFromProblem(javaProblemAt(javaCodingIndex), q);
-      javaCodingIndex += 1;
-      return next;
+      return javaUiFromProblem(nextJavaProblem(usedCoding), q);
     }
     if (isCMcqUi(q)) {
-      const item = javaMcqAt(javaMcqIndex);
-      javaMcqIndex += 1;
-      return javaUiFromMcq(item, q);
+      return javaUiFromMcq(nextJavaMcq(usedMcq), q);
     }
     return {
       ...q,
@@ -260,6 +292,9 @@ export function codingLanguageFromQuestion(question: Question): 'c' | 'python' |
   const meta = readProSubjectMeta(question);
   if (meta && slugLooksLikeJava(meta.slug)) return 'java';
   if (meta && (/\bpython\b/i.test(meta.slug) || /\bpython\b/i.test(meta.name))) return 'python';
+  if (looksLikeCLanguageText(textOfUi(question)) && !(meta && slugLooksLikeJava(meta.slug))) {
+    return 'c';
+  }
   if (question.coding_default_language === 'java') return 'java';
   if (question.coding_default_language === 'python') return 'python';
   if (question.coding_default_language === 'c') return 'c';

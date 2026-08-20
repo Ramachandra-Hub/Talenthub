@@ -28,9 +28,16 @@ export const ML_SUBTOPICS: SyllabusUnit[] = [
   { slug: 'ml-pca', name: 'PCA & Dimensionality Reduction' },
 ];
 
+/** Java array DSA units used by Exam Builder Pro. */
+export const JAVA_SUBTOPICS: SyllabusUnit[] = [
+  { slug: 'technical-java', name: 'Java language, OOP & arrays' },
+  { slug: 'coding-java', name: 'Java coding problems' },
+];
+
 const SUBJECT_SLUG_TO_SUBTOPICS: Record<string, SyllabusUnit[]> = {
   ai: AI_SUBTOPICS,
   'machine-learning': ML_SUBTOPICS,
+  java: JAVA_SUBTOPICS,
 };
 
 export function subtopicsForSubject(input: { slug: string; subjectName: string }): SyllabusUnit[] {
@@ -39,6 +46,7 @@ export function subtopicsForSubject(input: { slug: string; subjectName: string }
   const name = input.subjectName.trim().toLowerCase();
   if (name === 'ai' || name.includes('artificial intelligence')) return AI_SUBTOPICS;
   if (name.includes('machine learning') || name === 'ml') return ML_SUBTOPICS;
+  if (name === 'java' || name.includes('java')) return JAVA_SUBTOPICS;
   return [];
 }
 
