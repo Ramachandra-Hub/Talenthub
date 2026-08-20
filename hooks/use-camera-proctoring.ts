@@ -22,12 +22,27 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
   const streamRef = useRef<MediaStream | null>(null);
   const absentSinceRef = useRef<number | null>(null);
   const scanningRef = useRef(false);
+  const playGenRef = useRef(0);
 
   const stopCamera = useCallback(() => {
+    playGenRef.current += 1;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     const video = videoRef.current;
-    if (video) video.srcObject = null;
+    if (video) {
+      try {
+        video.pause();
+      } catch {
+        /* ignore */
+      }
+      video.removeAttribute('src');
+      video.srcObject = null;
+      try {
+        video.load();
+      } catch {
+        /* ignore */
+      }
+    }
     setCameraReady(false);
     setFaceStatus('absent');
     setFaceNotVisible(false);
@@ -42,25 +57,29 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
       video.srcObject = stream;
       video.muted = true;
       video.playsInline = true;
+      video.setAttribute('playsinline', 'true');
     }
 
+    const gen = ++playGenRef.current;
     try {
       if (video.paused) {
-        await video.play();
+        // Never leave an unhandled rejection if pause() interrupts play().
+        await video.play().catch((err: unknown) => {
+          const interrupted =
+            err instanceof DOMException &&
+            (err.name === 'AbortError' || /interrupted/i.test(err.message));
+          if (!interrupted) throw err;
+        });
       }
+      if (gen !== playGenRef.current) return false;
       setCameraReady(true);
       setCameraError(null);
       return true;
-    } catch (err) {
-      const interrupted =
-        err instanceof DOMException &&
-        (err.name === 'AbortError' || /interrupted/i.test(err.message));
-      if (interrupted) {
-        setCameraReady(true);
-        setCameraError(null);
-        return true;
-      }
-      return false;
+    } catch {
+      if (gen !== playGenRef.current) return false;
+      // Stream is attached even if autoplay was interrupted.
+      setCameraReady(Boolean(video.srcObject));
+      return Boolean(video.srcObject);
     }
   }, [videoRef]);
 

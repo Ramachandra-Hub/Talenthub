@@ -5,9 +5,25 @@ import { parseCodingRunRequest } from '@/lib/coding/parse-run-request';
 import { requireAuth } from '@/lib/server-auth';
 import { auth } from '@/auth';
 import { useAwsStack } from '@/lib/aws/stack';
+import type { ExecuteResult } from '@/lib/coding/types';
 
 export const runtime = 'nodejs';
-export const maxDuration = 15;
+/** Keep under common Vercel gateway limits so the client gets JSON, not HTML 504. */
+export const maxDuration = 10;
+
+const INTERACTIVE_BUDGET_MS = 7_000;
+
+function timeoutResult(): ExecuteResult {
+  return {
+    stdout: '',
+    stderr:
+      'Compile timed out. Click Compile & run again in a few seconds.\n(Remote compiler was slow — your code was not rejected.)',
+    exitCode: 1,
+    runtimeMs: INTERACTIVE_BUDGET_MS,
+    memoryKb: null,
+    engine: 'fallback',
+  };
+}
 
 export async function POST(request: Request) {
   const authResult = await requireAuth(['student', 'admin'], request);
@@ -27,7 +43,13 @@ export async function POST(request: Request) {
     }
 
     const { language, sourceCode, stdin } = parsed;
-    const result = await executeCode(language, sourceCode, stdin, { interactive: true });
+
+    const result = await Promise.race([
+      executeCode(language, sourceCode, stdin, { interactive: true }),
+      new Promise<ExecuteResult>((resolve) =>
+        setTimeout(() => resolve(timeoutResult()), INTERACTIVE_BUDGET_MS),
+      ),
+    ]);
 
     // Optional run log (never block execution on DB / schema errors)
     try {
@@ -64,7 +86,6 @@ export async function POST(request: Request) {
       engine: result.engine,
     });
   } catch (error) {
-    // Never hard-fail the exam UI with a raw 500 for runner/infra issues.
     const message = error instanceof Error ? error.message : 'Execution failed';
     console.error('[coding/run]', message, error);
     return NextResponse.json(

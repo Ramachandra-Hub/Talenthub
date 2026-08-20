@@ -32,7 +32,12 @@ export function ProctorConsentGate({ onReady, onCancel }: Props) {
         video.srcObject = stream;
         video.muted = true;
         video.playsInline = true;
-        await video.play();
+        await video.play().catch((err: unknown) => {
+          const interrupted =
+            err instanceof DOMException &&
+            (err.name === 'AbortError' || /interrupted/i.test(err.message));
+          if (!interrupted) throw err;
+        });
       }
       setCameraOk(true);
     } catch {
