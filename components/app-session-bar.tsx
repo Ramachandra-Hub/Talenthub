@@ -18,15 +18,20 @@ export default function AppSessionBar() {
   }, []);
 
   useEffect(() => {
+    if (pathname !== '/exams') {
+      setEmail(null);
+      return undefined;
+    }
+
     const refresh = async () => {
       const user = await getBrowserAuthUser();
       setEmail(user?.email ?? null);
     };
 
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 30_000);
+    const interval = window.setInterval(() => void refresh(), 5 * 60_000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [pathname]);
 
   if (!mounted) return null;
   if (email === undefined) return null;

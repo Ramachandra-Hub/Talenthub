@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { studentSignInAction } from '@/lib/auth/student-sign-in-server';
 
 type StudentSignInOptions = {
   rollNumber: string;
@@ -26,21 +25,30 @@ export function useStudentSignIn() {
       setError(null);
       setLoading(true);
       try {
-        const result = await studentSignInAction({
-          rollNumber: rollNumber.trim(),
-          password,
-          department,
-          year,
-          redirectTo,
-        });
-
-        if (result.error) {
-          setError(result.error);
-          return;
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 25_000);
+        let res: Response;
+        try {
+          res = await fetch('/api/student/signin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            cache: 'no-store',
+            signal: controller.signal,
+            body: JSON.stringify({
+              rollNumber: rollNumber.trim(),
+              password,
+              department,
+              year,
+            }),
+          });
+        } finally {
+          window.clearTimeout(timer);
         }
 
-        if (!result.ok) {
-          setError('Sign in failed. Try again.');
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setError(json.error ?? 'Sign in failed. Try again.');
           return;
         }
 
@@ -51,10 +59,11 @@ export function useStudentSignIn() {
 
         window.location.assign(dest);
       } catch (err) {
+        const aborted = err instanceof DOMException && err.name === 'AbortError';
         const raw = err instanceof Error ? err.message : 'Sign in failed';
         const msg =
-          raw === 'Failed to fetch' || /network|fetch/i.test(raw)
-            ? 'Cannot reach the server. Open http://localhost:3000 and ensure `npm run dev` is running, then try again.'
+          aborted || raw === 'Failed to fetch' || /network|fetch|timeout/i.test(raw)
+            ? 'Cannot reach the server. Refresh this page (Ctrl+F5) and try again.'
             : raw;
         setError(msg);
       } finally {

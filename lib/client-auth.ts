@@ -13,13 +13,20 @@ export function isAwsClientMode(): boolean {
   return true;
 }
 
+function fetchWithTimeout(input: string, ms = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), ms);
+  return fetch(input, {
+    credentials: 'include',
+    cache: 'no-store',
+    signal: controller.signal,
+  }).finally(() => window.clearTimeout(timer));
+}
+
 /** Resolve logged-in user via server session (NextAuth + RDS). */
 export async function getClientUser(): Promise<ClientUser | null> {
   try {
-    const meRes = await fetch('/api/student/me', {
-      credentials: 'include',
-      cache: 'no-store',
-    });
+    const meRes = await fetchWithTimeout('/api/student/me', 8000);
     if (meRes.ok) {
       const me = (await meRes.json()) as {
         authenticated?: boolean;
@@ -35,12 +42,12 @@ export async function getClientUser(): Promise<ClientUser | null> {
           user_metadata: { role: me.role ?? 'student' },
         };
       }
+      return null;
     }
 
-    const res = await fetch('/api/auth/session', {
-      credentials: 'include',
-      cache: 'no-store',
-    });
+    if (meRes.status >= 500) return null;
+
+    const res = await fetchWithTimeout('/api/auth/session', 8000);
     if (!res.ok) return null;
     const json = (await res.json()) as {
       user?: { id?: string; email?: string; role?: string };

@@ -40,6 +40,12 @@
     "app/api/exam/attempts/[attemptId]/autosave/route.ts": {
       "maxDuration": 30
     },
+    "app/api/student/me/route.ts": {
+      "maxDuration": 10
+    },
+    "app/api/student/signin/route.ts": {
+      "maxDuration": 30
+    },
     "app/api/student/test-attempts/route.ts": {
       "maxDuration": 60
     },

@@ -3,6 +3,7 @@ import { getSafeSession } from '@/lib/auth/safe-session';
 import { getDatabaseSetupErrors } from '@/lib/postgres-url';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 10;
 
 /** Reliable student session check (prefer over generic /api/auth/session on Vercel). */
 export async function GET() {

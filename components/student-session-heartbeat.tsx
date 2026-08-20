@@ -15,6 +15,15 @@ export function StudentSessionHeartbeat() {
       return undefined;
     }
 
+    const onExamRoute =
+      pathname === '/placement/take' ||
+      pathname?.startsWith('/tests/take') ||
+      pathname?.startsWith('/exam/');
+    if (onExamRoute) {
+      setActive(true);
+      return undefined;
+    }
+
     let cancelled = false;
 
     const sync = async () => {
@@ -24,7 +33,7 @@ export function StudentSessionHeartbeat() {
     };
 
     void sync();
-    const interval = window.setInterval(() => void sync(), 60_000);
+    const interval = window.setInterval(() => void sync(), 5 * 60_000);
 
     return () => {
       cancelled = true;
@@ -36,12 +45,18 @@ export function StudentSessionHeartbeat() {
     if (!active) return undefined;
 
     const ping = () => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 8000);
       void fetch('/api/student/session-heartbeat', {
         method: 'POST',
         credentials: 'include',
-      }).catch(() => {
-        /* ignore when dev server is restarting or offline */
-      });
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+        .catch(() => {
+          /* ignore when the server is restarting or offline */
+        })
+        .finally(() => window.clearTimeout(timer));
     };
 
     const onExamRoute =

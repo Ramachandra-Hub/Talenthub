@@ -20,6 +20,11 @@ export default function CollegeSiteHeader() {
   const [homeHref, setHomeHref] = useState('/');
 
   useEffect(() => {
+    if (pathname?.startsWith('/auth') || isExamFocusRoute(pathname)) {
+      setHomeHref('/');
+      return undefined;
+    }
+
     const sync = async () => {
       const user = await getBrowserAuthUser();
       if (!user) {
@@ -32,9 +37,9 @@ export default function CollegeSiteHeader() {
     };
 
     void sync();
-    const id = window.setInterval(() => void sync(), 60_000);
+    const id = window.setInterval(() => void sync(), 5 * 60_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [pathname]);
 
   if (isExamFocusRoute(pathname)) {
     return null;

@@ -109,7 +109,7 @@ function StudentLoginForm() {
 
             <AuthCard
               title="Student sign in"
-              description={`Enter your ${COLLEGE.rce} credentials to access live examinations and your assigned slot.`}
+              description={`Enter your ${COLLEGE.rce} credentials to access live examinations and your assigned slot. If sign-in fails, press Ctrl+F5, then try again.`}
             >
               <form onSubmit={onSubmit} className="space-y-5">
                 {notice === 'signup_closed' ? (

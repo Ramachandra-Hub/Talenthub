@@ -135,6 +135,19 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (pathname === '/student' || pathname.startsWith('/student/')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/login/student';
+    return NextResponse.redirect(url);
+  }
+
+  // APIs authenticate themselves. Running edgeAuth on every /api/* call
+  // (including /api/student/me) stacks JWT work on the exam-day traffic
+  // and shows up in the browser as connection timeouts.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
+
   return proxyAws(request);
 }
 
