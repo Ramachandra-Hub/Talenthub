@@ -25,11 +25,26 @@ import { isElevateXAttemptTitle, isElevateXTestId } from '@/lib/elevatex';
 import { buildExamScorecard, encodeExamScorecardAnswers } from '@/lib/exams/exam-scorecard';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import { slimAnswersForSubmit } from '@/lib/exam-v2/sanitize-answers';
+import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const SUBMIT_ACCESS_TIMEOUT_MS = 2_500;
+/** Keep submit under Vercel gateway limits — never wait on Wandbox during POST. */
+const SUBMIT_SCORE_BUDGET_MS = 6_000;
+
+function hasCodingPayload(answers: Record<string, unknown>): boolean {
+  return Object.values(answers).some((value) => {
+    if (typeof value === 'string') return value.includes('sourceCode');
+    if (!value || typeof value !== 'object') return false;
+    const row = value as Record<string, unknown>;
+    if (typeof row.sourceCode === 'string' && row.sourceCode.trim()) return true;
+    const ua = row.userAnswer;
+    return typeof ua === 'string' && ua.includes('sourceCode');
+  });
+}
 
 function submitErrorResponse(error: unknown, testId = ''): NextResponse {
   if (error instanceof AttemptConflictError) {
@@ -187,45 +202,50 @@ export async function POST(request: Request) {
         ? slimAnswersForSubmit(body.answers as Record<string, unknown>)
         : {};
 
+    const codingPresent = hasCodingPayload(answersIn);
+    let profileForScore:
+      | Awaited<ReturnType<typeof resolveStudentProfilePrisma>>
+      | null = null;
+
     if (!isElevateXTestId(testId) && !isElevateXAttemptTitle(testName)) {
       try {
-        const profile = await resolveStudentProfilePrisma(userId);
-        const built = await buildExamScorecard({
+        profileForScore = await resolveStudentProfilePrisma(userId);
+        // Coding exams: never block submit on Wandbox. Score MCQs fast; grade coding later.
+        const scorePromise = buildExamScorecard({
           testId,
           testName,
           answers: answersIn,
           candidate: {
-            fullName: profile.full_name || profile.email || 'Student',
-            hallTicket: profile.roll_number || rollNumberFromUser(profile.email || ''),
-            email: profile.email,
-            departmentId: profile.branch,
+            fullName: profileForScore.full_name || profileForScore.email || 'Student',
+            hallTicket:
+              profileForScore.roll_number || rollNumberFromUser(profileForScore.email || ''),
+            email: profileForScore.email,
+            departmentId: profileForScore.branch,
           },
           elapsedSec: clientElapsedSec,
           completedAt: nowIso,
+          deferCoding: codingPresent,
         });
+
+        const built = await Promise.race([
+          scorePromise,
+          new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), SUBMIT_SCORE_BUDGET_MS),
+          ),
+        ]);
+
         if (built) {
           scorePercent = built.scorePercent;
           rawNetScore = built.rawNetScore;
           Object.assign(answersIn, encodeExamScorecardAnswers(built.scorecard, answersIn));
-        } else {
-          const hasCodingPayload = Object.values(answersIn).some((value) => {
-            if (!value || typeof value !== 'object') return false;
-            const ua = (value as { userAnswer?: unknown }).userAnswer;
-            return typeof ua === 'string' && ua.includes('sourceCode');
-          });
-          if (hasCodingPayload && scorePercent >= 99) {
-            scorePercent = 0;
-            rawNetScore = 0;
-          }
+        } else if (codingPresent && scorePercent >= 99) {
+          // Do not keep fake 100% when coding has not been graded yet.
+          scorePercent = 0;
+          rawNetScore = 0;
         }
       } catch (err) {
         console.warn('[test-attempts/submit] server scoring skipped:', err);
-        const hasCodingPayload = Object.values(answersIn).some((value) => {
-          if (!value || typeof value !== 'object') return false;
-          const ua = (value as { userAnswer?: unknown }).userAnswer;
-          return typeof ua === 'string' && ua.includes('sourceCode');
-        });
-        if (hasCodingPayload && scorePercent >= 99) {
+        if (codingPresent && scorePercent >= 99) {
           scorePercent = 0;
           rawNetScore = 0;
         }
@@ -294,6 +314,49 @@ export async function POST(request: Request) {
         await releaseStudentSessionPrisma(userId);
       } catch (err) {
         console.warn('[test-attempts/submit] session release skipped:', err);
+      }
+
+      // Full coding grade after response — report path also recomputes if needed.
+      if (
+        codingPresent &&
+        testId &&
+        !isElevateXTestId(testId) &&
+        !isElevateXAttemptTitle(testName)
+      ) {
+        try {
+          const profile =
+            profileForScore ?? (await resolveStudentProfilePrisma(userId));
+          const built = await buildExamScorecard({
+            testId,
+            testName,
+            answers: answersIn,
+            candidate: {
+              fullName: profile.full_name || profile.email || 'Student',
+              hallTicket: profile.roll_number || rollNumberFromUser(profile.email || ''),
+              email: profile.email,
+              departmentId: profile.branch,
+            },
+            elapsedSec: clientElapsedSec,
+            completedAt: nowIso,
+            deferCoding: false,
+          });
+          if (built) {
+            await prisma.testAttempt.update({
+              where: { id },
+              data: {
+                score: built.scorePercent,
+                percentageScore: built.scorePercent,
+                totalScore: built.rawNetScore,
+                answers: encodeExamScorecardAnswers(
+                  built.scorecard,
+                  answersIn,
+                ) as Prisma.InputJsonValue,
+              },
+            });
+          }
+        } catch (err) {
+          console.warn('[test-attempts/submit] background coding grade skipped:', err);
+        }
       }
     })();
 

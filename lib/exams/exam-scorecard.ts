@@ -92,13 +92,17 @@ export async function buildExamScorecard(input: {
   startedAt?: string;
   completedAt?: string;
   elapsedSec?: number;
+  /** Skip remote coding grading (fast submit path). */
+  deferCoding?: boolean;
 }): Promise<{
   scorecard: PlacementScorecard;
   scorePercent: number;
   rawNetScore: number;
   totalQuestions: number;
 } | null> {
-  const scored = await scoreQuestionsOnServer(input.testId, input.answers);
+  const scored = await scoreQuestionsOnServer(input.testId, input.answers, {
+    deferCoding: input.deferCoding,
+  });
   if (!scored) return null;
 
   const byId = new Map(scored.results.map((row) => [row.questionId, row]));

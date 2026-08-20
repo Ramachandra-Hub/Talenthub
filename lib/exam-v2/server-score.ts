@@ -21,28 +21,66 @@ function answersMapToRecord(
   answers: Record<string, unknown>,
 ): Record<string, TestAnswer> {
   const out: Record<string, TestAnswer> = {};
+
+  const toStringOrNull = (value: unknown): string | null => {
+    if (value == null) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return null;
+  };
+
+  const normalizeRawAnswer = (raw: unknown): string | null => {
+    // Newer shape already stores answer as a plain string.
+    const direct = toStringOrNull(raw);
+    if (direct !== null) return direct;
+    if (!raw || typeof raw !== 'object') return null;
+
+    const row = raw as Record<string, unknown>;
+
+    // Primary persisted shape: { userAnswer, isMarkedForReview }.
+    const fromUserAnswer = toStringOrNull(row.userAnswer);
+    if (fromUserAnswer !== null) return fromUserAnswer;
+
+    // Some legacy payloads keep coding answer directly on the row.
+    const sourceCode = toStringOrNull(row.sourceCode ?? row.code);
+    if (sourceCode !== null) {
+      const language = toStringOrNull(row.language) ?? 'java';
+      return JSON.stringify({ language, sourceCode });
+    }
+
+    // Legacy generic field aliases.
+    const fromAnswer = toStringOrNull(row.answer ?? row.value);
+    if (fromAnswer !== null) return fromAnswer;
+
+    return null;
+  };
+
   for (const [questionId, raw] of Object.entries(answers)) {
     if (questionId.startsWith('__') || questionId === '_type' || questionId === 'scorecard') continue;
-    if (!raw || typeof raw !== 'object') continue;
-    const row = raw as Record<string, unknown>;
+
+    const row = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
     out[questionId] = {
       questionId,
-      userAnswer:
-        typeof row.userAnswer === 'string'
-          ? row.userAnswer
-          : row.userAnswer == null
-            ? null
-            : String(row.userAnswer),
-      isMarkedForReview: Boolean(row.isMarkedForReview),
+      userAnswer: normalizeRawAnswer(raw),
+      isMarkedForReview: Boolean(row?.isMarkedForReview),
     };
   }
   return out;
 }
 
+export type ScoreQuestionsOptions = {
+  /**
+   * Skip remote coding execution (Wandbox/Piston). Use on submit so the
+   * attempt saves quickly; full coding grades run later on report open / background.
+   */
+  deferCoding?: boolean;
+};
+
 /** Recompute score on server so clients never need correct_answer in the browser. */
 export async function scoreQuestionsOnServer(
   testId: string,
   answers: Record<string, unknown>,
+  options?: ScoreQuestionsOptions,
 ): Promise<{
   results: QuestionScoreResult[];
   questions: Question[];
@@ -55,12 +93,26 @@ export async function scoreQuestionsOnServer(
   const answerMap = answersMapToRecord(answers);
   const results: QuestionScoreResult[] = [];
   let earned = 0;
+  const deferCoding = Boolean(options?.deferCoding);
 
   for (const q of questions as Question[]) {
     const ua = answerMap[q.id]?.userAnswer;
     if (isCodingQuestion(q)) {
-      const grade = await gradeCodingAnswerOnServer(q, ua);
       const hasCode = Boolean(ua && String(ua).trim());
+      if (deferCoding) {
+        // Provisional row — not counted as wrong/correct until remote grade finishes.
+        results.push({
+          questionId: q.id,
+          earned: 0,
+          correct: false,
+          wrong: false,
+          skipped: !hasCode,
+          isCoding: true,
+          codingTitle: q.coding_title ?? q.coding_problem_id ?? `Coding ${q.id.slice(-4)}`,
+        });
+        continue;
+      }
+      const grade = await gradeCodingAnswerOnServer(q, ua);
       results.push({
         questionId: q.id,
         earned: grade.rubric.totalEarned / 100,
