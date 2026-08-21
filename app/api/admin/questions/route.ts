@@ -19,7 +19,14 @@ function safeTopicNameFromSlug(slug: string): string {
 }
 
 function mapInsertRow(row: InputQuestion) {
-  const options = Array.isArray(row.options) ? row.options.map((v) => String(v)) : null;
+  const options = Array.isArray(row.options)
+    ? row.options.map((v) => String(v))
+    : typeof row.options === 'string' && row.options.includes('|')
+      ? String(row.options)
+          .split('|')
+          .map((v) => v.trim())
+          .filter(Boolean)
+      : null;
   return {
     question_text: String(row.question_text ?? '').trim(),
     category_id: row.category_id ? String(row.category_id) : null,

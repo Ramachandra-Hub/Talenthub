@@ -10,6 +10,7 @@ import {
   insertCodingProblemsIntoBank,
   loadCodingBankFromDb,
   ensureCodingBankTags,
+  ensureJavaArrayCodingBank,
 } from '@/lib/coding/coding-bank-store';
 
 export const runtime = 'nodejs';
@@ -25,10 +26,13 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search')?.trim() ?? '';
   const languageParam = searchParams.get('language')?.trim() ?? 'all';
   const language =
-    languageParam === 'python' ? 'python' : languageParam === 'c' ? 'c' : 'all';
+    languageParam === 'python' || languageParam === 'java' || languageParam === 'c'
+      ? languageParam
+      : 'all';
 
   try {
     await ensureCodingBankTags();
+    await ensureJavaArrayCodingBank();
     const problems = await loadCodingBankFromDb({ search, language });
     return NextResponse.json({ problems, total: problems.length });
   } catch (err) {
@@ -50,7 +54,9 @@ export async function POST(request: NextRequest) {
 
   const file = form.get('file');
   const pasteText = String(form.get('pasteText') ?? '').trim();
-  const defaultLanguage = String(form.get('defaultLanguage') ?? 'c').trim() === 'python' ? 'python' : 'c';
+  const defaultLanguageRaw = String(form.get('defaultLanguage') ?? 'c').trim();
+  const defaultLanguage =
+    defaultLanguageRaw === 'python' || defaultLanguageRaw === 'java' ? defaultLanguageRaw : 'c';
 
   let parsed: { problems: ProgrammingProblem[]; warnings: string[] };
 
@@ -63,7 +69,26 @@ export async function POST(request: NextRequest) {
     if (file.size > MAX_BYTES) {
       return NextResponse.json({ error: 'File must be under 4 MB.' }, { status: 400 });
     }
-    const text = await file.text();
+    const name = file.name.toLowerCase();
+    let text = '';
+    try {
+      if (
+        name.endsWith('.pdf') ||
+        name.endsWith('.docx') ||
+        file.type === 'application/pdf' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ) {
+        const { extractTextFromUpload } = await import('@/lib/question-bank/parse-upload-content');
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const extracted = await extractTextFromUpload(buffer, file.name, file.type);
+        text = extracted.text;
+      } else {
+        text = await file.text();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not read file';
+      return NextResponse.json({ error: message, formatHint: CODING_UPLOAD_FORMAT_HINT }, { status: 400 });
+    }
     parsed = parseCodingUploadText(text, file.name, defaultLanguage);
   } else {
     return NextResponse.json({ error: 'Paste problem descriptions or choose a file.' }, { status: 400 });

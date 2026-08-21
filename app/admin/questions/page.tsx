@@ -51,6 +51,9 @@ export default function QuestionsManagementPage() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [categoryWarning, setCategoryWarning] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadKind, setUploadKind] = useState<'auto' | 'mcq' | 'coding'>('auto');
+  const [uploadLanguage, setUploadLanguage] = useState<'java' | 'python' | 'c'>('java');
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [pdfDownloading, setPdfDownloading] = useState<'topic' | 'full' | null>(null);
   const [pdfTopicSelect, setPdfTopicSelect] = useState('');
   const [seedingBank, setSeedingBank] = useState(false);
@@ -304,49 +307,55 @@ export default function QuestionsManagementPage() {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!selectedTopicSlug) {
+      alert('Select a topic first — for Java MCQs pick “Java Programming”; for coding pick “Coding — Java”.');
+      event.target.value = '';
+      return;
+    }
     setUploading(true);
+    setUploadMessage(null);
     try {
-      const text = await file.text();
-      const lines = text.split('\n').filter((line) => line.trim());
-      const headers = lines[0].split(',').map((h) => h.trim());
-      const newQuestions: Record<string, unknown>[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map((v) => v.trim());
-        const questionObj: Record<string, string> = {};
-        headers.forEach((header, index) => {
-          questionObj[header] = values[index] ?? '';
-        });
-        if (questionObj.question_text && questionObj.correct_answer) {
-          newQuestions.push({
-            question_text: questionObj.question_text,
-            category_id: questionObj.category_id || categories[0]?.id,
-            difficulty: questionObj.difficulty || 'medium',
-            type: questionObj.type || 'MCQ',
-            options: questionObj.options ? JSON.parse(questionObj.options) : null,
-            correct_answer: questionObj.correct_answer,
-            explanation: questionObj.explanation || null,
-            tags: questionObj.tags ? JSON.parse(questionObj.tags) : null,
-          });
-        }
+      const form = new FormData();
+      form.append('file', file);
+      form.append('topicSlug', selectedTopicSlug);
+      form.append(
+        'topicName',
+        allTopicsFlat.find((t) => t.slug === selectedTopicSlug)?.name ?? selectedTopicSlug,
+      );
+      form.append('kind', uploadKind);
+      form.append(
+        'defaultLanguage',
+        selectedTopicSlug.includes('java') || selectedTopicSlug === 'technical-java'
+          ? 'java'
+          : uploadLanguage,
+      );
+      const res = await fetchWithAuth('/api/admin/question-bank/upload', {
+        method: 'POST',
+        body: form,
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        inserted?: number;
+        warnings?: string[];
+        formatHint?: string;
+        textPreview?: string;
+      };
+      if (!res.ok) {
+        throw new Error(
+          [json.error, json.warnings?.join(' '), json.formatHint].filter(Boolean).join('\n') ||
+            'Import failed',
+        );
       }
-      if (newQuestions.length > 0) {
-        const res = await fetchWithAuth('/api/admin/questions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ questions: newQuestions }),
-        });
-        if (!res.ok) {
-          const json = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(json.error ?? 'Import failed');
-        }
-        alert(`${newQuestions.length} questions imported`);
-        await loadOverview();
-        if (selectedTopicSlug) await loadTopic(selectedTopicSlug, topicOffset);
-      }
-    } catch {
-      alert('Error importing questions');
+      const msg = `${json.message ?? `Imported ${json.inserted ?? 0} question(s).`} ${(json.warnings ?? []).join(' ')}`.trim();
+      setUploadMessage(msg);
+      await loadOverview();
+      if (selectedTopicSlug) await loadTopic(selectedTopicSlug, 0);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error importing questions');
     } finally {
       setUploading(false);
+      event.target.value = '';
     }
   };
 
@@ -356,7 +365,13 @@ export default function QuestionsManagementPage() {
       const res = await fetchWithAuth('/api/admin/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          options: formData.options.includes('|')
+            ? formData.options.split('|').map((s) => s.trim())
+            : formData.options,
+          tags: selectedTopicSlug ? [selectedTopicSlug] : [],
+        }),
       });
       if (!res.ok) {
         const json = (await res.json().catch(() => ({}))) as { error?: string };
@@ -410,8 +425,9 @@ export default function QuestionsManagementPage() {
         <div>
           <h2 className="text-2xl font-bold text-[#0c2340]">Question bank</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Syllabus-wise MCQ bank plus <strong>C / Python coding problems</strong> — download per topic
-            as PDF, Word (.doc), or CSV. Paste coding problems under Add / import.
+            Syllabus-wise MCQ bank plus <strong>C / Python / Java coding problems</strong> — upload
+            CSV or PDF into the selected topic. For Java MCQs choose <strong>Java Programming</strong>;
+            for coding choose <strong>Coding — Java</strong>.
           </p>
           {overview ? (
             <p className="text-sm text-gray-500 mt-2">
@@ -472,15 +488,98 @@ export default function QuestionsManagementPage() {
         </div>
       </div>
 
-      <Card className="p-4 mb-6 border-violet-200/80 bg-violet-50/40">
-        <CodingProblemsUploadPanel
-          compact
-          title="Coding problems (C / Python)"
-          onSaved={() => {
-            void loadOverview();
-            if (selectedTopicSlug) void loadTopic(selectedTopicSlug, 0);
-          }}
-        />
+      <Card className="p-4 mb-6 border-emerald-200/80 bg-emerald-50/40 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-[#0c2340] uppercase tracking-wide">
+            Upload questions (CSV / PDF / Word)
+          </h3>
+          <p className="text-xs text-gray-600 mt-1">
+            Files are saved into the topic selected on the left. Java MCQs → select{' '}
+            <strong>Technical / CS → Java Programming</strong>. Java coding → select{' '}
+            <strong>Coding — Java</strong> (or set language to Java below).
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Current topic:{' '}
+            <span className="font-semibold text-[#0c2340]">
+              {allTopicsFlat.find((t) => t.slug === selectedTopicSlug)?.name ||
+                selectedTopicSlug ||
+                'none selected'}
+            </span>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs font-medium text-gray-700">
+            Type
+            <select
+              value={uploadKind}
+              onChange={(e) => setUploadKind(e.target.value as 'auto' | 'mcq' | 'coding')}
+              className="ml-2 border rounded-md px-2 py-1 text-sm bg-white"
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="mcq">MCQ (Java / theory)</option>
+              <option value="coding">Coding problems</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-gray-700">
+            Coding language
+            <select
+              value={uploadLanguage}
+              onChange={(e) => setUploadLanguage(e.target.value as 'java' | 'python' | 'c')}
+              className="ml-2 border rounded-md px-2 py-1 text-sm bg-white"
+            >
+              <option value="java">Java</option>
+              <option value="python">Python</option>
+              <option value="c">C</option>
+            </select>
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSelectedSection('technical');
+              setSelectedTopicSlug('technical-java');
+              setUploadKind('mcq');
+              setUploadLanguage('java');
+            }}
+          >
+            Select Java MCQ topic
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSelectedSection('coding');
+              setSelectedTopicSlug('coding-java');
+              setUploadKind('coding');
+              setUploadLanguage('java');
+            }}
+          >
+            Select Java coding topic
+          </Button>
+          <label className="inline-flex">
+            <Button size="sm" className="bg-[#0c2340] hover:bg-[#16304f] cursor-pointer" disabled={uploading} asChild>
+              <span>{uploading ? 'Uploading…' : 'Choose CSV / PDF'}</span>
+            </Button>
+            <input
+              type="file"
+              accept=".csv,.pdf,.docx,.txt,.json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/json"
+              onChange={(ev) => void handleFileUpload(ev)}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+        <p className="text-[11px] text-gray-500">
+          MCQ CSV columns: question_text, option_a, option_b, option_c, option_d, correct_answer.
+          PDF: numbered questions with A) B) C) D) and Answer: C.
+        </p>
+        {uploadMessage ? (
+          <p className="text-xs text-emerald-800 bg-white border border-emerald-200 rounded-lg px-3 py-2">
+            {uploadMessage}
+          </p>
+        ) : null}
       </Card>
 
       <Card className="p-4 mb-6 border-[#0c2340]/15 bg-slate-50/60">
@@ -556,9 +655,15 @@ export default function QuestionsManagementPage() {
             </Button>
             <label>
               <Button size="sm" variant="outline" className="cursor-pointer" asChild>
-                <span>Import MCQ CSV</span>
+                <span>{uploading ? 'Uploading…' : 'Import CSV / PDF'}</span>
               </Button>
-              <input type="file" accept=".csv" onChange={handleFileUpload} disabled={uploading} className="hidden" />
+              <input
+                type="file"
+                accept=".csv,.pdf,.docx,.txt"
+                onChange={(ev) => void handleFileUpload(ev)}
+                disabled={uploading}
+                className="hidden"
+              />
             </label>
           </div>
 

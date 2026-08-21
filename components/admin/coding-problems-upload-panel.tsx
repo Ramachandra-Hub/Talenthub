@@ -7,7 +7,7 @@ import { CODING_UPLOAD_FORMAT_HINT } from '@/lib/exam-builder/parse-coding-uploa
 import { fetchWithAuth } from '@/lib/fetch-with-auth';
 import type { ProgrammingProblem } from '@/lib/coding/sample-problems';
 
-export type CodingProblemsLanguage = 'c' | 'python';
+export type CodingProblemsLanguage = 'c' | 'python' | 'java';
 
 type Props = {
   initialProblems?: ProgrammingProblem[];
@@ -30,7 +30,7 @@ export function CodingProblemsUploadPanel({
   onDefaultLanguageChange,
   onSaved,
   compact = false,
-  title = 'C / Python coding problems',
+  title = 'C / Python / Java coding problems',
 }: Props) {
   const [problems, setProblems] = useState(initialProblems);
   const [defaultLanguage, setDefaultLanguage] = useState(initialDefaultLanguage);
@@ -211,7 +211,7 @@ export function CodingProblemsUploadPanel({
 
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium text-slate-700">Default language:</span>
-        {(['c', 'python'] as const).map((lang) => (
+        {(['c', 'python', 'java'] as const).map((lang) => (
           <button
             key={lang}
             type="button"
@@ -225,7 +225,7 @@ export function CodingProblemsUploadPanel({
                 : 'border-slate-200 bg-white text-slate-700'
             }`}
           >
-            {lang === 'c' ? 'C' : 'Python'}
+            {lang === 'c' ? 'C' : lang === 'python' ? 'Python' : 'Java'}
           </button>
         ))}
         <Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => void saveLanguage()}>
@@ -261,11 +261,11 @@ export function CodingProblemsUploadPanel({
           </Button>
         </div>
         <div>
-          <p className="text-xs font-semibold text-slate-700 mb-1">Or upload file (.txt, .json, .csv)</p>
+          <p className="text-xs font-semibold text-slate-700 mb-1">Or upload file (.txt, .json, .csv, .pdf, .docx)</p>
           <input
             ref={fileRef}
             type="file"
-            accept=".json,.csv,.txt,text/plain,application/json,text/csv"
+            accept=".json,.csv,.txt,.pdf,.docx,text/plain,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             disabled={uploading}
             onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
           />

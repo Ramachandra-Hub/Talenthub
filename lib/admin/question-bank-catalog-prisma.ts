@@ -75,6 +75,14 @@ async function countUncategorizedQuestionsPrisma(taggedIds: Set<string>): Promis
 }
 
 export async function loadQuestionBankOverviewPrisma(): Promise<QuestionBankOverview> {
+  const { ensureCodingBankTags } = await import('@/lib/coding/coding-bank-store');
+  await ensureCodingBankTags();
+  await prisma.questionTag.upsert({
+    where: { slug: 'technical-java' },
+    create: { slug: 'technical-java', name: 'Java Programming' },
+    update: { name: 'Java Programming' },
+  });
+
   const [tags, linkCounts, totalQuestions, uncategorizedCount] = await Promise.all([
     prisma.questionTag.findMany({ orderBy: { name: 'asc' } }),
     loadTagLinkCountsPrisma(),
