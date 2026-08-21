@@ -22,7 +22,8 @@ export type AppRole = 'admin' | 'student';
 
 async function tryBootstrapAdminFromEnv(email: string, password: string) {
   if (!isAllowlistedAdminEmail(email)) return;
-  if (password !== getConfiguredAdminPassword()) return;
+  const configured = getConfiguredAdminPassword();
+  if (!configured || password !== configured) return;
   if (adminAuthEmail(email) !== adminAuthEmail(getConfiguredAdminEmail())) return;
 
   await bootstrapRdsAdmin();
@@ -94,7 +95,13 @@ export function buildAuthProviders(): Provider[] {
 
         if (!user?.passwordHash || !user.adminUser) return null;
         let ok = await verifyPassword(password, user.passwordHash);
-        if (!ok && password === getConfiguredAdminPassword() && isAllowlistedAdminEmail(email)) {
+        const configuredPassword = getConfiguredAdminPassword();
+        if (
+          !ok &&
+          configuredPassword &&
+          password === configuredPassword &&
+          isAllowlistedAdminEmail(email)
+        ) {
           // Env password is correct but DB hash drifted — re-sync from PREPINDIA_ADMIN_*.
           await tryBootstrapAdminFromEnv(email, password);
           user = await prisma.user.findUnique({

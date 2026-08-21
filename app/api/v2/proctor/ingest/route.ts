@@ -11,8 +11,8 @@ import {
   linkProctorViolationsPrisma,
 } from '@/lib/db/test-attempts-prisma';
 
-const PROCTOR_URL = (process.env.AI_PROCTOR_URL ?? 'http://127.0.0.1:8090').replace(/\/$/, '');
-const PROCTOR_TOKEN = process.env.INTERNAL_API_TOKEN ?? 'dev-internal-token-change-me';
+const PROCTOR_URL = (process.env.AI_PROCTOR_URL ?? '').replace(/\/$/, '');
+const PROCTOR_TOKEN = process.env.INTERNAL_API_TOKEN?.trim() || '';
 
 type IngestItem = {
   type: string;
@@ -136,21 +136,23 @@ export async function POST(request: Request) {
     }
 
     void Promise.allSettled(
-      items.map((item) =>
-        fetch(`${PROCTOR_URL}/v1/signals`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-internal-token': PROCTOR_TOKEN,
-          },
-          body: JSON.stringify({
-            examSessionId: sessionId ?? 'unknown',
-            userId,
-            type: item.type,
-            metadata: { ...(item.metadata ?? {}), testId: body.testId },
-          }),
-        }),
-      ),
+      PROCTOR_URL && PROCTOR_TOKEN
+        ? items.map((item) =>
+            fetch(`${PROCTOR_URL}/v1/signals`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-internal-token': PROCTOR_TOKEN,
+              },
+              body: JSON.stringify({
+                examSessionId: sessionId ?? 'unknown',
+                userId,
+                type: item.type,
+                metadata: { ...(item.metadata ?? {}), testId: body.testId },
+              }),
+            }),
+          )
+        : [],
     );
   }
 

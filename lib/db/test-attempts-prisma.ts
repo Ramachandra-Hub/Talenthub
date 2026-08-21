@@ -278,6 +278,7 @@ async function completeTestAttemptMinimalPrisma(input: {
   answersJson?: string;
 }): Promise<{ id: string; elapsedSec: number } | null> {
   if (!isUuidAttemptId(input.attemptId)) return null;
+  // Only complete open attempts — never overwrite an already-submitted score/answers.
   const updated = input.answersJson
     ? await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
         UPDATE test_attempts
@@ -290,6 +291,8 @@ async function completeTestAttemptMinimalPrisma(input: {
           answers = ${input.answersJson}::jsonb
         WHERE id = ${input.attemptId.trim()}::uuid
           AND user_id = ${input.userId}::uuid
+          AND completed_at IS NULL
+          AND status IN ('in_progress', 'started', 'active')
         RETURNING id::text AS id, time_taken
       `
     : await prisma.$queryRaw<{ id: string; time_taken: number | null }[]>`
@@ -302,6 +305,8 @@ async function completeTestAttemptMinimalPrisma(input: {
           time_taken = ${input.elapsedSec}
         WHERE id = ${input.attemptId.trim()}::uuid
           AND user_id = ${input.userId}::uuid
+          AND completed_at IS NULL
+          AND status IN ('in_progress', 'started', 'active')
         RETURNING id::text AS id, time_taken
       `;
   const row = updated[0];
@@ -664,6 +669,18 @@ export async function syncTestAttemptReportPrisma(
     if (byId) {
       await persistDashboardStatForSubmit(input, byId.id, byId.elapsedSec, answersForPersist);
       return byId;
+    }
+    // Attempt exists but is already completed — do not invent a new score via sync.
+    const existing = await prisma.testAttempt.findFirst({
+      where: {
+        id: attemptId,
+        userId: input.userId,
+        OR: [{ completedAt: { not: null } }, { status: { in: ['completed', 'submitted'] } }],
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new AttemptConflictError(existing.id);
     }
   }
 

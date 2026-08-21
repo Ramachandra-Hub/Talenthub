@@ -13,7 +13,8 @@ export async function GET(_request: NextRequest, context: Params) {
     return NextResponse.json({
       title: exam.title,
       duration: exam.duration,
-      defaultPasswordHint: exam.defaultPassword,
+      // Do not expose the shared exam password to unauthenticated callers.
+      requiresPassword: Boolean(exam.defaultPassword),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not load exam link';

@@ -16,6 +16,13 @@ function anyRealAiProviderConfigured(): boolean {
 export function isMockAiEnabled(): boolean {
   if (process.env.AI_MOCK === '1') return true;
   if (process.env.AI_MOCK === '0') return false;
+  // Never auto-enable mock in production — exams must not publish demo MCQs silently.
+  if (
+    process.env.NODE_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'production'
+  ) {
+    return false;
+  }
   if (process.env.NODE_ENV === 'development') return true;
   return !anyRealAiProviderConfigured();
 }

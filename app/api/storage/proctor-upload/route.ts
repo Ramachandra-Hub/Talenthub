@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getDbService } from '@/lib/db/get-db-service';
 import { z } from 'zod';
 import { createProctorUploadUrl, isS3Configured, proctorScreenshotKey } from '@/lib/aws/s3';
 import { requireAuth } from '@/lib/server-auth';
 import { rateLimitInMemory, clientIp } from '@/lib/rate-limit';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +43,20 @@ export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid upload request' }, { status: 400 });
+  }
+
+  // Students may only upload evidence for their own attempts.
+  if (auth.ctx.resolved.role === 'student') {
+    const owned = await prisma.testAttempt.findFirst({
+      where: { id: parsed.data.attemptId, userId: auth.ctx.user.id },
+      select: { id: true },
+    });
+    if (!owned) {
+      return NextResponse.json(
+        { error: 'Attempt not found for this student.' },
+        { status: 403 },
+      );
+    }
   }
 
   const ext =

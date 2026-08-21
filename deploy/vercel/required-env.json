@@ -41,7 +41,7 @@
   "recommended_in_dashboard": [
     {
       "name": "PREPINDIA_ADMIN_PASSWORD",
-      "example": "RCE_T&P",
+      "example": "replace-with-strong-password",
       "secret": true
     },
     {

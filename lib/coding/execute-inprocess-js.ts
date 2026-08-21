@@ -1,8 +1,21 @@
 import { runInNewContext } from 'node:vm';
 import type { ExecuteResult } from '@/lib/coding/types';
+import { isStrictProduction } from '@/lib/production';
 
-/** Run Node-style JS in-process (works on Vercel without spawning a shell). */
+/** Run Node-style JS in-process (dev/local only — not a secure jail). */
 export function executeJavaScriptInProcess(sourceCode: string, stdin: string): ExecuteResult {
+  if (isStrictProduction()) {
+    return {
+      stdout: '',
+      stderr:
+        'In-process JavaScript execution is disabled in production. Use the remote coding runner.',
+      exitCode: 1,
+      runtimeMs: 0,
+      memoryKb: null,
+      engine: 'inprocess',
+    };
+  }
+
   const started = Date.now();
   let stdout = '';
   let stderr = '';

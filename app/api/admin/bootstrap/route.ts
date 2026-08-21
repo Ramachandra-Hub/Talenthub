@@ -9,8 +9,9 @@ import {
 import { ensureAdminAccess } from '@/lib/admin-verify';
 import {
   getConfiguredAdminEmail,
-  getConfiguredAdminPassword,
+  requireConfiguredAdminPassword,
 } from '@/lib/admin-defaults';
+import { isStrictProduction } from '@/lib/production';
 
 type BootstrapBody = {
   email?: string;
@@ -25,11 +26,18 @@ function bootstrapAllowed(adminCount: number): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
+  // Production: secret required. Do not use guardSetupRoute (that 404s all setup when disabled).
+  if (isStrictProduction()) {
     const secret = process.env.RDS_SETUP_SECRET?.trim();
     const header = request.headers.get('x-setup-secret')?.trim();
     if (!secret || header !== secret) {
-      return NextResponse.json({ error: 'Bootstrap requires X-Setup-Secret in production.' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Bootstrap requires X-Setup-Secret in production.' },
+        { status: 403 },
+      );
+    }
+    if (process.env.ALLOW_ADMIN_BOOTSTRAP !== 'true') {
+      // First admin may still bootstrap when adminCount===0 below.
     }
   }
 
@@ -50,12 +58,23 @@ export async function POST(request: NextRequest) {
   }
 
   const email = body.email?.trim().toLowerCase() || getConfiguredAdminEmail();
-  const password = body.password || getConfiguredAdminPassword();
+  let password: string;
+  try {
+    password = body.password?.trim() || requireConfiguredAdminPassword();
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          'Admin password required. Set PREPINDIA_ADMIN_PASSWORD or pass password in the body.',
+      },
+      { status: 400 },
+    );
+  }
   const fullName = body.fullName?.trim() || 'RCE Training & Placement Admin';
 
-  if (!email || password.length < 6) {
+  if (!email || password.length < 8) {
     return NextResponse.json(
-      { error: 'Email required and password must be at least 6 characters.' },
+      { error: 'Email required and password must be at least 8 characters.' },
       { status: 400 },
     );
   }

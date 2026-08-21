@@ -83,6 +83,7 @@ export async function POST(request: Request) {
       runtimeMs: result.runtimeMs,
       memoryKb: result.memoryKb,
       engine: result.engine,
+      unavailable: result.engine === 'fallback',
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Execution failed';
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
         runtimeMs: 0,
         memoryKb: null,
         engine: 'fallback',
+        unavailable: true,
         error: message,
       },
       { status: 200 },

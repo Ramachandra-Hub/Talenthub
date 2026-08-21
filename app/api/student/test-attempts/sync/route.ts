@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server-auth';
 import { fallbackTestForAttempt, normalizeAttemptRow } from '@/lib/test-attempts';
 import {
+  AttemptConflictError,
   syncTestAttemptReportPrisma,
   withPrismaRetry,
 } from '@/lib/db/test-attempts-prisma';
@@ -33,6 +34,12 @@ export async function POST(request: Request) {
     const userId = auth.ctx.user.id;
     const nowIso = new Date().toISOString();
     const testId = String(body.testId ?? '').trim();
+    if (testId.startsWith('fallback-')) {
+      return NextResponse.json(
+        { error: 'Fallback/demo exams cannot be submitted.', code: 'invalid_test' },
+        { status: 400 },
+      );
+    }
     const testName = typeof body.testName === 'string' ? body.testName : 'Practice test';
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
     const elapsedSec = Number(body.elapsedSec) || 0;
@@ -98,6 +105,16 @@ export async function POST(request: Request) {
       synced: true,
     });
   } catch (error) {
+    if (error instanceof AttemptConflictError) {
+      return NextResponse.json(
+        {
+          error: 'You have already submitted this exam sitting.',
+          code: 'already_submitted',
+          attemptId: error.attemptId,
+        },
+        { status: 409 },
+      );
+    }
     const message = error instanceof Error ? error.message : 'Sync failed';
     console.error('[test-attempts/sync]', message, error);
     return NextResponse.json(

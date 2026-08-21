@@ -132,6 +132,12 @@ export async function POST(request: Request) {
     }
 
     const testId = String(body.testId ?? '').trim();
+    if (testId.startsWith('fallback-')) {
+      return NextResponse.json(
+        { error: 'Fallback/demo exams cannot be submitted.', code: 'invalid_test' },
+        { status: 400 },
+      );
+    }
     submittedTestId = testId;
     const attemptId = typeof body.attemptId === 'string' ? body.attemptId : undefined;
     const scheduleId = typeof body.scheduleId === 'string' ? body.scheduleId.trim() : '';
@@ -170,10 +176,15 @@ export async function POST(request: Request) {
           ? rollNumberFromUser(auth.ctx.user.email)
           : undefined;
 
-    // Skip RDS access check when the client already has an in-flight attempt (progress heartbeat).
-    const skipAccessDb = Boolean(attemptId?.trim()) || clientElapsedSec > 0;
-    if (testId && !skipAccessDb) {
-      const accessFallback: ExamAccessResult = { allowed: true, schedule: null };
+    // Always enforce access on final submit. Fail closed if the check times out.
+    if (testId) {
+      const accessFallback: ExamAccessResult = {
+        allowed: false,
+        schedule: null,
+        code: 'access_check_timeout',
+        message:
+          'Could not verify exam access in time. Wait a moment and submit again.',
+      };
       const access = await Promise.race([
         assertStudentCanSubmitAttemptPrisma(
           userId,

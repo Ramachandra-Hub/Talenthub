@@ -92,6 +92,20 @@ export async function POST(request: NextRequest) {
     });
     text = result.text;
     usedProvider = result.provider;
+    if (
+      usedProvider === 'mock' &&
+      (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production') &&
+      process.env.AI_MOCK !== '1'
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'AI question generation is not configured. Set OPENAI_API_KEY / HF_API_TOKEN / LOCAL_LLM_URL, or AI_MOCK=1 only for demos.',
+          provider: usedProvider,
+        },
+        { status: 503 },
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'AI generation failed';
     const status = message.includes('not configured') ? 503 : 500;

@@ -119,11 +119,11 @@ export async function seedRdsBaseline(): Promise<{
 export async function bootstrapRdsAdmin(): Promise<{ email: string; created: boolean }> {
   await ensureRdsSchemaReadyForWrites();
 
-  const { getConfiguredAdminEmail, getConfiguredAdminPassword } = await import(
+  const { getConfiguredAdminEmail, requireConfiguredAdminPassword } = await import(
     '@/lib/admin-defaults'
   );
   const email = getConfiguredAdminEmail();
-  const password = getConfiguredAdminPassword();
+  const password = requireConfiguredAdminPassword();
   const hash = await bcrypt.hash(password, 12);
 
   const user = await prisma.user.upsert({

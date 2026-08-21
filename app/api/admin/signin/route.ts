@@ -66,10 +66,12 @@ export async function POST(request: NextRequest) {
   }
 
   const existingAdminCount = await prisma.adminUser.count();
+  const configuredPassword = getConfiguredAdminPassword();
   if (
     existingAdminCount === 0 &&
+    configuredPassword &&
     isAllowlistedAdminEmail(normalizedEmail) &&
-    password === getConfiguredAdminPassword()
+    password === configuredPassword
   ) {
     try {
       await bootstrapRdsAdmin();
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest) {
       process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
     return isProd
       ? 'Contact the examination cell if you forgot your admin credentials.'
-      : `Use ${getConfiguredAdminEmail()} and PREPINDIA_ADMIN_PASSWORD from .env.local (default RCE_T&P). Open http://localhost:3000 — not a Vercel URL.`;
+      : `Use ${getConfiguredAdminEmail()} and PREPINDIA_ADMIN_PASSWORD from your environment. Open http://localhost:3000 — not a Vercel URL.`;
   };
 
   let result: Awaited<ReturnType<typeof signIn>>;

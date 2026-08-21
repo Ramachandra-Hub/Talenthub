@@ -32,7 +32,12 @@ export type ExamAccessResult =
   | { allowed: true; schedule: ExamScheduleRow | null }
   | {
       allowed: false;
-      code: 'NOT_LIVE' | 'TARGET_MISMATCH' | 'SLOT_NOT_ASSIGNED' | 'SLOT_WRONG_WINDOW';
+      code:
+        | 'NOT_LIVE'
+        | 'TARGET_MISMATCH'
+        | 'SLOT_NOT_ASSIGNED'
+        | 'SLOT_WRONG_WINDOW'
+        | 'access_check_timeout';
       message: string;
       schedule: ExamScheduleRow | null;
     };

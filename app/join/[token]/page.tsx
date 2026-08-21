@@ -21,7 +21,6 @@ import {
 } from '@/components/auth/form-field';
 import { ACADEMIC_YEARS, COLLEGE, DEPARTMENTS } from '@/lib/college-brand';
 import { validatePassword, validateRollNumber } from '@/lib/college-auth';
-import { DEFAULT_EXAM_STUDENT_PASSWORD } from '@/lib/roster-credentials-export';
 import { StatusAlert } from '@/components/ui/status-alert';
 
 export default function OpenExamJoinPage() {
@@ -30,10 +29,9 @@ export default function OpenExamJoinPage() {
 
   const [title, setTitle] = useState('Open exam');
   const [duration, setDuration] = useState<number | null>(null);
-  const [defaultPassword, setDefaultPassword] = useState(DEFAULT_EXAM_STUDENT_PASSWORD);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rollNumber, setRollNumber] = useState('');
-  const [password, setPassword] = useState(DEFAULT_EXAM_STUDENT_PASSWORD);
+  const [password, setPassword] = useState('');
   const [branch, setBranch] = useState('');
   const [year, setYear] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -48,7 +46,7 @@ export default function OpenExamJoinPage() {
         error?: string;
         title?: string;
         duration?: number;
-        defaultPasswordHint?: string;
+        requiresPassword?: boolean;
       };
       if (cancelled) return;
       if (!res.ok) {
@@ -57,10 +55,6 @@ export default function OpenExamJoinPage() {
       }
       setTitle(json.title ?? 'Open exam');
       setDuration(json.duration ?? null);
-      if (json.defaultPasswordHint) {
-        setDefaultPassword(json.defaultPasswordHint);
-        setPassword(json.defaultPasswordHint);
-      }
     })().catch(() => {
       if (!cancelled) setLoadError('Could not load this exam link.');
     });
@@ -147,8 +141,8 @@ export default function OpenExamJoinPage() {
 
             <FormField
               id="password"
-              label="Default exam password"
-              hint={`Use ${defaultPassword} unless your department issued a different password.`}
+              label="Password"
+              hint="New students: use the exam password from faculty. Returning students: use your student login password."
               error={fieldErrors.password}
             >
               <Input

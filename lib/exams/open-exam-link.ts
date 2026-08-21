@@ -97,18 +97,22 @@ export async function joinOpenExam(input: {
     },
   });
 
-  const existingMatches = existing?.passwordHash
-    ? await verifyPassword(password, existing.passwordHash)
-    : false;
-  const passwordOk = existingMatches || password === expected;
-  if (!passwordOk) {
-    throw new Error(`Use the default exam password (${expected}).`);
+  // Existing accounts must authenticate with THEIR password — never overwrite
+  // passwordHash with the shared open-link password (account takeover).
+  if (existing?.passwordHash) {
+    const existingMatches = await verifyPassword(password, existing.passwordHash);
+    if (!existingMatches) {
+      throw new Error(
+        'Incorrect password for this roll number. Use your student login password, not the shared exam password.',
+      );
+    }
+  } else if (password !== expected) {
+    throw new Error('Incorrect exam password for this open link.');
   }
 
-  const passwordHash =
-    existingMatches && existing?.passwordHash
-      ? existing.passwordHash
-      : await hashPassword(expected);
+  const passwordHash = existing?.passwordHash
+    ? existing.passwordHash
+    : await hashPassword(password);
   const user = existing
     ? await prisma.user.update({
         where: { id: existing.id },
@@ -117,7 +121,7 @@ export async function joinOpenExam(input: {
           branch,
           academicYear: year,
           userRole: 'student',
-          ...(existingMatches ? {} : { passwordHash }),
+          // Never reset password on join for existing users.
         },
       })
     : await prisma.user.create({

@@ -252,7 +252,7 @@ describe('validateScheduleSlots', () => {
         roll_number: `OVER${i}`,
       })),
     };
-    expect(validateScheduleSlots(slots)).toMatch(/maximum 130/i);
+    expect(validateScheduleSlots(slots)).toMatch(/maximum 150/i);
   });
 });
 

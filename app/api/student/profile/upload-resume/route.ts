@@ -5,16 +5,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { isS3Configured, putObjectBuffer } from '@/lib/aws/s3';
+import { extractTextFromUpload } from '@/lib/question-bank/parse-upload-content';
+import { rateLimitInMemory, clientIp } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
 const MAX_BYTES = 5 * 1024 * 1024;
+const ALLOWED_EXT = new Set(['pdf', 'docx', 'txt']);
+const ALLOWED_MIME = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'application/octet-stream',
+]);
 
 export async function POST(request: NextRequest) {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const rl = rateLimitInMemory(`resume-upload:${userId}:${clientIp(request)}`, 10, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json({ error: 'Too many uploads. Try again shortly.' }, { status: 429 });
   }
 
   if (!isS3Configured()) {
@@ -44,15 +58,45 @@ export async function POST(request: NextRequest) {
   }
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const ext = safeName.split('.').pop()?.toLowerCase() ?? 'dat';
+  const ext = (safeName.split('.').pop()?.toLowerCase() ?? '').replace(/^\.+/, '');
+  if (!ALLOWED_EXT.has(ext)) {
+    return NextResponse.json(
+      { error: 'Only PDF, DOCX, or TXT resume files are allowed.' },
+      { status: 400 },
+    );
+  }
+  const contentType = (file.type || '').toLowerCase();
+  if (contentType && !ALLOWED_MIME.has(contentType)) {
+    return NextResponse.json(
+      { error: 'Unsupported resume content type.' },
+      { status: 400 },
+    );
+  }
+
+  const forcedMime =
+    ext === 'pdf'
+      ? 'application/pdf'
+      : ext === 'docx'
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'text/plain';
+
   const storagePath = `resumes/${userId}/resume-${Date.now()}.${ext}`;
   const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  let resumeText: string | undefined;
+  try {
+    const extracted = await extractTextFromUpload(buffer, safeName, forcedMime);
+    resumeText = extracted.text?.trim().slice(0, 100_000) || undefined;
+  } catch {
+    /* keep upload even if parse fails */
+  }
 
   try {
     await putObjectBuffer({
       key: storagePath,
-      body: Buffer.from(arrayBuffer),
-      contentType: file.type || 'application/octet-stream',
+      body: buffer,
+      contentType: forcedMime,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Upload failed';
@@ -65,6 +109,7 @@ export async function POST(request: NextRequest) {
       resumeFileName: file.name,
       resumeStoragePath: storagePath,
       resumeUpdatedAt: new Date(),
+      ...(resumeText ? { resumeText } : {}),
     },
   });
 
@@ -72,5 +117,6 @@ export async function POST(request: NextRequest) {
     ok: true,
     storagePath,
     fileName: file.name,
+    textExtracted: Boolean(resumeText),
   });
 }
