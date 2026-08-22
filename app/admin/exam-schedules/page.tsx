@@ -65,6 +65,8 @@ export default function AdminExamSchedulesPage() {
   const [endsAt, setEndsAt] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
   const [loadWarning, setLoadWarning] = useState<string | null>(null);
+  const [javaTodayBusy, setJavaTodayBusy] = useState(false);
+  const [javaTodayMessage, setJavaTodayMessage] = useState<string | null>(null);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
@@ -146,12 +148,8 @@ export default function AdminExamSchedulesPage() {
   };
 
   const openNextAttempt = async (schedule: ExamScheduleRow) => {
-    if (schedule.slot_number == null) {
-      alert('Re-attempt rounds are only available for slot-based schedules.');
-      return;
-    }
     const confirmed = window.confirm(
-      `Open the next attempt round for Slot ${schedule.slot_number}?\n\nPrior attempt scores stay in reports. Students who already submitted this sitting can write again when you go live.`,
+      `Open the next attempt round?\n\nPrior scores stay in reports. Students who already submitted can write again when the new sitting is live.`,
     );
     if (!confirmed) return;
 
@@ -259,6 +257,37 @@ export default function AdminExamSchedulesPage() {
       if (apply) await load();
     } finally {
       setCleanupLoading(false);
+    }
+  };
+
+  const runJavaToday = async (action: 'publish' | 'rewrite') => {
+    const ok = window.confirm(
+      action === 'rewrite'
+        ? 'Open a new sitting so students who already submitted can write the Java exam again?'
+        : 'Publish and go live with today’s Java exam (15 MCQs + 2 coding, 50 marks)?',
+    );
+    if (!ok) return;
+    setJavaTodayBusy(true);
+    setJavaTodayMessage(null);
+    try {
+      const res = await fetch('/api/admin/java-exam-today', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action }),
+      });
+      const json = (await res.json()) as { error?: string; message?: string; scheduleId?: string };
+      if (!res.ok) {
+        setJavaTodayMessage(json.error ?? 'Could not update the Java exam');
+        return;
+      }
+      setJavaTodayMessage(json.message ?? 'Done');
+      if (json.scheduleId) setActiveScheduleId(json.scheduleId);
+      await load();
+    } catch (err) {
+      setJavaTodayMessage(err instanceof Error ? err.message : 'Could not update the Java exam');
+    } finally {
+      setJavaTodayBusy(false);
     }
   };
 
@@ -378,6 +407,37 @@ export default function AdminExamSchedulesPage() {
           {loadWarning}
         </p>
       ) : null}
+
+      <Card className="p-6 border-blue-200 bg-blue-50/40">
+        <h3 className="font-semibold text-[#0c2340] mb-2">Java exam today (50 marks)</h3>
+        <p className="text-sm text-slate-700 mb-3">
+          Each student gets <strong>15 MCQs × 2 = 30 marks</strong> and <strong>2 Java coding
+          questions from the uploaded document only</strong> (not the built-in bank). Each student
+          gets a <strong>unique pair</strong> with no repeats in their paper. Attempting one coding
+          question is enough — the better score counts for <strong>20 marks</strong>. Total{' '}
+          <strong>50</strong>. Click Go live after uploading the coding PDF/DOCX.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={javaTodayBusy}
+            onClick={() => void runJavaToday('publish')}
+          >
+            {javaTodayBusy ? 'Working…' : 'Go live now'}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={javaTodayBusy}
+            onClick={() => void runJavaToday('rewrite')}
+          >
+            Let students rewrite
+          </Button>
+        </div>
+        {javaTodayMessage ? (
+          <p className="text-sm mt-3 text-slate-700 rounded-md bg-white border border-slate-200 px-3 py-2">
+            {javaTodayMessage}
+          </p>
+        ) : null}
+      </Card>
 
       <Card className="p-6">
         <h3 className="font-semibold text-[#0c2340] mb-4">
@@ -590,16 +650,14 @@ export default function AdminExamSchedulesPage() {
                               End
                             </Button>
                           ) : null}
-                          {s.slot_number != null ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={acting === s.id}
-                              onClick={() => void openNextAttempt(s)}
-                            >
-                              Next attempt
-                            </Button>
-                          ) : null}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={acting === s.id}
+                            onClick={() => void openNextAttempt(s)}
+                          >
+                            Next attempt
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"

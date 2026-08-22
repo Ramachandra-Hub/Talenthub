@@ -13,6 +13,7 @@ import {
   loadQuestionsForTakePrisma,
   loadTestRowForTakePrisma,
   resolveStudentProfilePrisma,
+  sliceQuestionsForJavaTodayTake,
 } from '@/lib/db/test-attempts-prisma';
 import { checkStudentExamAccessPrisma } from '@/lib/db/exam-access-prisma';
 import { enrichSectionsWithQuestionCounts } from '@/lib/exam-v2/enrich-sections';
@@ -58,7 +59,10 @@ export async function GET(_request: Request, context: RouteContext) {
       trimmedId,
       access.schedule?.id,
     );
-    const questions = await loadQuestionsForTakePrisma(trimmedId);
+    const questions = await loadQuestionsForTakePrisma(trimmedId, {
+      userId,
+      attemptRound: access.schedule?.attempt_round,
+    });
     const sectionsRaw = await loadTestSectionsPrisma(trimmedId);
     const sections = enrichSectionsWithQuestionCounts(sectionsRaw, questions);
 
@@ -121,7 +125,11 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const priorAttempt = await findCompletedAttemptForTest(admin, auth.ctx.user.id, trimmedId);
-  const questions = await loadQuestionsForTake(admin, trimmedId);
+  const loaded = await loadQuestionsForTake(admin, trimmedId);
+  const questions = await sliceQuestionsForJavaTodayTake(trimmedId, loaded, {
+    userId,
+    attemptRound: access.schedule?.attempt_round,
+  });
   const sectionsRaw = await loadTestSections(admin, trimmedId);
   const sections = enrichSectionsWithQuestionCounts(sectionsRaw, questions);
 

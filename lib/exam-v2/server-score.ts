@@ -5,6 +5,16 @@ import { loadQuestionsForScoringCached } from '@/lib/exam-v2/question-score-cach
 import { answersMatchMcq, isCodingQuestion } from '@/lib/practice-mappers';
 import { roundScorePercent } from '@/lib/format-score';
 import type { Question } from '@/lib/types';
+import {
+  JAVA_TODAY_CODING_MARKS,
+  JAVA_TODAY_EXAM_KIND,
+  JAVA_TODAY_MCQ_MARKS_EACH,
+  JAVA_TODAY_TOTAL_MARKS,
+  isJavaTodayExamMeta,
+  javaTodayPaperSeed,
+  selectJavaTodayPaper,
+} from '@/lib/exams/java-today-exam';
+import { prisma } from '@/lib/prisma';
 
 export type QuestionScoreResult = {
   questionId: string;
@@ -74,6 +84,13 @@ export type ScoreQuestionsOptions = {
    * attempt saves quickly; full coding grades run later on report open / background.
    */
   deferCoding?: boolean;
+  userId?: string;
+  attemptRound?: number | null;
+};
+
+export type ExamMarkScheme = {
+  examKind: typeof JAVA_TODAY_EXAM_KIND;
+  totalMarks: number;
 };
 
 /** Recompute score on server so clients never need correct_answer in the browser. */
@@ -87,9 +104,24 @@ export async function scoreQuestionsOnServer(
   scorePercent: number;
   rawNetScore: number;
   totalQuestions: number;
+  markScheme?: ExamMarkScheme;
 } | null> {
-  const questions = await loadQuestionsForScoringCached(testId);
+  let questions = await loadQuestionsForScoringCached(testId);
   if (!questions.length) return null;
+
+  const fer = await prisma.facultyExamRequest.findFirst({
+    where: { publishedTestId: testId, status: 'approved' },
+    select: { slotKey: true, description: true, title: true, topic: true },
+  });
+  const javaToday = isJavaTodayExamMeta(fer ?? {});
+  if (javaToday) {
+    questions = selectJavaTodayPaper(
+      questions,
+      javaTodayPaperSeed(options?.userId ?? 'student', testId, options?.attemptRound),
+      testId,
+    );
+  }
+
   const answerMap = answersMapToRecord(answers);
   const results: QuestionScoreResult[] = [];
   let earned = 0;
@@ -113,9 +145,11 @@ export async function scoreQuestionsOnServer(
         continue;
       }
       const grade = await gradeCodingAnswerOnServer(q, ua);
+      const unit = grade.rubric.totalEarned / 100;
+      const codingEarned = javaToday ? unit * JAVA_TODAY_CODING_MARKS : unit;
       results.push({
         questionId: q.id,
-        earned: grade.rubric.totalEarned / 100,
+        earned: codingEarned,
         correct: grade.rubric.totalEarned >= 99.5,
         wrong: hasCode && grade.rubric.totalEarned < 99.5,
         skipped: !hasCode,
@@ -123,7 +157,7 @@ export async function scoreQuestionsOnServer(
         codingRubric: grade.rubric,
         codingTitle: q.coding_title ?? q.coding_problem_id ?? `Coding ${q.id.slice(-4)}`,
       });
-      earned += grade.rubric.totalEarned / 100;
+      earned += codingEarned;
       continue;
     }
     if (ua === null || ua === undefined || ua === '') {
@@ -138,18 +172,34 @@ export async function scoreQuestionsOnServer(
       continue;
     }
     const ok = answersMatchMcq(ua, q.correct_answer);
+    const mcqEarned = ok ? (javaToday ? JAVA_TODAY_MCQ_MARKS_EACH : 1) : 0;
     results.push({
       questionId: q.id,
-      earned: ok ? 1 : 0,
+      earned: mcqEarned,
       correct: ok,
       wrong: !ok,
       skipped: false,
       isCoding: false,
     });
-    if (ok) earned += 1;
+    earned += mcqEarned;
   }
 
   const totalQuestions = questions.length;
+  if (javaToday) {
+    const mcqEarned = results.filter((row) => !row.isCoding).reduce((sum, row) => sum + row.earned, 0);
+    const codingEarned = results.filter((row) => row.isCoding).map((row) => row.earned);
+    const bestCoding = codingEarned.length ? Math.max(...codingEarned) : 0;
+    const marks = deferCoding ? mcqEarned : mcqEarned + bestCoding;
+    return {
+      results,
+      questions: questions as Question[],
+      scorePercent: roundScorePercent((marks / JAVA_TODAY_TOTAL_MARKS) * 100),
+      rawNetScore: marks,
+      totalQuestions,
+      markScheme: { examKind: JAVA_TODAY_EXAM_KIND, totalMarks: JAVA_TODAY_TOTAL_MARKS },
+    };
+  }
+
   const scoredForPercent = deferCoding
     ? results.filter((row) => !row.isCoding)
     : results;

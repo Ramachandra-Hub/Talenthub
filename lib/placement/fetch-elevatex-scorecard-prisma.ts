@@ -56,6 +56,7 @@ async function rebuildExamScorecardForAttempt(row: {
   startedAt: Date | null;
   completedAt: Date | null;
   timeTaken: number | null;
+  attemptRound?: number | null;
 }): Promise<ElevateXScorecardLookupResult | null> {
   if (!row.testId) return null;
   const answers =
@@ -79,6 +80,8 @@ async function rebuildExamScorecardForAttempt(row: {
     startedAt: row.startedAt?.toISOString(),
     completedAt: row.completedAt?.toISOString(),
     elapsedSec: row.timeTaken ?? 0,
+    userId: row.userId,
+    attemptRound: row.attemptRound ?? 1,
   });
   if (!built) return null;
   await prisma.testAttempt.update({
@@ -114,6 +117,7 @@ export async function fetchElevateXScorecardForAttemptPrisma(
         startedAt: true,
         completedAt: true,
         timeTaken: true,
+        attemptRound: true,
       },
     });
     if (row) {

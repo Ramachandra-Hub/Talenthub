@@ -236,6 +236,8 @@ export async function POST(request: Request) {
           elapsedSec: clientElapsedSec,
           completedAt: nowIso,
           deferCoding: codingPresent,
+          userId,
+          attemptRound,
         });
 
         const built = await Promise.race([
@@ -343,6 +345,8 @@ export async function POST(request: Request) {
             elapsedSec: clientElapsedSec,
             completedAt: nowIso,
             deferCoding: false,
+            userId,
+            attemptRound,
           });
           if (built) {
             await prisma.testAttempt.update({

@@ -1,6 +1,7 @@
 import { formatScorePercent, roundScorePercent } from '@/lib/format-score';
 import { buildCodingDeepAnalysis, type CodingDeepAnalysis } from '@/lib/exam-v2/coding-rubric';
 import { scoreQuestionsOnServer, type QuestionScoreResult } from '@/lib/exam-v2/server-score';
+import { JAVA_TODAY_CODING_MARKS, JAVA_TODAY_EXAM_KIND, JAVA_TODAY_MCQ_MARKS } from '@/lib/exams/java-today-exam';
 import { readProSubjectMeta } from '@/lib/exam-v2/subject-progress';
 import { EXAM_SCORECARD_ANSWERS_TYPE } from '@/lib/placement/scorecard-payload';
 import type { Question } from '@/lib/types';
@@ -94,6 +95,8 @@ export async function buildExamScorecard(input: {
   elapsedSec?: number;
   /** Skip remote coding grading (fast submit path). */
   deferCoding?: boolean;
+  userId?: string;
+  attemptRound?: number | null;
 }): Promise<{
   scorecard: PlacementScorecard;
   scorePercent: number;
@@ -102,6 +105,8 @@ export async function buildExamScorecard(input: {
 } | null> {
   const scored = await scoreQuestionsOnServer(input.testId, input.answers, {
     deferCoding: input.deferCoding,
+    userId: input.userId,
+    attemptRound: input.attemptRound,
   });
   if (!scored) return null;
 
@@ -120,6 +125,39 @@ export async function buildExamScorecard(input: {
   let earnedMarks = 0;
   let totalMarks = 0;
 
+  if (scored.markScheme?.examKind === JAVA_TODAY_EXAM_KIND) {
+    const mcqRows = scored.results.filter((row) => !row.isCoding);
+    const codingRowsForMarks = scored.results.filter((row) => row.isCoding);
+    const mcqEarned = mcqRows.reduce((sum, row) => sum + row.earned, 0);
+    const bestCoding = codingRowsForMarks.length
+      ? Math.max(...codingRowsForMarks.map((row) => row.earned))
+      : 0;
+    const codingEarned = input.deferCoding ? 0 : bestCoding;
+    earnedMarks = mcqEarned + codingEarned;
+    totalMarks = JAVA_TODAY_MCQ_MARKS + JAVA_TODAY_CODING_MARKS;
+    sections.push({
+      sectionId: 'technical',
+      name: 'Java MCQ',
+      marks: JAVA_TODAY_MCQ_MARKS,
+      earned: roundScorePercent(mcqEarned),
+      percent: roundScorePercent((mcqEarned / JAVA_TODAY_MCQ_MARKS) * 100),
+      correct: mcqRows.filter((row) => row.correct).length,
+      wrong: mcqRows.filter((row) => row.wrong).length,
+      skipped: mcqRows.filter((row) => row.skipped).length,
+      total: mcqRows.length,
+    });
+    sections.push({
+      sectionId: 'programming',
+      name: 'Java coding (best of 2)',
+      marks: JAVA_TODAY_CODING_MARKS,
+      earned: roundScorePercent(codingEarned),
+      percent: roundScorePercent((codingEarned / JAVA_TODAY_CODING_MARKS) * 100),
+      correct: codingRowsForMarks.filter((row) => row.correct).length,
+      wrong: codingRowsForMarks.filter((row) => row.wrong).length,
+      skipped: codingRowsForMarks.filter((row) => row.skipped).length,
+      total: codingRowsForMarks.length,
+    });
+  } else {
   for (const [slug, bucket] of buckets) {
     const rowsForMarks = input.deferCoding
       ? bucket.rows.filter((row) => !row.isCoding)
@@ -154,6 +192,7 @@ export async function buildExamScorecard(input: {
       skipped: rowsForMarks.filter((row) => row.skipped).length,
       total: marks,
     });
+  }
   }
 
   const percentage =

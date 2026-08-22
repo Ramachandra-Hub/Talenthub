@@ -59,18 +59,17 @@ export async function openNextAttemptRoundForSchedule(input: {
   if (!source) {
     throw new Error('Schedule not found.');
   }
-  if (source.slotNumber == null) {
-    throw new Error('Re-attempt rounds are only supported for slot-based exam schedules.');
-  }
-  if (!source.facultyExamRequestId) {
-    throw new Error('This schedule is not linked to a faculty exam.');
+  if (!source.facultyExamRequestId && !source.testId) {
+    throw new Error('This schedule is not linked to an exam.');
   }
 
   const slotNumber = source.slotNumber;
   const facultyExamRequestId = source.facultyExamRequestId;
 
   const agg = await prisma.examSchedule.aggregate({
-    where: { facultyExamRequestId, slotNumber },
+    where: facultyExamRequestId
+      ? { facultyExamRequestId, slotNumber }
+      : { testId: source.testId ?? undefined, slotNumber },
     _max: { attemptRound: true },
   });
   const nextRound = normalizeAttemptRound(agg._max.attemptRound) + 1;
@@ -91,11 +90,9 @@ export async function openNextAttemptRoundForSchedule(input: {
   }
 
   await prisma.examSchedule.updateMany({
-    where: {
-      facultyExamRequestId,
-      slotNumber,
-      status: 'live',
-    },
+    where: facultyExamRequestId
+      ? { facultyExamRequestId, slotNumber, status: 'live' }
+      : { testId: source.testId ?? undefined, slotNumber, status: 'live' },
     data: {
       status: 'ended',
       endsAt: now,

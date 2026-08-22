@@ -764,6 +764,15 @@ export async function findCompletedAttemptForTestPrisma(
     const bySchedule = await findCompletedAttemptForSchedulePrisma(userId, trimmedSchedule);
     if (bySchedule) return bySchedule;
 
+    const sitting = await prisma.examSchedule.findUnique({
+      where: { id: trimmedSchedule },
+      select: { attemptRound: true },
+    });
+    // A new attempt round is a new sitting — do not lock on older orphan submits.
+    if ((sitting?.attemptRound ?? 1) > 1) {
+      return null;
+    }
+
     // Submits that never stored scheduleId must still lock this sitting.
     const orphan = await prisma.testAttempt.findFirst({
       where: {
@@ -1722,7 +1731,36 @@ async function mergeCodingFromFacultyRequestPrisma(testId: string, questions: Qu
   return mergeMissingCodingQuestions(questions, parseQuestionsJson(fer.questionsJson), testId);
 }
 
-export async function loadQuestionsForTakePrisma(testId: string) {
+export async function sliceQuestionsForJavaTodayTake(
+  testId: string,
+  questions: Question[],
+  options?: { userId?: string; attemptRound?: number | null; fullPool?: boolean },
+): Promise<Question[]> {
+  return applyJavaTodayStudentPaper(testId, questions, options);
+}
+
+async function applyJavaTodayStudentPaper(
+  testId: string,
+  questions: Question[],
+  options?: { userId?: string; attemptRound?: number | null; fullPool?: boolean },
+): Promise<Question[]> {
+  if (!questions.length || options?.fullPool) return questions;
+  const fer = await prisma.facultyExamRequest.findFirst({
+    where: { publishedTestId: testId, status: 'approved' },
+    select: { slotKey: true, description: true, title: true, topic: true },
+  });
+  const { isJavaTodayExamMeta, javaTodayPaperSeed, selectJavaTodayPaper } = await import(
+    '@/lib/exams/java-today-exam'
+  );
+  if (!isJavaTodayExamMeta(fer ?? {})) return questions;
+  const seed = javaTodayPaperSeed(options?.userId ?? 'student', testId, options?.attemptRound);
+  return selectJavaTodayPaper(questions, seed, testId);
+}
+
+export async function loadQuestionsForTakePrisma(
+  testId: string,
+  options?: { userId?: string; attemptRound?: number | null; fullPool?: boolean },
+) {
   const { dedupeQuestionsByStem } = await import('@/lib/questions/dedupe-questions');
   const { enforceJavaUiPaper, nameLooksLikeJava } = await import('@/lib/exams/enforce-subject-paper');
 
@@ -1756,7 +1794,11 @@ export async function loadQuestionsForTakePrisma(testId: string) {
       const questions = dedupeQuestionsByStem(
         ordered.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
       );
-      return applyJava(await mergeCodingFromFacultyRequestPrisma(testId, questions));
+      return applyJavaTodayStudentPaper(
+        testId,
+        applyJava(await mergeCodingFromFacultyRequestPrisma(testId, questions)),
+        options,
+      );
     }
   }
 
@@ -1768,7 +1810,11 @@ export async function loadQuestionsForTakePrisma(testId: string) {
     const questions = dedupeQuestionsByStem(
       direct.map((q) => adaptQuestionRow(q as Record<string, unknown>)),
     );
-    return applyJava(await mergeCodingFromFacultyRequestPrisma(testId, questions));
+    return applyJavaTodayStudentPaper(
+      testId,
+      applyJava(await mergeCodingFromFacultyRequestPrisma(testId, questions)),
+      options,
+    );
   }
 
   const fer = await prisma.facultyExamRequest.findFirst({
@@ -1780,7 +1826,11 @@ export async function loadQuestionsForTakePrisma(testId: string) {
     const { parseQuestionsJson } = await import('@/lib/faculty-exams');
     const items = parseQuestionsJson(fer.questionsJson);
     if (items.length) {
-      return applyJava(dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, testId)));
+      return applyJavaTodayStudentPaper(
+        testId,
+        applyJava(dedupeQuestionsByStem(facultyQuestionsToUiQuestions(items, testId))),
+        options,
+      );
     }
   }
 

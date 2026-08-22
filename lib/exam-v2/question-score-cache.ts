@@ -35,7 +35,7 @@ export async function loadQuestionsForScoringCached(testId: string): Promise<Que
     return hit.questions;
   }
 
-  const questions = (await loadQuestionsForTakePrisma(key)) as Question[];
+  const questions = (await loadQuestionsForTakePrisma(key, { fullPool: true })) as Question[];
   cache.set(key, { questions, expiresAt: now + CACHE_TTL_MS });
   pruneCache();
   return questions;
