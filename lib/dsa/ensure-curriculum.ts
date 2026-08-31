@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { ensureDsaTables } from '@/lib/dsa/ensure-tables';
 import { DEFAULT_DSA_CONFIG } from '@/lib/dsa/types';
 import {
   DSA_MCQS,
@@ -9,6 +10,7 @@ import {
 } from '@/lib/dsa/curriculum';
 
 export async function ensureDsaCurriculum(): Promise<{ programId: string }> {
+  await ensureDsaTables();
   const existing = await prisma.dsaProgram.findUnique({
     where: { slug: DSA_PROGRAM_SLUG },
     select: { id: true },
