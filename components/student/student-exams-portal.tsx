@@ -176,7 +176,20 @@ export function StudentExamsPortal() {
               </Card>
             ) : null}
 
-            <Card className="p-5 sm:p-6 lux-surface rounded-2xl border-slate-200/70 bg-slate-50/50">
+            <Card className="p-5 sm:p-6 lux-surface rounded-2xl border-cyan-200/80 bg-gradient-to-br from-cyan-50/70 to-white">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                DSA practice
+              </p>
+              <h2 className="mt-2 text-lg font-bold text-[#0c2340]">Day-wise coding lab</h2>
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                Unlock days in order, pass the weekly assessment, and earn assignment attendance
+                qualification. Practice after you pass does not reset your official result.
+              </p>
+              <Button className="mt-4" asChild>
+                <Link href="/dsa">Open DSA portal →</Link>
+              </Button>
+            </Card>
+            <Card className="p-5 sm:p-6 lux-surface rounded-2xl border-slate-200/80">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Portal status
               </p>

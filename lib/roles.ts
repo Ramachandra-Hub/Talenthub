@@ -24,6 +24,7 @@ export const STUDENT_ONLY_PREFIXES = [
   '/ai/',
   '/practice',
   '/coding',
+  '/dsa',
   '/checkout',
   '/pricing',
 ] as const;

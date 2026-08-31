@@ -84,6 +84,10 @@ model User {
   studentActiveSession StudentActiveSession?
   dashboardStats       StudentDashboardStat[]
   createdExams         Exam[]     @relation("ExamCreatedBy")
+  dsaEnrollments       DsaEnrollment[]
+  dsaCodeSubmissions   DsaCodeSubmission[]
+  dsaMcqAttempts       DsaMcqAttempt[]
+  dsaAuditEvents       DsaAuditEvent[]
 
   @@index([email])
   @@index([rollNumber])
@@ -570,4 +574,300 @@ model BlogPost {
 
   @@index([publishedAt])
   @@map("blog_posts")
+}
+
+// --- Student DSA practice portal ---
+
+model DsaProgram {
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique
+  title        String
+  description  String?
+  daysPerWeek  Int      @default(5) @map("days_per_week")
+  configJson   Json     @map("config_json")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  levels      DsaLevel[]
+  enrollments DsaEnrollment[]
+
+  @@map("dsa_programs")
+}
+
+model DsaLevel {
+  id        String   @id @default(uuid()) @db.Uuid
+  programId String   @map("program_id") @db.Uuid
+  slug      String
+  title     String
+  sortOrder Int      @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  program DsaProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  weeks   DsaWeek[]
+
+  @@unique([programId, slug])
+  @@index([programId, sortOrder])
+  @@map("dsa_levels")
+}
+
+model DsaWeek {
+  id          String   @id @default(uuid()) @db.Uuid
+  levelId     String   @map("level_id") @db.Uuid
+  weekNumber  Int      @map("week_number")
+  title       String
+  topicSlug   String   @map("topic_slug")
+  topicName   String   @map("topic_name")
+  isRevision  Boolean  @default(false) @map("is_revision")
+  sortOrder   Int      @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  level    DsaLevel         @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  days     DsaDay[]
+  attempts DsaWeekAttempt[]
+
+  @@unique([levelId, weekNumber])
+  @@index([levelId, sortOrder])
+  @@map("dsa_weeks")
+}
+
+model DsaDay {
+  id        String   @id @default(uuid()) @db.Uuid
+  weekId    String   @map("week_id") @db.Uuid
+  dayNumber Int      @map("day_number")
+  title     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  week     DsaWeek           @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  progress DsaDayProgress[]
+
+  @@unique([weekId, dayNumber])
+  @@index([weekId, dayNumber])
+  @@map("dsa_days")
+}
+
+model DsaTopic {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  parentSlug String? @map("parent_slug")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  problems DsaProblem[]
+  mcqs     DsaMcq[]
+
+  @@map("dsa_topics")
+}
+
+model DsaProblem {
+  id              String   @id @default(uuid()) @db.Uuid
+  slug            String   @unique
+  title           String
+  statement       String   @db.Text
+  constraints     String?  @db.Text
+  inputFormat     String   @map("input_format") @db.Text
+  outputFormat    String   @map("output_format") @db.Text
+  examplesJson    Json     @map("examples_json")
+  topicId         String   @map("topic_id") @db.Uuid
+  conceptSlug     String   @map("concept_slug")
+  difficulty      String
+  expectedComplexity String? @map("expected_complexity")
+  hintsJson       Json     @default("[]") @map("hints_json")
+  explanation     String?  @db.Text
+  starterCodeJson Json     @map("starter_code_json")
+  testCasesJson   Json     @map("test_cases_json")
+  languagesJson   Json     @map("languages_json")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  topic        DsaTopic            @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  submissions  DsaCodeSubmission[]
+  assignments  DsaDayAssignment[]
+
+  @@index([topicId, difficulty])
+  @@index([conceptSlug])
+  @@map("dsa_problems")
+}
+
+model DsaMcq {
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique
+  topicId      String   @map("topic_id") @db.Uuid
+  conceptSlug  String   @map("concept_slug")
+  problemSlug  String?  @map("problem_slug")
+  questionText String   @map("question_text") @db.Text
+  optionA      String   @map("option_a")
+  optionB      String   @map("option_b")
+  optionC      String   @map("option_c")
+  optionD      String   @map("option_d")
+  correctAnswer String  @map("correct_answer")
+  explanation  String?  @db.Text
+  difficulty   String   @default("medium")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  topic     DsaTopic       @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  attempts  DsaMcqAttempt[]
+  assignments DsaDayAssignment[]
+
+  @@index([topicId, conceptSlug])
+  @@map("dsa_mcqs")
+}
+
+model DsaEnrollment {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  programId String   @map("program_id") @db.Uuid
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program         DsaProgram         @relation(fields: [programId], references: [id], onDelete: Cascade)
+  weekAttempts    DsaWeekAttempt[]
+  qualifications  DsaQualification[]
+
+  @@unique([userId, programId])
+  @@index([userId])
+  @@map("dsa_enrollments")
+}
+
+model DsaWeekAttempt {
+  id             String    @id @default(uuid()) @db.Uuid
+  enrollmentId   String    @map("enrollment_id") @db.Uuid
+  weekId         String    @map("week_id") @db.Uuid
+  attemptNumber  Int       @map("attempt_number")
+  kind           String    @default("official")
+  isActive       Boolean   @default(true) @map("is_active")
+  status         String    @default("in_progress")
+  assessmentPercent Decimal? @map("assessment_percent") @db.Decimal(5, 2)
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  enrollment DsaEnrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  week       DsaWeek          @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  days       DsaDayProgress[]
+  codeSubs   DsaCodeSubmission[]
+  mcqAttempts DsaMcqAttempt[]
+  qualifications DsaQualification[]
+
+  @@unique([enrollmentId, weekId, attemptNumber, kind])
+  @@index([enrollmentId, weekId, isActive])
+  @@index([weekId, status])
+  @@map("dsa_week_attempts")
+}
+
+model DsaDayProgress {
+  id            String    @id @default(uuid()) @db.Uuid
+  weekAttemptId String    @map("week_attempt_id") @db.Uuid
+  dayId         String    @map("day_id") @db.Uuid
+  status        String    @default("locked")
+  startedAt     DateTime? @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  mcqPercent    Decimal?  @map("mcq_percent") @db.Decimal(5, 2)
+  codingSolved  Int       @default(0) @map("coding_solved")
+  failReason    String?   @map("fail_reason")
+
+  weekAttempt DsaWeekAttempt     @relation(fields: [weekAttemptId], references: [id], onDelete: Cascade)
+  day         DsaDay             @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  assignments DsaDayAssignment[]
+
+  @@unique([weekAttemptId, dayId])
+  @@index([weekAttemptId, status])
+  @@map("dsa_day_progress")
+}
+
+model DsaDayAssignment {
+  id            String   @id @default(uuid()) @db.Uuid
+  dayProgressId String   @map("day_progress_id") @db.Uuid
+  kind          String
+  problemId     String?  @map("problem_id") @db.Uuid
+  mcqId         String?  @map("mcq_id") @db.Uuid
+  sortOrder     Int      @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  dayProgress DsaDayProgress @relation(fields: [dayProgressId], references: [id], onDelete: Cascade)
+  problem     DsaProblem?    @relation(fields: [problemId], references: [id], onDelete: SetNull)
+  mcq         DsaMcq?        @relation(fields: [mcqId], references: [id], onDelete: SetNull)
+
+  @@index([dayProgressId, kind])
+  @@map("dsa_day_assignments")
+}
+
+model DsaCodeSubmission {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  weekAttemptId   String   @map("week_attempt_id") @db.Uuid
+  problemId       String   @map("problem_id") @db.Uuid
+  language        String
+  sourceCode      String   @map("source_code") @db.Text
+  passed          Int      @default(0)
+  total           Int      @default(0)
+  scorePercent    Decimal  @default(0) @map("score_percent") @db.Decimal(5, 2)
+  status          String
+  stdout          String?  @db.Text
+  stderr          String?  @db.Text
+  runtimeMs       Int?     @map("runtime_ms")
+  memoryKb        Int?     @map("memory_kb")
+  kind            String   @default("official")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekAttempt DsaWeekAttempt @relation(fields: [weekAttemptId], references: [id], onDelete: Cascade)
+  problem     DsaProblem     @relation(fields: [problemId], references: [id], onDelete: Restrict)
+
+  @@index([userId, problemId, createdAt])
+  @@index([weekAttemptId, problemId])
+  @@map("dsa_code_submissions")
+}
+
+model DsaMcqAttempt {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  weekAttemptId String   @map("week_attempt_id") @db.Uuid
+  mcqId         String   @map("mcq_id") @db.Uuid
+  selected      String
+  isCorrect     Boolean  @map("is_correct")
+  kind          String   @default("official")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekAttempt DsaWeekAttempt @relation(fields: [weekAttemptId], references: [id], onDelete: Cascade)
+  mcq         DsaMcq         @relation(fields: [mcqId], references: [id], onDelete: Restrict)
+
+  @@index([weekAttemptId, mcqId])
+  @@index([userId, createdAt])
+  @@map("dsa_mcq_attempts")
+}
+
+model DsaQualification {
+  id            String   @id @default(uuid()) @db.Uuid
+  enrollmentId  String   @map("enrollment_id") @db.Uuid
+  weekAttemptId String   @map("week_attempt_id") @db.Uuid
+  title         String
+  source        String   @default("weekly_dsa_completion")
+  status        String   @default("qualified")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  enrollment  DsaEnrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  weekAttempt DsaWeekAttempt @relation(fields: [weekAttemptId], references: [id], onDelete: Restrict)
+
+  @@unique([enrollmentId, weekAttemptId])
+  @@index([enrollmentId, status])
+  @@map("dsa_qualifications")
+}
+
+model DsaAuditEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  eventType String   @map("event_type")
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("dsa_audit_events")
 }
