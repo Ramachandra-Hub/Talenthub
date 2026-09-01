@@ -46,12 +46,12 @@ export type DsaProgramConfig = {
 };
 
 export const DEFAULT_DSA_CONFIG: DsaProgramConfig = {
-  supportedLanguages: ['java', 'python', 'c', 'cpp', 'javascript'],
+  supportedLanguages: ['java', 'python'],
   defaultLanguage: 'java',
   dayCompletion: {
-    minCodingSolved: 1,
+    minCodingSolved: 3,
     minCodingPassFraction: 1,
-    minMcqAttempted: 2,
+    minMcqAttempted: 5,
     minMcqPercent: 50,
   },
   weekQualification: {
@@ -59,9 +59,9 @@ export const DEFAULT_DSA_CONFIG: DsaProgramConfig = {
     weeklyAssessmentMinPercent: 50,
   },
   difficultyMix: { easy: 20, medium: 40, advanced: 40 },
-  codingProblemsPerDay: 1,
-  mcqsPerDay: 2,
-  weeklyAssessmentMcqs: 4,
+  codingProblemsPerDay: 3,
+  mcqsPerDay: 5,
+  weeklyAssessmentMcqs: 5,
   mixTolerancePercent: 15,
 };
 

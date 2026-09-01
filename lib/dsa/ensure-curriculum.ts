@@ -16,6 +16,10 @@ export async function ensureDsaCurriculum(): Promise<{ programId: string }> {
     select: { id: true },
   });
   if (existing) {
+    await prisma.dsaProgram.update({
+      where: { id: existing.id },
+      data: { configJson: DEFAULT_DSA_CONFIG },
+    });
     const problemCount = await prisma.dsaProblem.count();
     if (problemCount >= DSA_PROBLEMS.length) return { programId: existing.id };
   }
@@ -24,7 +28,7 @@ export async function ensureDsaCurriculum(): Promise<{ programId: string }> {
     where: { slug: DSA_PROGRAM_SLUG },
     update: {
       title: 'DSA Level 1',
-      description: 'Day-wise DSA practice. Complete each day to unlock the next.',
+      description: 'Road to Success — crush each day to unlock the next!',
       daysPerWeek: 5,
       configJson: DEFAULT_DSA_CONFIG,
       isActive: true,
@@ -32,7 +36,7 @@ export async function ensureDsaCurriculum(): Promise<{ programId: string }> {
     create: {
       slug: DSA_PROGRAM_SLUG,
       title: 'DSA Level 1',
-      description: 'Day-wise DSA practice. Complete each day to unlock the next.',
+      description: 'Road to Success — crush each day to unlock the next!',
       daysPerWeek: 5,
       configJson: DEFAULT_DSA_CONFIG,
       isActive: true,

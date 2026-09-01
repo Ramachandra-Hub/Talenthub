@@ -44,11 +44,11 @@ describe('DSA day unlocking', () => {
 
   it('unlocks day 2 after successful day 1', () => {
     const passed = evaluateDayCompletion({
-      policy,
-      codingSolved: 1,
+      policy: { ...policy, minMcqAttempted: 5, minCodingSolved: 3 },
+      codingSolved: 3,
       codingBestFraction: 1,
-      mcqAttempted: 2,
-      mcqCorrect: 1,
+      mcqAttempted: 5,
+      mcqCorrect: 3,
     });
     expect(passed.passed).toBe(true);
     expect(initialDayState(2, true)).toBe('available');

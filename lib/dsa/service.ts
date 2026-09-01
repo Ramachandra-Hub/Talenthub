@@ -7,6 +7,7 @@ import { gradeDsaSource, parseTestCases } from '@/lib/dsa/grade';
 import { writeDsaAudit } from '@/lib/dsa/audit';
 import { Prisma } from '@prisma/client';
 import { isCodingLanguageId } from '@/lib/coding/languages';
+import { computeDayStars } from '@/lib/dsa/stars';
 import type { DsaAttemptKind, DsaDayState, DsaDifficulty, DsaProgramConfig } from '@/lib/dsa/types';
 
 function asDifficulty(value: string): DsaDifficulty {
@@ -245,6 +246,7 @@ export async function getDsaDashboard(userId: string) {
           dayNumber: d.dayNumber,
           title: d.title,
           status: 'locked' as DsaDayState,
+          stars: 0,
           lockReason: `Complete Week ${week.weekNumber - 1} first.`,
         })),
       });
@@ -283,6 +285,18 @@ export async function getDsaDashboard(userId: string) {
         dayNumber: d.day.dayNumber,
         title: d.day.title,
         status: d.status as DsaDayState,
+        stars:
+          d.status === 'completed'
+            ? computeDayStars({
+                status: d.status,
+                codingSolved: d.codingSolved,
+                codingRequired: config.codingProblemsPerDay,
+                mcqPercent: d.mcqPercent != null ? Number(d.mcqPercent) : null,
+                mcqAttempted: config.mcqsPerDay,
+                mcqRequired: config.mcqsPerDay,
+              })
+            : 0,
+        codingSolved: d.codingSolved,
         lockReason:
           d.status === 'locked'
             ? `Complete Day ${d.day.dayNumber - 1} successfully to unlock Day ${d.day.dayNumber}.`
@@ -299,6 +313,8 @@ export async function getDsaDashboard(userId: string) {
     config: {
       supportedLanguages: config.supportedLanguages,
       defaultLanguage: config.defaultLanguage,
+      mcqsPerDay: config.mcqsPerDay,
+      codingProblemsPerDay: config.codingProblemsPerDay,
     },
     currentWeek: current,
     weeks,
@@ -493,8 +509,7 @@ export async function getDsaDay(userId: string, dayId: string, kind: DsaAttemptK
           conceptSlug: m.conceptSlug,
           difficulty: m.difficulty,
           selected: latest?.selected ?? null,
-          isCorrect: latest ? latest.isCorrect : null,
-          explanation: latest ? m.explanation : null,
+          answered: Boolean(latest),
         };
       }),
   };
@@ -564,9 +579,7 @@ export async function submitDsaMcq(input: {
   });
   return {
     attemptId: row.id,
-    isCorrect,
-    explanation: assignment.mcq.explanation,
-    correctAnswer: isCorrect ? undefined : undefined,
+    saved: true,
   };
 }
 

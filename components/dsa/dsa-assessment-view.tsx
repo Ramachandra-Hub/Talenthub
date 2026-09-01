@@ -3,9 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { getClientUser } from '@/lib/client-auth';
 
 type Mcq = {
@@ -20,7 +17,7 @@ type Mcq = {
 export function DsaAssessmentView({ weekId }: { weekId: string }) {
   const router = useRouter();
   const [mcqs, setMcqs] = useState<Mcq[]>([]);
-  const [title, setTitle] = useState('Weekly assessment');
+  const [title, setTitle] = useState('Weekly Boss Battle');
   const [minPercent, setMinPercent] = useState(50);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -42,16 +39,16 @@ export function DsaAssessmentView({ weekId }: { weekId: string }) {
         mcqs?: Mcq[];
       };
       if (!res.ok) {
-        setError(json.error ?? 'Assessment is not available yet');
+        setError(json.error ?? 'Boss battle is not available yet');
       } else {
-        setTitle(json.week?.title ?? title);
+        setTitle(json.week?.title ?? 'Weekly Boss Battle');
         setMinPercent(json.minPercent ?? 50);
         setMcqs(json.mcqs ?? []);
       }
       setLoading(false);
     };
     void boot();
-  }, [router, weekId, title]);
+  }, [router, weekId]);
 
   const submit = async () => {
     setBusy(true);
@@ -71,14 +68,14 @@ export function DsaAssessmentView({ weekId }: { weekId: string }) {
         title?: string;
       };
       if (!res.ok) {
-        alert(json.error ?? 'Submit failed');
+        alert(json.error ?? 'Boss survived!');
         return;
       }
       if (json.passed) {
-        alert(`Passed (${Math.round(json.percent ?? 0)}%). ${json.title ?? 'Qualification granted.'}`);
+        alert(`🏆 VICTORY! ${Math.round(json.percent ?? 0)}% — ${json.title ?? 'Assignment attendance unlocked!'}`);
       } else {
         alert(
-          `Not passed (${Math.round(json.percent ?? 0)}%). ${(json.reasons ?? []).join(' ')} Official attempt failed. You restart at Day 1 (attempt ${json.newAttemptNumber}). History is kept.`,
+          `💀 Defeat (${Math.round(json.percent ?? 0)}%). ${(json.reasons ?? []).join(' ')} Respawn at Day 1 — attempt ${json.newAttemptNumber}. Your history is safe.`,
         );
       }
       router.push('/dsa');
@@ -87,55 +84,79 @@ export function DsaAssessmentView({ weekId }: { weekId: string }) {
     }
   };
 
-  if (loading) return <p className="p-8 text-sm text-slate-600">Loading assessment…</p>;
+  if (loading) {
+    return (
+      <div className="dsa-game-bg min-h-screen flex items-center justify-center">
+        <p className="text-white font-black animate-pulse">Summoning the boss… 👹</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <Card className="p-6">
-          <p className="font-semibold">Weekly assessment locked</p>
+      <div className="dsa-game-bg min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-md w-full rounded-3xl border-4 border-rose-300 bg-white/95 p-8 text-center">
+          <p className="text-4xl">🛡️</p>
+          <p className="font-black text-purple-900 mt-2">Boss battle locked</p>
           <p className="text-sm text-slate-600 mt-2">{error}</p>
-          <Button className="mt-4" asChild>
-            <Link href="/dsa">Back to DSA</Link>
-          </Button>
-        </Card>
+          <Link href="/dsa" className="mt-4 inline-block rounded-2xl bg-violet-600 px-6 py-2 text-sm font-bold text-white">
+            Back to map
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 space-y-4">
-      <Link href="/dsa" className="text-sm font-semibold text-[#1e3a5f] hover:underline">
-        ← DSA dashboard
-      </Link>
-      <h1 className="text-2xl font-bold text-[#0c2340]">{title} · weekly assessment</h1>
-      <p className="text-sm text-slate-600">
-        You need at least {minPercent}% to qualify for assignment attendance. Failing creates a new
-        official attempt from Day 1. Previous attempts stay in history.
-      </p>
-      {mcqs.map((mcq, idx) => (
-        <Card key={mcq.id} className="p-4">
-          <p className="text-sm font-medium">
-            {idx + 1}. {mcq.questionText}
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {(['A', 'B', 'C', 'D'] as const).map((key) => (
-              <Button
-                key={key}
-                size="sm"
-                variant={answers[mcq.id] === key ? 'default' : 'outline'}
-                onClick={() => setAnswers((prev) => ({ ...prev, [mcq.id]: key }))}
-              >
-                {key}. {mcq[`option${key}` as 'optionA']}
-              </Button>
-            ))}
+    <div className="dsa-game-bg min-h-screen pb-12">
+      <div className="border-b-4 border-amber-400 bg-gradient-to-r from-red-700 via-purple-700 to-indigo-800 px-4 py-6 text-center">
+        <Link href="/dsa" className="text-xs font-bold text-amber-200 float-left">← Map</Link>
+        <p className="text-[10px] font-black uppercase tracking-widest text-amber-200">Final boss</p>
+        <h1 className="text-2xl font-black text-white mt-1">{title}</h1>
+        <p className="text-sm font-bold text-white/85 mt-2">
+          Score {minPercent}%+ to earn assignment attendance. Fail = respawn Day 1 (history kept).
+        </p>
+      </div>
+
+      <div className="mx-auto max-w-2xl px-4 py-6 space-y-4">
+        {mcqs.map((mcq, idx) => (
+          <div
+            key={mcq.id}
+            className="rounded-2xl border-4 border-violet-300/70 bg-white/95 p-4 shadow-lg"
+          >
+            <p className="text-sm font-bold text-slate-800">
+              {idx + 1}. {mcq.questionText}
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {(['A', 'B', 'C', 'D'] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setAnswers((prev) => ({ ...prev, [mcq.id]: key }))}
+                  className={`rounded-xl border-2 px-3 py-2 text-left text-sm font-semibold ${
+                    answers[mcq.id] === key
+                      ? 'border-violet-600 bg-violet-600 text-white'
+                      : 'border-slate-200 bg-white hover:border-fuchsia-400'
+                  }`}
+                >
+                  {key}. {mcq[`option${key}` as 'optionA']}
+                </button>
+              ))}
+            </div>
           </div>
-        </Card>
-      ))}
-      <Button disabled={busy || !mcqs.length} onClick={() => void submit()}>
-        Submit weekly assessment
-      </Button>
-      {!mcqs.length ? <Badge tone="warning">No assessment questions configured for this topic.</Badge> : null}
+        ))}
+        <button
+          type="button"
+          disabled={busy || !mcqs.length}
+          onClick={() => void submit()}
+          className="w-full rounded-2xl border-4 border-amber-200 bg-gradient-to-r from-red-500 via-fuchsia-500 to-violet-600 py-4 text-lg font-black text-white shadow-lg disabled:opacity-50"
+        >
+          ⚔️ Challenge the boss
+        </button>
+        {!mcqs.length ? (
+          <p className="text-center text-sm font-bold text-amber-200">No boss questions configured yet.</p>
+        ) : null}
+      </div>
     </div>
   );
 }
