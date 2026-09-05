@@ -127,5 +127,5 @@ export function isValidAcademicYear(value: string): value is AcademicYear {
 
 export function defaultRedirectForRole(role: AppRole): string {
   if (role === 'admin') return '/admin/dashboard';
-  return '/exams';
+  return '/home';
 }

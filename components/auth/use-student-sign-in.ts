@@ -20,7 +20,7 @@ export function useStudentSignIn() {
       password,
       department,
       year,
-      redirectTo = '/exams',
+      redirectTo = '/home',
     }: StudentSignInOptions) => {
       setError(null);
       setLoading(true);
@@ -55,7 +55,7 @@ export function useStudentSignIn() {
         const dest =
           redirectTo.startsWith('/') && !redirectTo.startsWith('//')
             ? redirectTo
-            : '/exams';
+            : '/home';
 
         window.location.assign(dest);
       } catch (err) {

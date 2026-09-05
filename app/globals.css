@@ -832,3 +832,33 @@
     backdrop-filter: none !important;
   }
 }
+
+/* Student hub landing — ink foyer */
+.hub-shell {
+  background:
+    radial-gradient(ellipse 90% 60% at 10% -10%, rgba(42, 95, 143, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(139, 105, 20, 0.12), transparent 50%),
+    linear-gradient(165deg, #060d16 0%, #0b1826 42%, #0a1520 100%);
+}
+
+.hub-display {
+  font-family: var(--font-hub-display), 'Libre Baskerville', Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.hub-grain {
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+.hub-unavailable-veil {
+  background: repeating-linear-gradient(
+    -32deg,
+    transparent,
+    transparent 10px,
+    rgba(201, 184, 150, 0.04) 10px,
+    rgba(201, 184, 150, 0.04) 11px
+  );
+}

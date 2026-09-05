@@ -5,6 +5,7 @@ import { assignItemsWithoutRepeat } from '@/lib/dsa/assign';
 import { evaluateDayCompletion, evaluateWeekQualification } from '@/lib/dsa/policy';
 import { gradeDsaSource, parseTestCases } from '@/lib/dsa/grade';
 import { writeDsaAudit } from '@/lib/dsa/audit';
+import { assertUserAssignedToDsa } from '@/lib/dsa/roster';
 import { Prisma } from '@prisma/client';
 import { isCodingLanguageId } from '@/lib/coding/languages';
 import { computeDayStars } from '@/lib/dsa/stars';
@@ -35,6 +36,7 @@ async function loadProgramBundle() {
 }
 
 async function enrollStudent(userId: string, programId: string) {
+  await assertUserAssignedToDsa(userId);
   return prisma.dsaEnrollment.upsert({
     where: { userId_programId: { userId, programId } },
     update: { status: 'active' },

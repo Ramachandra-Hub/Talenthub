@@ -733,6 +733,20 @@ model DsaEnrollment {
   @@map("dsa_enrollments")
 }
 
+/// Roll numbers permitted to open the DSA daily-practice track.
+model DsaRosterEntry {
+  id         String   @id @default(uuid()) @db.Uuid
+  rollNumber String   @unique @map("roll_number")
+  fullName   String?  @map("full_name")
+  isActive   Boolean  @default(true) @map("is_active")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("dsa_roster")
+}
+
 model DsaWeekAttempt {
   id             String    @id @default(uuid()) @db.Uuid
   enrollmentId   String    @map("enrollment_id") @db.Uuid

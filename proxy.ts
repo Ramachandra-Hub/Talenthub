@@ -13,6 +13,7 @@ const PROTECTED_PREFIXES = [
   '/home',
   '/dashboard',
   '/placement',
+  '/dsa',
   '/tests/rmset',
   '/tests/take',
   '/tests/programming',
@@ -47,19 +48,18 @@ function applyRoleRedirects(
 
   if (role === 'student') {
     if (isAdminRoute(pathname)) {
-      return NextResponse.redirect(new URL('/exams', request.url));
+      return NextResponse.redirect(new URL('/home', request.url));
     }
     if (
       pathname === '/dashboard' ||
       pathname.startsWith('/dashboard/') ||
-      pathname === '/home' ||
       pathname === '/profile' ||
       pathname.startsWith('/ai/')
     ) {
-      return NextResponse.redirect(new URL('/exams', request.url));
+      return NextResponse.redirect(new URL('/home', request.url));
     }
     if (pathname === '/tests' || pathname === '/placement') {
-      return NextResponse.redirect(new URL('/exams', request.url));
+      return NextResponse.redirect(new URL('/home', request.url));
     }
   }
 

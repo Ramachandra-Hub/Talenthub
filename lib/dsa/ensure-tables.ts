@@ -217,6 +217,18 @@ const STATEMENTS = [
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "dsa_audit_events_pkey" PRIMARY KEY ("id")
   )`,
+  `CREATE TABLE IF NOT EXISTS "dsa_roster" (
+    "id" UUID NOT NULL,
+    "roll_number" TEXT NOT NULL,
+    "full_name" TEXT,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "note" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "dsa_roster_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_roster_roll_number_key" ON "dsa_roster"("roll_number")`,
+  `CREATE INDEX IF NOT EXISTS "dsa_roster_is_active_idx" ON "dsa_roster"("is_active")`,
 ];
 
 async function addFk(sql: string) {
@@ -229,16 +241,35 @@ async function addFk(sql: string) {
 
 /** Creates DSA tables if this database was deployed before the portal existed. */
 export async function ensureDsaTables(): Promise<void> {
-  if (tablesReady) return;
-  if (await dsaProgramsTableExists()) {
+  if (!tablesReady) {
+    if (!(await dsaProgramsTableExists())) {
+      for (const sql of STATEMENTS) {
+        await prisma.$executeRawUnsafe(sql);
+      }
+      // FKs applied below after both branches
+      await applyDsaForeignKeys();
+    } else {
+      // Programs exist from an earlier deploy — still ensure roster table.
+      await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "dsa_roster" (
+        "id" UUID NOT NULL,
+        "roll_number" TEXT NOT NULL,
+        "full_name" TEXT,
+        "is_active" BOOLEAN NOT NULL DEFAULT true,
+        "note" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "dsa_roster_pkey" PRIMARY KEY ("id")
+      )`);
+      await prisma.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_roster_roll_number_key" ON "dsa_roster"("roll_number")`,
+      );
+    }
     tablesReady = true;
-    return;
   }
+  await syncRosterFromEnv();
+}
 
-  for (const sql of STATEMENTS) {
-    await prisma.$executeRawUnsafe(sql);
-  }
-
+async function applyDsaForeignKeys() {
   await addFk(
     `ALTER TABLE "dsa_levels" ADD CONSTRAINT "dsa_levels_program_id_fkey" FOREIGN KEY ("program_id") REFERENCES "dsa_programs"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
   );
@@ -299,8 +330,27 @@ export async function ensureDsaTables(): Promise<void> {
   await addFk(
     `ALTER TABLE "dsa_audit_events" ADD CONSTRAINT "dsa_audit_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
   );
+}
 
-  tablesReady = true;
+/** Optional: DSA_ROSTER_ROLLS=21CS001,21CS002 (comma-separated). */
+async function syncRosterFromEnv(): Promise<void> {
+  const raw = process.env.DSA_ROSTER_ROLLS?.trim();
+  if (!raw) return;
+  const rolls = raw
+    .split(/[,;\n]+/)
+    .map((r) => r.trim().toUpperCase().replace(/\s+/g, ''))
+    .filter(Boolean);
+  for (const rollNumber of rolls) {
+    try {
+      await prisma.$executeRaw`
+        INSERT INTO "dsa_roster" ("id", "roll_number", "is_active", "note", "created_at", "updated_at")
+        VALUES (gen_random_uuid(), ${rollNumber}, true, 'env:DSA_ROSTER_ROLLS', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT ("roll_number") DO UPDATE SET "is_active" = true, "updated_at" = CURRENT_TIMESTAMP
+      `;
+    } catch {
+      /* ignore until table exists */
+    }
+  }
 }
 
 export function isMissingDsaTableError(err: unknown): boolean {

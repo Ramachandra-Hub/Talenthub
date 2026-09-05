@@ -23,14 +23,14 @@ export default function DashboardRedirectPage() {
           return;
         }
       }
-      router.replace('/exams');
+      router.replace('/home');
     };
     void run();
   }, [router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <p className="text-slate-600">Opening examinations…</p>
+      <p className="text-slate-600">Opening student portal…</p>
     </div>
   );
 }

@@ -85,6 +85,12 @@ export function StudentExamsPortal() {
             use <span className="font-semibold text-white">Start examination</span> to begin in one
             continuous session.
           </p>
+          <Link
+            href="/home"
+            className="mt-5 inline-block text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/90 hover:text-white"
+          >
+            ← Student foyer
+          </Link>
 
           {!loading && (data?.studentName || data?.department || data?.year) ? (
             <div className="mt-6 flex flex-wrap gap-2.5">
@@ -176,19 +182,6 @@ export function StudentExamsPortal() {
               </Card>
             ) : null}
 
-            <Card className="p-5 sm:p-6 lux-surface rounded-2xl border-cyan-200/80 bg-gradient-to-br from-cyan-50/70 to-white">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                DSA practice
-              </p>
-              <h2 className="mt-2 text-lg font-bold text-[#0c2340]">DSA Adventure — Road to Success</h2>
-              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-                Candy-crush your way through Level 1: 5 MCQs + 3 coding bosses per day (Java or Python).
-                Earn stars, unlock days, then beat the weekly boss for assignment attendance!
-              </p>
-              <Button className="mt-4 bg-gradient-to-r from-violet-600 to-fuchsia-500 hover:from-violet-700 hover:to-fuchsia-600" asChild>
-                <Link href="/dsa">Start adventure →</Link>
-              </Button>
-            </Card>
             <Card className="p-5 sm:p-6 lux-surface rounded-2xl border-slate-200/80">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                 Portal status
@@ -197,6 +190,12 @@ export function StudentExamsPortal() {
                 This page refreshes automatically every 15 seconds. You do not need to reload —
                 your examination will appear here when the examination cell publishes your slot.
               </p>
+              <Link
+                href="/home"
+                className="mt-4 inline-block text-sm font-semibold text-[#1e3a5f] hover:underline"
+              >
+                ← Student foyer
+              </Link>
             </Card>
           </div>
         )}

@@ -64,7 +64,12 @@ export function DsaDashboard() {
         const res = await fetch('/api/student/dsa/dashboard', { credentials: 'include' });
         const json = (await res.json()) as Dashboard & { error?: string };
         if (!res.ok) {
-          setError(json.error ?? 'Could not load adventure map');
+          setError(
+            json.error ??
+              (res.status === 403
+                ? 'DSA is not assigned to your roll number.'
+                : 'Could not load adventure map'),
+          );
           return;
         }
         setData(json);
@@ -100,6 +105,9 @@ export function DsaDashboard() {
           >
             Retry quest
           </button>
+          <Link href="/home" className="mt-3 block text-sm font-bold text-purple-300 underline">
+            Back to foyer
+          </Link>
         </div>
       </div>
     );
@@ -141,8 +149,8 @@ export function DsaDashboard() {
 
       <div className="mx-auto max-w-lg px-4 py-6 space-y-5">
         <div className="flex flex-wrap justify-between gap-2 text-xs font-bold">
-          <Link href="/exams" className="text-amber-100 hover:text-white underline-offset-2 hover:underline">
-            ← Back to exams
+          <Link href="/home" className="text-amber-100 hover:text-white underline-offset-2 hover:underline">
+            ← Student foyer
           </Link>
           <Link href="/dsa/history" className="text-amber-100 hover:text-white underline-offset-2 hover:underline">
             Trophy room →
