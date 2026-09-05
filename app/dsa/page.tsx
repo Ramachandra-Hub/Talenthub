@@ -1,9 +1,9 @@
-import { DsaDashboard } from '@/components/dsa/dsa-dashboard';
+import { DsaArena } from '@/components/dsa/arena/dsa-arena';
 
 export const metadata = {
-  title: 'DSA Practice — RCE',
+  title: 'DSA Arena — ELEVATE-X',
 };
 
 export default function DsaPage() {
-  return <DsaDashboard />;
+  return <DsaArena />;
 }

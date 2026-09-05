@@ -1,0 +1,42 @@
+/* ELEVATE-X DSA Arena — dark fantasy shell */
+
+.arena-shell {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(14, 116, 144, 0.18), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 20%, rgba(67, 56, 202, 0.12), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 70% 100%, rgba(8, 47, 73, 0.35), transparent 55%),
+    linear-gradient(165deg, #04080f 0%, #070d18 40%, #0a1220 100%);
+  color: #e2e8f0;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.arena-zone-glow {
+  animation: arena-zone-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes arena-zone-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(34, 211, 238, 0.35), 0 0 0 0 rgba(34, 211, 238, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(34, 211, 238, 0.55), 0 0 0 8px rgba(34, 211, 238, 0);
+  }
+}
+
+.arena-path-pulse {
+  animation: arena-dash 2.8s linear infinite;
+}
+
+@keyframes arena-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena-zone-glow,
+  .arena-path-pulse {
+    animation: none;
+  }
+}
