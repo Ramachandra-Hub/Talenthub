@@ -190,7 +190,14 @@ export function CodeLabShell({
                 ))}
               </div>
               <div className="code-lab-editor-wrap rounded-sm">
-                <CodeEditor language={language} value={code} onChange={onCodeChange} height="100%" />
+                <CodeEditor
+                  language={language}
+                  value={code}
+                  onChange={onCodeChange}
+                  fill
+                  fontSize={17}
+                  className="code-lab-monaco-host"
+                />
               </div>
             </div>
 

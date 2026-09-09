@@ -57,8 +57,8 @@
   /* Contest / exam: problem document is above; IDE row stays aligned without clipping statement */
   .code-lab-workspace--contest {
     grid-template-columns: minmax(0, 62fr) minmax(0, 38fr);
-    height: min(58dvh, 560px);
-    min-height: 360px;
+    height: min(62dvh, 640px);
+    min-height: 440px;
   }
 
   .code-lab-workspace--contest > * {
@@ -75,27 +75,34 @@
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  min-height: 320px;
+  min-height: 420px;
 }
 
 .code-lab-editor-wrap {
+  position: relative;
   border: 1px solid rgba(34, 211, 238, 0.16);
   background: #0b1220;
   overflow: hidden;
   flex: 1 1 auto;
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
+  min-height: 420px;
+  height: 100%;
 }
 
-.code-lab-editor-wrap .monaco-editor,
-.code-lab-editor-wrap > div {
+/* Absolute fill keeps Monaco interactive when parent uses flex/grid % heights */
+.code-lab-editor-wrap .code-lab-monaco-host {
+  position: absolute;
+  inset: 0;
   border: none !important;
   border-radius: 0 !important;
   min-height: 0 !important;
   height: 100% !important;
-  flex: 1;
+  width: 100% !important;
   background: #0b1220 !important;
+}
+
+.code-lab-editor-wrap .monaco-editor,
+.code-lab-editor-wrap .monaco-editor .overflow-guard {
+  height: 100% !important;
 }
 
 .code-lab-tab {
