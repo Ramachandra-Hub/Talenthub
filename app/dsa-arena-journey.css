@@ -1,0 +1,126 @@
+/* ELEVATE-X DSA Arena journey layer (above Code Lab) */
+
+.dsa-journey {
+  --dj-bg: #050b14;
+  --dj-panel: rgba(10, 20, 36, 0.92);
+  --dj-border: rgba(56, 189, 248, 0.16);
+  --dj-cyan: #22d3ee;
+  --dj-gold: #fbbf24;
+  --dj-emerald: #34d399;
+  --dj-rose: #fb7185;
+  --dj-muted: #94a3b8;
+}
+
+.dj-panel {
+  border: 1px solid var(--dj-border);
+  background: linear-gradient(165deg, rgba(12, 24, 42, 0.94) 0%, rgba(7, 14, 26, 0.9) 100%);
+}
+
+.dj-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.55rem 0.95rem;
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.dj-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dj-btn-primary {
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  background: rgba(34, 211, 238, 0.16);
+  color: #ecfeff;
+}
+
+.dj-btn-primary:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.28);
+}
+
+.dj-btn-ghost {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: #cbd5e1;
+}
+
+.dj-btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.dj-roadmap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 0.5rem 0 1.5rem;
+}
+
+.dj-roadmap-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 28rem;
+}
+
+.dj-roadmap-connector {
+  width: 2px;
+  height: 1.35rem;
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.45), rgba(148, 163, 184, 0.2));
+}
+
+.dj-roadmap-node {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(8, 16, 30, 0.9);
+  padding: 0.85rem 1rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dj-roadmap-node:hover {
+  border-color: rgba(34, 211, 238, 0.35);
+}
+
+.dj-roadmap-node.is-current {
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15), 0 0 24px rgba(34, 211, 238, 0.12);
+}
+
+.dj-roadmap-node.is-completed {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.dj-roadmap-node.is-locked {
+  opacity: 0.55;
+}
+
+.dj-roadmap-node.is-boss {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: linear-gradient(165deg, rgba(40, 28, 10, 0.9), rgba(8, 14, 26, 0.92));
+}
+
+.dj-progress {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.dj-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0891b2, #22d3ee);
+}
+
+@media (min-width: 1024px) {
+  .dj-roadmap-item {
+    max-width: 32rem;
+  }
+}

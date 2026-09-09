@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DsaVictoryOverlay } from '@/components/dsa/dsa-victory-overlay';
 import { CodeLabShell } from '@/components/student/portal/coding/code-lab-shell';
+import {
+  MissionResult,
+  type MissionResultData,
+} from '@/components/student/portal/coding/mission-result';
 import type {
   CodeLabConsoleTab,
   CodeLabSubmitSnapshot,
@@ -81,6 +85,8 @@ export function DsaDayView({ dayId }: { dayId: string }) {
   const [lastSubmit, setLastSubmit] = useState<CodeLabSubmitSnapshot | null>(null);
   const [publicResults, setPublicResults] = useState<PublicTestRow[] | null>(null);
   const [consoleTab, setConsoleTab] = useState<CodeLabConsoleTab>('output');
+  const [missionResult, setMissionResult] = useState<MissionResultData | null>(null);
+  const [missionResultOpen, setMissionResultOpen] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/student/dsa/days/${dayId}?kind=${kind}`, { credentials: 'include' });
@@ -133,6 +139,12 @@ export function DsaDayView({ dayId }: { dayId: string }) {
   const minCoding = data?.config?.dayCompletion.minCodingSolved ?? 3;
   const languages = (data?.config?.supportedLanguages ?? ['java', 'python']).filter(isCodingLanguageId);
 
+  const dayRequirementsMet = codingPassed >= minCoding && mcqAnswered >= minMcq;
+  const canOfferFinishDay =
+    Boolean(missionResultOpen && missionResult) &&
+    data?.status !== 'completed' &&
+    dayRequirementsMet;
+
   const questProgress = useMemo(() => {
     const mcqPct = minMcq ? Math.round((mcqAnswered / minMcq) * 100) : 0;
     const codePct = minCoding ? Math.round((codingPassed / minCoding) * 100) : 0;
@@ -154,7 +166,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
           <h1 className="text-xl font-semibold text-white">Mission locked</h1>
           <p className="mt-3 text-sm text-slate-400">{data.lockReason}</p>
           <Link
-            href="/dsa"
+            href="/dsa-arena"
             className="mt-6 inline-block rounded-md border border-cyan-400/40 bg-cyan-500/15 px-5 py-2.5 text-sm font-semibold text-cyan-50"
           >
             Back to DSA Arena
@@ -169,13 +181,17 @@ export function DsaDayView({ dayId }: { dayId: string }) {
       <div className="code-lab min-h-screen flex items-center justify-center px-4">
         <div className="code-lab-panel max-w-md rounded-md p-6 text-center">
           <p className="font-semibold text-rose-300">{error}</p>
-          <Link href="/dsa" className="mt-4 inline-block text-cyan-300 font-semibold text-sm">
+          <Link href="/dsa-arena" className="mt-4 inline-block text-cyan-300 font-semibold text-sm">
             ← DSA Arena
           </Link>
         </div>
       </div>
     );
   }
+
+  const clearMissionResult = () => {
+    setMissionResultOpen(false);
+  };
 
   const runSample = async () => {
     if (!problem) return;
@@ -213,6 +229,8 @@ export function DsaDayView({ dayId }: { dayId: string }) {
         total?: number;
         status?: string;
         compileOk?: boolean;
+        scorePercent?: number;
+        language?: string;
         publicResults?: PublicTestRow[];
       };
       if (!res.ok) {
@@ -227,6 +245,8 @@ export function DsaDayView({ dayId }: { dayId: string }) {
         total,
         status,
         compileOk: json.compileOk,
+        scorePercent: json.scorePercent,
+        language: json.language ?? language,
         publicResults: json.publicResults,
       };
       setLastSubmit(snapshot);
@@ -240,6 +260,20 @@ export function DsaDayView({ dayId }: { dayId: string }) {
       } else {
         setRunOut(`Submitted · ${passed}/${total} tests passed.`);
       }
+
+      setMissionResult({
+        problemId: problem.id,
+        problemTitle: problem.title,
+        passed,
+        total,
+        status,
+        compileOk: json.compileOk,
+        scorePercent: json.scorePercent,
+        language: json.language ?? language,
+        publicResults: Array.isArray(json.publicResults) ? json.publicResults : undefined,
+      });
+      setMissionResultOpen(true);
+
       await load();
     } finally {
       setBusy(null);
@@ -267,6 +301,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
         alert((json.reasons ?? ['Not all quests complete yet!']).join('\n'));
         return;
       }
+      clearMissionResult();
       const stars =
         codingPassed >= minCoding && mcqAnswered >= minMcq ? 3 : codingPassed >= minCoding ? 2 : 1;
       setVictory({
@@ -275,7 +310,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
           ? `Day ${json.nextDayNumber} is now on the map!`
           : 'All days done — Boss Battle (weekly assignment) awaits!',
       });
-      window.setTimeout(() => router.push('/dsa'), 4500);
+      window.setTimeout(() => router.push('/dsa-arena'), 4500);
     } finally {
       setBusy(null);
     }
@@ -284,7 +319,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
   const weekLabel = [data?.week?.title, data?.week?.topicName].filter(Boolean).join(' · ');
 
   return (
-    <div className="code-lab min-h-screen pb-12">
+    <div className="code-lab min-h-screen pb-8">
       <DsaVictoryOverlay
         open={Boolean(victory)}
         dayNumber={data?.day?.dayNumber ?? 1}
@@ -293,47 +328,43 @@ export function DsaDayView({ dayId }: { dayId: string }) {
         onClose={() => setVictory(null)}
       />
 
-      <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-5 space-y-4">
-        <div className="code-lab-panel rounded-md px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                Mission day
-              </p>
-              <h2 className="text-base font-semibold text-white">{data?.day?.title}</h2>
-              <p className="mt-0.5 text-[11px] text-slate-400">{weekLabel}</p>
-            </div>
-            <div className="text-[11px] text-slate-400">
-              <p>
-                MCQ {mcqAnswered}/{minMcq} · Code {codingPassed}/{minCoding}
-              </p>
-              <p className="mt-0.5 text-slate-500">Progress {questProgress.overall}%</p>
-            </div>
-          </div>
-        </div>
+      <MissionResult
+        open={missionResultOpen}
+        result={missionResult}
+        onBackToCodeLab={clearMissionResult}
+        onReturnToArena={() => router.push('/dsa-arena')}
+        showFinishDay={canOfferFinishDay}
+        finishDayDisabled={busy != null}
+        finishDayLabel={busy === 'complete' ? 'Finishing…' : 'Finish Day'}
+        onFinishDay={() => void completeDay()}
+      />
 
-        <section className="code-lab-panel rounded-md px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-              Challenge Chamber
+      <div
+        className="mx-auto max-w-[1600px] space-y-2 px-2 py-2 sm:px-3"
+        style={{ ['--cl-chrome' as string]: '12.5rem' }}
+      >
+        <div className="code-lab-panel code-lab-mission-bar rounded-sm">
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              Day {data?.day?.dayNumber ?? '—'} · {data?.day?.title}
             </p>
-            <p className="mt-1 text-[12px] text-slate-400">
-              MCQ progress: {mcqAnswered}/{minMcq}
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              MCQ {mcqAnswered}/{minMcq} · Code {codingPassed}/{minCoding} · {questProgress.overall}%
             </p>
           </div>
           <Link
             href={`/dsa/day/${dayId}/challenge${kind === 'practice' ? '?kind=practice' : ''}`}
-            className="code-lab-btn code-lab-btn-ghost"
+            className="text-[11px] font-semibold text-cyan-300/80 hover:text-cyan-200"
           >
-            Enter Challenge Chamber →
+            Challenge Chamber →
           </Link>
-        </section>
+        </div>
 
         <CodeLabShell
           dayTitle={data?.day?.title ?? 'Code Lab'}
           weekLabel={weekLabel}
           kind={kind}
-          backHref="/dsa"
+          backHref="/dsa-arena"
           problems={problems}
           activeProblemIdx={activeProblemIdx}
           onSelectProblem={(i) => {
@@ -344,6 +375,8 @@ export function DsaDayView({ dayId }: { dayId: string }) {
             setLastSubmit(null);
             setPublicResults(null);
             setConsoleTab('output');
+            setMissionResult(null);
+            setMissionResultOpen(false);
           }}
           language={language}
           languages={languages}
@@ -373,7 +406,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
           type="button"
           disabled={busy != null || data?.status === 'completed'}
           onClick={() => void completeDay()}
-          className="code-lab-btn code-lab-btn-primary w-full py-3 text-sm"
+          className="code-lab-btn code-lab-btn-ghost w-full py-2.5 text-sm"
         >
           {data?.status === 'completed' ? 'Day already completed' : 'Finish Day'}
         </button>

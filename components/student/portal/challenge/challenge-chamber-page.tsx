@@ -76,7 +76,7 @@ export function ChallengeChamberPage({ dayId }: { dayId: string }) {
       dayNumber: json.day?.dayNumber ?? 1,
       backHref: `/dsa/day/${dayId}${kind === 'practice' ? '?kind=practice' : ''}`,
       codeLabHref: `/dsa/day/${dayId}${kind === 'practice' ? '?kind=practice' : ''}#code-lab`,
-      arenaHref: '/dsa',
+      arenaHref: '/dsa-arena',
       mode,
       totalXp: qs.reduce((s, q) => s + q.xpReward, 0),
       totalCoins: qs.reduce((s, q) => s + q.coinReward, 0),
@@ -136,8 +136,8 @@ export function ChallengeChamberPage({ dayId }: { dayId: string }) {
         <div className="ex-panel max-w-md rounded-xl p-6 text-center">
           <p className="text-lg font-semibold text-white">Chamber locked</p>
           <p className="mt-2 text-sm text-slate-400">{locked.reason}</p>
-          <Link href="/dsa" className="ex-btn-primary mt-4 inline-flex">
-            Back to Adventure Map
+          <Link href="/dsa-arena" className="ex-btn-primary mt-4 inline-flex">
+            Back to DSA Arena
           </Link>
         </div>
       </div>
@@ -150,8 +150,8 @@ export function ChallengeChamberPage({ dayId }: { dayId: string }) {
         <div className="ex-panel max-w-md rounded-xl p-6 text-center">
           <p className="text-lg font-semibold text-white">Unable to load</p>
           <p className="mt-2 text-sm text-slate-400">{error}</p>
-          <Link href="/dsa" className="ex-btn-primary mt-4 inline-flex">
-            Back to Adventure Map
+          <Link href="/dsa-arena" className="ex-btn-primary mt-4 inline-flex">
+            Back to DSA Arena
           </Link>
         </div>
       </div>

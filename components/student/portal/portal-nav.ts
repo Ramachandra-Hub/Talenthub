@@ -26,8 +26,8 @@ export const PORTAL_NAV: PortalNavItem[] = [
     isActive: (p) => p === '/home',
   },
   {
-    href: '/dsa',
-    label: 'Adventure Map',
+    href: '/dsa-arena',
+    label: 'DSA Arena',
     icon: Swords,
     isActive: (p) =>
       p === '/dsa-arena' ||

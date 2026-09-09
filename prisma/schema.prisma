@@ -638,12 +638,34 @@ model DsaDay {
   title     String
   createdAt DateTime @default(now()) @map("created_at")
 
-  week     DsaWeek           @relation(fields: [weekId], references: [id], onDelete: Cascade)
-  progress DsaDayProgress[]
+  week            DsaWeek              @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  progress        DsaDayProgress[]
+  journeyMissions DsaJourneyMission[]
 
   @@unique([weekId, dayNumber])
   @@index([weekId, dayNumber])
   @@map("dsa_days")
+}
+
+/// Authoritative Arena journey mission → DSA day mapping (Phase 1).
+/// Mission is a product/journey unit; Day remains the work container.
+model DsaJourneyMission {
+  id                String   @id @default(uuid()) @db.Uuid
+  missionKey        String   @unique @map("mission_key")
+  topicKey          String   @map("topic_key")
+  dayId             String   @map("day_id") @db.Uuid
+  focusProblemSlug  String?  @map("focus_problem_slug")
+  sortOrder         Int      @map("sort_order")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  day DsaDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+
+  @@index([topicKey])
+  @@index([dayId])
+  @@index([isActive])
+  @@map("dsa_journey_missions")
 }
 
 model DsaTopic {

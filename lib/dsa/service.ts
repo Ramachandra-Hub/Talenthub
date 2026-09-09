@@ -522,6 +522,8 @@ export async function submitDsaMcq(input: {
   mcqId: string;
   selected: string;
   kind?: DsaAttemptKind;
+  /** Learning-mode only: return correctness after the answer is locked. Never used by formal exams. */
+  revealFeedback?: boolean;
 }) {
   const { program } = await loadProgramBundle();
   const enrollment = await enrollStudent(input.userId, program.id);
@@ -581,7 +583,14 @@ export async function submitDsaMcq(input: {
   });
   return {
     attemptId: row.id,
-    saved: true,
+    saved: true as const,
+    ...(input.revealFeedback
+      ? {
+          isCorrect,
+          correctAnswer: assignment.mcq.correctAnswer.trim().toUpperCase(),
+          explanation: assignment.mcq.explanation ?? null,
+        }
+      : {}),
   };
 }
 
@@ -1079,6 +1088,83 @@ export async function getDsaHistory(userId: string) {
       createdAt: s.createdAt.toISOString(),
     })),
   };
+}
+
+/**
+ * Read-only day access check matching getDsaDay authorization rules,
+ * without starting the day or assigning problems.
+ */
+export async function evaluateDsaDayAccessForUser(
+  userId: string,
+  dayId: string,
+  kind: DsaAttemptKind = 'official',
+): Promise<{ accessible: boolean; reason: string | null; status: string | null }> {
+  const { program, config } = await loadProgramBundle();
+  const enrollment = await enrollStudent(userId, program.id);
+  const day = await prisma.dsaDay.findUnique({
+    where: { id: dayId },
+    include: { week: { include: { level: { include: { weeks: true } } } } },
+  });
+  if (!day) {
+    return { accessible: false, reason: 'Mapped DSA day no longer exists.', status: null };
+  }
+
+  if (kind === 'official' && day.week.weekNumber > 1) {
+    const prev = day.week.level.weeks.find((w) => w.weekNumber === day.week.weekNumber - 1);
+    if (prev) {
+      const prevDone = await prisma.dsaWeekAttempt.findFirst({
+        where: {
+          enrollmentId: enrollment.id,
+          weekId: prev.id,
+          kind: 'official',
+          status: 'completed',
+        },
+        select: { id: true },
+      });
+      if (!prevDone) {
+        return {
+          accessible: false,
+          reason: `Complete Week ${prev.weekNumber} before opening this week.`,
+          status: 'locked',
+        };
+      }
+    }
+  }
+
+  let attempt = await prisma.dsaWeekAttempt.findFirst({
+    where: { enrollmentId: enrollment.id, weekId: day.weekId, kind, isActive: true },
+  });
+  if (!attempt && kind === 'official') {
+    // Same as dashboard: create official attempt only when the week is unlocked.
+    attempt = await getOrCreateOfficialAttempt(enrollment.id, day.weekId, config);
+  }
+  if (!attempt) {
+    return {
+      accessible: false,
+      reason:
+        kind === 'practice'
+          ? 'Start practice for this week first.'
+          : 'No active attempt for this week.',
+      status: null,
+    };
+  }
+
+  const progress = await prisma.dsaDayProgress.findUnique({
+    where: { weekAttemptId_dayId: { weekAttemptId: attempt.id, dayId } },
+    select: { id: true, status: true },
+  });
+  if (!progress) {
+    return { accessible: false, reason: 'Day is not part of this attempt.', status: null };
+  }
+  if (progress.status === 'locked') {
+    return {
+      accessible: false,
+      reason: `Complete Day ${day.dayNumber - 1} successfully to unlock Day ${day.dayNumber}.`,
+      status: 'locked',
+    };
+  }
+
+  return { accessible: true, reason: null, status: progress.status };
 }
 
 export function httpErrorStatus(err: unknown): number {

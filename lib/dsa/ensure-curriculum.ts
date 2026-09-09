@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { ensureDsaTables } from '@/lib/dsa/ensure-tables';
+import { ensureJourneyMissionMappings } from '@/lib/dsa/ensure-journey-missions';
 import { DEFAULT_DSA_CONFIG } from '@/lib/dsa/types';
 import {
   DSA_MCQS,
@@ -21,7 +22,10 @@ export async function ensureDsaCurriculum(): Promise<{ programId: string }> {
       data: { configJson: DEFAULT_DSA_CONFIG },
     });
     const problemCount = await prisma.dsaProblem.count();
-    if (problemCount >= DSA_PROBLEMS.length) return { programId: existing.id };
+    if (problemCount >= DSA_PROBLEMS.length) {
+      await ensureJourneyMissionMappings();
+      return { programId: existing.id };
+    }
   }
 
   const program = await prisma.dsaProgram.upsert({
@@ -174,5 +178,6 @@ export async function ensureDsaCurriculum(): Promise<{ programId: string }> {
     });
   }
 
+  await ensureJourneyMissionMappings();
   return { programId: program.id };
 }
