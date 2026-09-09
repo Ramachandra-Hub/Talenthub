@@ -48,10 +48,14 @@ export const PORTAL_NAV: PortalNavItem[] = [
     isActive: (p) => p.startsWith('/learning'),
   },
   {
-    href: '/contests',
+    href: '/dsa-arena/contest',
     label: 'Contests',
     icon: Trophy,
-    isActive: (p) => p.startsWith('/contests'),
+    isActive: (p) =>
+      p.startsWith('/contests') ||
+      p === '/dsa-arena/contest' ||
+      p.startsWith('/dsa-arena/contest/') ||
+      p.startsWith('/dsa-arena/contests'),
   },
   {
     href: '/leaderboard',

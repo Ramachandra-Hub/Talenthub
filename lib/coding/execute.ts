@@ -4,6 +4,7 @@ import {
 } from '@/lib/coding/languages';
 import { isServerlessHost } from '@/lib/coding/execute-environment';
 import { executeJavaScriptInProcess } from '@/lib/coding/execute-inprocess-js';
+import { executeViaJudge0, isJudge0Available } from '@/lib/coding/execute-judge0';
 import { executeCodeLocal } from '@/lib/coding/execute-local';
 import { executeViaWandbox } from '@/lib/coding/execute-wandbox';
 import type { ExecuteResult } from '@/lib/coding/types';
@@ -120,7 +121,13 @@ function isInfraRunnerFailure(text: string): boolean {
     t.includes('failed to create shim task') ||
     t.includes('container create failed') ||
     t.includes('runc:') ||
-    t.includes('no space left')
+    t.includes('no space left') ||
+    t.includes('failed to get uid') ||
+    t.includes('exit status: 125') ||
+    t.includes('wandbox http 500') ||
+    t.includes('wandbox http 502') ||
+    t.includes('wandbox http 503') ||
+    t.includes('remote runner failed')
   );
 }
 
@@ -136,6 +143,7 @@ function softFailure(languageId: CodingLanguageId, message: string, started: num
     .replace(/oci runtime error[^|]*/gi, '')
     .replace(/crun:[^|]*/gi, '')
     .replace(/resource temporarily unavailable[^|]*/gi, '')
+    .replace(/failed to get uid[^|]*/gi, 'temporary sandbox error')
     .replace(/\s*\|\s*/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -149,9 +157,13 @@ function softFailure(languageId: CodingLanguageId, message: string, started: num
   };
 }
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
- * Vercel / serverless: Wandbox is the public runner (no whitelist).
- * Optional self-hosted PISTON_API_URL is tried first when configured.
+ * Remote chain: optional Piston → Judge0 CE → Wandbox.
+ * Judge0 first for reliability while Wandbox intermittently returns uid/exit 125.
  */
 async function executeRemote(
   languageId: CodingLanguageId,
@@ -171,7 +183,6 @@ async function executeRemote(
         piston,
         interactive ? 12_000 : 15_000,
       );
-      // Self-hosted Piston often returns HTTP 200 with OCI/crun errors in stderr.
       if (!localRuntimeMissing(pistonResult)) {
         return pistonResult;
       }
@@ -181,11 +192,30 @@ async function executeRemote(
     }
   }
 
-  if (!wandboxDisabled()) {
+  if (isJudge0Available()) {
     try {
-      return await executeViaWandbox(languageId, sourceCode, stdin);
+      const judge0Result = await executeViaJudge0(languageId, sourceCode, stdin);
+      if (!localRuntimeMissing(judge0Result)) {
+        return judge0Result;
+      }
+      errors.push(judge0Result.stderr || 'Judge0 unavailable');
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (!wandboxDisabled()) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const wandboxResult = await executeViaWandbox(languageId, sourceCode, stdin);
+        if (!localRuntimeMissing(wandboxResult)) {
+          return wandboxResult;
+        }
+        errors.push(wandboxResult.stderr || 'Wandbox sandbox unavailable');
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err));
+      }
+      if (attempt === 0) await sleep(350);
     }
   }
 
@@ -242,7 +272,7 @@ export async function executeCode(
         return pistonResult;
       }
     } catch {
-      /* local / wandbox */
+      /* local / remote */
     }
   }
 
@@ -253,7 +283,7 @@ export async function executeCode(
         try {
           return executeJavaScriptInProcess(sourceCode, stdin);
         } catch {
-          /* wandbox */
+          /* remote */
         }
       }
       try {

@@ -90,7 +90,7 @@ function compilersFor(languageId: CodingLanguageId, liveJava: string[]): string[
       liveJava[1],
       ...(COMPILER_FALLBACKS.java ?? []),
     ];
-    return [...new Set(preferred.filter(Boolean))].slice(0, 2);
+    return [...new Set(preferred.filter(Boolean))].slice(0, 3);
   }
   return [COMPILER_BY_LANGUAGE[languageId], ...(COMPILER_FALLBACKS[languageId] ?? [])]
     .filter(Boolean)
@@ -115,7 +115,9 @@ function isRetryableCompilerError(message: string): boolean {
     text.includes('aborted') ||
     text.includes('timeout') ||
     text.includes('econnreset') ||
-    text.includes('enotfound')
+    text.includes('enotfound') ||
+    text.includes('failed to get uid') ||
+    text.includes('exit status: 125')
   );
 }
 
