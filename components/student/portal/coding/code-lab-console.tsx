@@ -20,6 +20,7 @@ export function CodeLabConsole({
   publicResults,
   lastSubmit,
 }: Props) {
+  const hasOutput = Boolean(runOut?.trim()) || busy === 'run' || busy === 'submit';
   const hasTests = Boolean(publicResults && publicResults.length);
   const errorText = deriveErrorText(runOut, lastSubmit);
   const hasErrors = Boolean(errorText);
@@ -30,22 +31,28 @@ export function CodeLabConsole({
     { id: 'errors', label: 'Errors', show: hasErrors },
   ];
 
-  let body = 'Ready. Click Run Code to execute against the first sample input.';
+  let body = 'Idle — Run Code to execute the first sample.';
   if (busy === 'run') body = 'Running…';
   else if (busy === 'submit') body = 'Submitting…';
   else if (tab === 'output') body = runOut?.trim() || body;
   else if (tab === 'errors') body = errorText || 'No errors reported.';
   else if (tab === 'tests' && publicResults) {
     body = publicResults
-      .map((r, i) => `Test ${i + 1}: ${r.passed ? 'Passed' : 'Failed'}${r.stderr ? ` — ${r.stderr}` : ''}`)
+      .map(
+        (r, i) =>
+          `Test ${String(i + 1).padStart(2, '0')}: ${r.passed ? 'Passed' : 'Failed'}${
+            r.stderr ? ` — ${r.stderr}` : ''
+          }`,
+      )
       .join('\n');
   }
 
   const statusLabel = deriveStatusLabel(busy, runOut, lastSubmit);
+  const active = hasOutput || hasTests || hasErrors || Boolean(busy);
 
   return (
-    <div className="code-lab-panel rounded-md overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-2">
+    <div className="code-lab-panel overflow-hidden rounded-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-1.5">
         <div className="flex" role="tablist" aria-label="Console panels">
           {tabs
             .filter((t) => t.show)
@@ -64,20 +71,17 @@ export function CodeLabConsole({
         </div>
         <span
           className={cn(
-            'mr-2 rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+            'mr-1.5 rounded-sm px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider',
             statusLabel.tone === 'ok' && 'bg-emerald-500/15 text-emerald-200',
             statusLabel.tone === 'err' && 'bg-rose-500/15 text-rose-200',
             statusLabel.tone === 'busy' && 'bg-cyan-500/15 text-cyan-200',
-            statusLabel.tone === 'idle' && 'bg-white/5 text-slate-400',
+            statusLabel.tone === 'idle' && 'bg-white/5 text-slate-500',
           )}
         >
           {statusLabel.text}
         </span>
       </div>
-      <pre
-        className="max-h-40 overflow-auto bg-[#060d16] px-3 py-3 font-mono text-[11px] leading-relaxed text-slate-300 whitespace-pre-wrap"
-        aria-live="polite"
-      >
+      <pre className={cn('code-lab-console-body', active && 'is-active')} aria-live="polite">
         {body}
       </pre>
     </div>
@@ -116,6 +120,6 @@ function deriveStatusLabel(
   if (lastSubmit?.status === 'failed') return { text: 'Failed', tone: 'err' };
   if (runOut && /timeout/i.test(runOut)) return { text: 'Timeout', tone: 'err' };
   if (runOut && /error|exception|failed/i.test(runOut)) return { text: 'Error', tone: 'err' };
-  if (runOut) return { text: 'Output ready', tone: 'idle' };
+  if (runOut) return { text: 'Output', tone: 'idle' };
   return { text: 'Idle', tone: 'idle' };
 }

@@ -10,6 +10,8 @@ export type CodeLabSubmitSnapshot = {
   total: number;
   status: string;
   compileOk?: boolean;
+  scorePercent?: number;
+  language?: string;
   publicResults?: PublicTestRow[];
 };
 
