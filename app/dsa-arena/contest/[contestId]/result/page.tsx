@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
-import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 
 type ResultPayload = {
   contest: { title: string; slug: string };
@@ -50,7 +49,7 @@ function formatDuration(sec: number | null): string {
 
 export default function ContestResultPage() {
   return (
-    <DsaArenaPageFrame title="DSA Arena" subtitle="Contest result">
+    <DsaArenaPageFrame title="Contests" subtitle="Contest result">
       {() => <ResultBody />}
     </DsaArenaPageFrame>
   );
@@ -85,26 +84,25 @@ function ResultBody() {
   if (error) {
     return (
       <div className="space-y-3">
-        <DsaArenaSubnav />
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+        <Link href="/contests" className="dj-btn dj-btn-ghost">
           ← Back to Contests
         </Link>
       </div>
     );
   }
   if (!data) {
-    return (
-      <div className="space-y-3">
-        <DsaArenaSubnav />
-        <p className="text-sm text-slate-400">Loading result…</p>
-      </div>
-    );
+    return <p className="text-sm text-slate-400">Loading result…</p>;
   }
 
   return (
     <div className="space-y-4 pb-8">
-      <DsaArenaSubnav />
+      <Link
+        href="/contests"
+        className="inline-flex text-[12px] font-semibold text-cyan-300/90 hover:text-cyan-200"
+      >
+        ← Contests
+      </Link>
 
       <section className="dj-panel rounded-md p-4 sm:p-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
@@ -187,7 +185,7 @@ function ResultBody() {
       </section>
 
       <div className="flex flex-wrap gap-2">
-        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-primary">
+        <Link href="/contests" className="dj-btn dj-btn-primary">
           Back to Contests
         </Link>
       </div>

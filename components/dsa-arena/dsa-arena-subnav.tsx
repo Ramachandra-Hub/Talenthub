@@ -4,20 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
+/** Journey tabs only — Contests is a top-level left-nav section. */
 const TABS = [
   { href: '/dsa-arena', label: 'Home', match: (p: string) => p === '/dsa-arena' },
   {
     href: '/dsa-arena/roadmap',
     label: 'Roadmap',
     match: (p: string) => p.startsWith('/dsa-arena/roadmap'),
-  },
-  {
-    href: '/dsa-arena/contest',
-    label: 'Contests',
-    match: (p: string) =>
-      p === '/dsa-arena/contest' ||
-      p.startsWith('/dsa-arena/contest/') ||
-      p.startsWith('/dsa-arena/contests'),
   },
 ] as const;
 

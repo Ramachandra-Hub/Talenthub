@@ -4,6 +4,7 @@ import {
   Swords,
   ClipboardList,
   BookOpen,
+  Trophy,
   Medal,
   Award,
   User,
@@ -17,6 +18,15 @@ export type PortalNavItem = {
   isActive: (pathname: string) => boolean;
 };
 
+function isContestPath(p: string): boolean {
+  return (
+    p.startsWith('/contests') ||
+    p === '/dsa-arena/contest' ||
+    p.startsWith('/dsa-arena/contest/') ||
+    p.startsWith('/dsa-arena/contests')
+  );
+}
+
 export const PORTAL_NAV: PortalNavItem[] = [
   {
     href: '/home',
@@ -28,12 +38,21 @@ export const PORTAL_NAV: PortalNavItem[] = [
     href: '/dsa-arena',
     label: 'DSA Arena',
     icon: Swords,
-    isActive: (p) =>
-      p === '/dsa-arena' ||
-      p.startsWith('/dsa-arena/') ||
-      p.startsWith('/contests') ||
-      p === '/dsa' ||
-      (p.startsWith('/dsa/') && !p.startsWith('/dsa/history')),
+    isActive: (p) => {
+      if (isContestPath(p)) return false;
+      return (
+        p === '/dsa-arena' ||
+        p.startsWith('/dsa-arena/') ||
+        p === '/dsa' ||
+        (p.startsWith('/dsa/') && !p.startsWith('/dsa/history'))
+      );
+    },
+  },
+  {
+    href: '/contests',
+    label: 'Contests',
+    icon: Trophy,
+    isActive: (p) => isContestPath(p),
   },
   {
     href: '/exams',

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
-import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 
 type Detail = {
   id: string;
@@ -27,7 +26,7 @@ type Detail = {
 
 export default function ContestBriefPage() {
   return (
-    <DsaArenaPageFrame title="DSA Arena" subtitle="Contest brief">
+    <DsaArenaPageFrame title="Contests" subtitle="Contest brief">
       {() => <BriefBody />}
     </DsaArenaPageFrame>
   );
@@ -89,9 +88,8 @@ function BriefBody() {
   if (error && !detail) {
     return (
       <div className="space-y-3">
-        <DsaArenaSubnav />
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+        <Link href="/contests" className="dj-btn dj-btn-ghost">
           ← Back to Contests
         </Link>
       </div>
@@ -99,12 +97,7 @@ function BriefBody() {
   }
 
   if (!detail) {
-    return (
-      <div className="space-y-3">
-        <DsaArenaSubnav />
-        <p className="text-sm text-slate-400">Loading contest…</p>
-      </div>
-    );
+    return <p className="text-sm text-slate-400">Loading contest…</p>;
   }
 
   const submitted = detail.attempt?.status === 'submitted';
@@ -129,7 +122,12 @@ function BriefBody() {
 
   return (
     <div className="space-y-3 pb-4">
-      <DsaArenaSubnav />
+      <Link
+        href="/contests"
+        className="inline-flex text-[12px] font-semibold text-cyan-300/90 hover:text-cyan-200"
+      >
+        ← Contests
+      </Link>
 
       <article className="dj-panel rounded-md p-4 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -217,7 +215,7 @@ function BriefBody() {
               {busy ? 'Please wait…' : primary.label}
             </button>
           ) : null}
-          <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+          <Link href="/contests" className="dj-btn dj-btn-ghost">
             Back to Contests
           </Link>
         </div>
