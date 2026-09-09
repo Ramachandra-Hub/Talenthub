@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server-auth';
 import {
   adminContestProblems,
+  adminContestStudentReport,
   adminContestStudents,
   adminContestSubmissions,
   adminContestSummary,
@@ -16,7 +17,9 @@ export async function GET(request: Request, ctx: Ctx) {
   const auth = await requireAuth(['admin'], request);
   if ('response' in auth) return auth.response;
   const { contestId } = await ctx.params;
-  const view = new URL(request.url).searchParams.get('view') ?? 'summary';
+  const url = new URL(request.url);
+  const view = url.searchParams.get('view') ?? 'summary';
+  const attemptId = url.searchParams.get('attemptId');
   try {
     if (view === 'students') {
       return NextResponse.json({ students: await adminContestStudents(contestId) });
@@ -26,6 +29,14 @@ export async function GET(request: Request, ctx: Ctx) {
     }
     if (view === 'submissions') {
       return NextResponse.json({ submissions: await adminContestSubmissions(contestId) });
+    }
+    if (view === 'report') {
+      if (!attemptId) {
+        return NextResponse.json({ error: 'attemptId is required' }, { status: 400 });
+      }
+      return NextResponse.json({
+        report: await adminContestStudentReport(contestId, attemptId),
+      });
     }
     return NextResponse.json(await adminContestSummary(contestId));
   } catch (err) {

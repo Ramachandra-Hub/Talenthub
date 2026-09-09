@@ -142,6 +142,17 @@ export async function adminContestSummary(contestId: string) {
 
 export async function adminContestStudents(contestId: string) {
   await ready();
+  const contest = await prisma.dsaCodingContest.findUnique({
+    where: { id: contestId },
+    include: {
+      problems: {
+        orderBy: { position: 'asc' },
+        include: { problem: { select: { id: true, title: true, difficulty: true } } },
+      },
+    },
+  });
+  if (!contest) throw new Error('Contest not found');
+
   const attempts = await prisma.dsaCodingContestAttempt.findMany({
     where: { contestId },
     include: {
@@ -152,25 +163,82 @@ export async function adminContestStudents(contestId: string) {
           rollNumber: true,
           branch: true,
           academicYear: true,
+          email: true,
         },
       },
     },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: [{ totalScore: 'desc' }, { submittedAt: 'asc' }, { updatedAt: 'desc' }],
   });
 
-  const submissionAgg = await prisma.dsaCodeSubmission.groupBy({
-    by: ['contestAttemptId', 'language'],
+  const submissions = await prisma.dsaCodeSubmission.findMany({
     where: { contestId },
-    _count: { _all: true },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      contestAttemptId: true,
+      problemId: true,
+      language: true,
+      status: true,
+      scorePercent: true,
+      passed: true,
+      total: true,
+      compileOk: true,
+      failureType: true,
+      runtimeMs: true,
+      createdAt: true,
+    },
   });
 
-  return attempts.map((a) => {
-    const langs = submissionAgg.filter((g) => g.contestAttemptId === a.id);
+  const problemMeta = contest.problems.map((p) => ({
+    position: p.position,
+    problemId: p.problemId,
+    title: p.problem.title,
+    difficulty: p.problem.difficulty,
+  }));
+
+  return attempts.map((a, index) => {
+    const attemptSubs = submissions.filter((s) => s.contestAttemptId === a.id);
+    const bestByProblem = new Map<string, (typeof attemptSubs)[number]>();
+    for (const sub of attemptSubs) {
+      const prev = bestByProblem.get(sub.problemId);
+      if (!prev || Number(sub.scorePercent) > Number(prev.scorePercent)) {
+        bestByProblem.set(sub.problemId, sub);
+      }
+    }
+
+    const problemResults = problemMeta.map((p) => {
+      const best = bestByProblem.get(p.problemId) ?? null;
+      const solved = best
+        ? best.status === 'passed' || Number(best.scorePercent) >= 100
+        : false;
+      return {
+        position: p.position,
+        problemId: p.problemId,
+        title: p.title,
+        difficulty: p.difficulty,
+        status: best ? (solved ? 'solved' : 'failed') : 'not_attempted',
+        scorePercent: best ? Number(best.scorePercent) : 0,
+        language: best?.language ?? null,
+        submissionCount: attemptSubs.filter((s) => s.problemId === p.problemId).length,
+        compileOk: best?.compileOk ?? null,
+        failureType: best?.failureType ?? null,
+        runtimeMs: best?.runtimeMs ?? null,
+      };
+    });
+
+    const javaAttempts = attemptSubs.filter((s) => s.language === 'java').length;
+    const pythonAttempts = attemptSubs.filter((s) => s.language === 'python').length;
+    const percentage = a.maxScore
+      ? Math.round((a.totalScore / a.maxScore) * 10000) / 100
+      : 0;
+
     return {
+      rank: index + 1,
       attemptId: a.id,
       userId: a.userId,
       name: a.user.fullName,
       rollNumber: a.user.rollNumber,
+      email: a.user.email,
       department: a.user.branch,
       academicYear: a.user.academicYear,
       status: a.status,
@@ -178,14 +246,189 @@ export async function adminContestStudents(contestId: string) {
       solvedCount: a.solvedCount,
       totalScore: a.totalScore,
       maxScore: a.maxScore,
-      percentage: a.maxScore ? Math.round((a.totalScore / a.maxScore) * 10000) / 100 : 0,
-      javaAttempts: langs.find((l) => l.language === 'java')?._count._all ?? 0,
-      pythonAttempts: langs.find((l) => l.language === 'python')?._count._all ?? 0,
+      percentage,
+      javaAttempts,
+      pythonAttempts,
+      submissionCount: attemptSubs.length,
       startedAt: a.startedAt,
       submittedAt: a.submittedAt,
       durationSeconds: a.durationSeconds,
+      problemResults,
     };
   });
+}
+
+/** ElevateX-style full report for one contest attempt (admin only). */
+export async function adminContestStudentReport(contestId: string, attemptId: string) {
+  await ready();
+  const attempt = await prisma.dsaCodingContestAttempt.findFirst({
+    where: { id: attemptId, contestId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          rollNumber: true,
+          branch: true,
+          academicYear: true,
+          email: true,
+          college: true,
+        },
+      },
+      contest: {
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          durationMinutes: true,
+          problems: {
+            orderBy: { position: 'asc' },
+            include: {
+              problem: {
+                select: {
+                  id: true,
+                  title: true,
+                  difficulty: true,
+                  categoryLabel: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!attempt) throw new Error('Attempt not found');
+
+  const submissions = await prisma.dsaCodeSubmission.findMany({
+    where: { contestAttemptId: attemptId, contestId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      problemId: true,
+      language: true,
+      status: true,
+      scorePercent: true,
+      passed: true,
+      total: true,
+      compileOk: true,
+      failureType: true,
+      runtimeMs: true,
+      sourceCode: true,
+      stdout: true,
+      stderr: true,
+      createdAt: true,
+      problem: { select: { title: true } },
+    },
+  });
+
+  const bestByProblem = new Map<string, (typeof submissions)[number]>();
+  for (const sub of submissions) {
+    const prev = bestByProblem.get(sub.problemId);
+    if (!prev || Number(sub.scorePercent) > Number(prev.scorePercent)) {
+      bestByProblem.set(sub.problemId, sub);
+    }
+  }
+
+  const problems = attempt.contest.problems.map((link) => {
+    const best = bestByProblem.get(link.problemId) ?? null;
+    const solved = best
+      ? best.status === 'passed' || Number(best.scorePercent) >= 100
+      : false;
+    return {
+      position: link.position,
+      problemId: link.problemId,
+      title: link.problem.title,
+      difficulty: link.problem.difficulty,
+      category: link.problem.categoryLabel,
+      status: best ? (solved ? 'solved' : 'failed') : 'not_attempted',
+      scorePercent: best ? Number(best.scorePercent) : 0,
+      language: best?.language ?? null,
+      passed: best?.passed ?? 0,
+      total: best?.total ?? 0,
+      compileOk: best?.compileOk ?? null,
+      failureType: best?.failureType ?? null,
+      runtimeMs: best?.runtimeMs ?? null,
+      submissionCount: submissions.filter((s) => s.problemId === link.problemId).length,
+      bestSourceCode: best?.sourceCode ?? null,
+      bestStdout: best?.stdout ?? null,
+      bestStderr: best?.stderr ?? null,
+    };
+  });
+
+  const percentage = attempt.maxScore
+    ? Math.round((attempt.totalScore / attempt.maxScore) * 10000) / 100
+    : 0;
+
+  const feedback = {
+    strengths: problems.filter((p) => p.status === 'solved').map((p) => p.title),
+    gaps: problems
+      .filter((p) => p.status !== 'solved')
+      .map((p) =>
+        p.status === 'not_attempted'
+          ? `${p.title} (not attempted)`
+          : `${p.title} (${p.failureType || 'failed'})`,
+      ),
+    recommendation:
+      percentage >= 100
+        ? 'Excellent — all contest problems solved.'
+        : percentage >= 66
+          ? 'Strong showing. Review failed/unattempted problems and strengthen edge-case handling.'
+          : percentage >= 33
+            ? 'Partial completion. Revisit problem statements, I/O formats, and sample tests before resubmitting practice.'
+            : 'Needs focused practice on contest fundamentals: parsing input, testing samples, and language familiarity (Java/Python).',
+  };
+
+  return {
+    contest: {
+      id: attempt.contest.id,
+      title: attempt.contest.title,
+      slug: attempt.contest.slug,
+      durationMinutes: attempt.contest.durationMinutes,
+    },
+    student: {
+      userId: attempt.user.id,
+      name: attempt.user.fullName,
+      rollNumber: attempt.user.rollNumber,
+      email: attempt.user.email,
+      department: attempt.user.branch,
+      academicYear: attempt.user.academicYear,
+      college: attempt.user.college,
+    },
+    attempt: {
+      id: attempt.id,
+      status: attempt.status,
+      totalScore: attempt.totalScore,
+      maxScore: attempt.maxScore,
+      percentage,
+      solvedCount: attempt.solvedCount,
+      attemptedCount: attempt.attemptedCount,
+      startedAt: attempt.startedAt,
+      submittedAt: attempt.submittedAt,
+      durationSeconds: attempt.durationSeconds,
+    },
+    problems,
+    history: submissions.map((s) => ({
+      id: s.id,
+      problemId: s.problemId,
+      problemTitle: s.problem.title,
+      language: s.language,
+      status: s.status,
+      scorePercent: Number(s.scorePercent),
+      passed: s.passed,
+      total: s.total,
+      compileOk: s.compileOk,
+      failureType: s.failureType,
+      runtimeMs: s.runtimeMs,
+      sourceCode: s.sourceCode,
+      submittedAt: s.createdAt,
+    })),
+    feedback,
+    languageSummary: {
+      java: submissions.filter((s) => s.language === 'java').length,
+      python: submissions.filter((s) => s.language === 'python').length,
+    },
+  };
 }
 
 export async function adminContestProblems(contestId: string) {
