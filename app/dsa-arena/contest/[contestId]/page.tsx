@@ -82,7 +82,7 @@ function BriefBody() {
 
   if (error && !detail) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <DsaArenaSubnav />
         <p className="text-sm text-rose-300">{error}</p>
         <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
@@ -94,7 +94,7 @@ function BriefBody() {
 
   if (!detail) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <DsaArenaSubnav />
         <p className="text-sm text-slate-400">Loading contest…</p>
       </div>
@@ -108,79 +108,92 @@ function BriefBody() {
         ? { label: 'Continue Contest', action: start }
         : { label: 'Start Contest', action: start };
 
+  const difficultyMix = detail.problems.map((p) => p.difficulty).join(' → ');
+
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-3 pb-4">
       <DsaArenaSubnav />
-      <section className="dj-panel rounded-md p-4 sm:p-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
-          {detail.lifecycle} · {detail.durationMinutes} min · 3 Problems
-        </p>
-        <h2 className="mt-1 text-xl font-semibold text-white">{detail.title}</h2>
-        <p className="mt-2 text-[13px] text-slate-300">{detail.description}</p>
-        <p className="mt-3 text-[12px] text-slate-400">Languages: Java · Python</p>
-      </section>
 
       <section className="dj-panel rounded-md p-4 sm:p-5">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-          Problems
-        </h3>
-        <ul className="mt-2 space-y-2">
-          {detail.problems.map((p) => (
-            <li
-              key={p.position}
-              className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] py-2 last:border-0"
-            >
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start">
+          <div className="min-w-0 space-y-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
+                {detail.lifecycle} · 3 Problems · {detail.durationMinutes} Minutes
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-white">{detail.title}</h2>
+              <p className="mt-1 text-[12px] text-slate-400">{difficultyMix || 'mixed difficulty'}</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-slate-300">
+                {detail.description}
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <p className="text-[13px] font-semibold text-white">
-                  {p.position}. {p.title}
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Rules
+                </h3>
+                <pre className="mt-1 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-slate-300">
+                  {detail.instructions ||
+                    'Solve exactly 3 coding problems in Java or Python. Server-side grading only.'}
+                </pre>
+              </div>
+              <div>
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Eligibility
+                </h3>
+                <p className="mt-1 text-[12px] leading-relaxed text-slate-300">
+                  IV Year students only. Languages: Java · Python. Eligibility is enforced
+                  server-side when you start.
                 </p>
-                <p className="text-[11px] text-slate-500">
-                  {p.difficulty}
-                  {p.category ? ` · ${p.category}` : ''}
-                  {p.tags?.length ? ` · ${p.tags.join(', ')}` : ''}
+                <p className="mt-2 text-[12px] text-slate-400">
+                  Status: <span className="text-slate-200">{detail.lifecycle}</span>
+                  {detail.attempt ? ` · Attempt ${detail.attempt.status}` : ' · Not started'}
                 </p>
               </div>
-              <span className="text-[11px] tabular-nums text-cyan-200/90">{p.points} pts</span>
-            </li>
-          ))}
-        </ul>
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              Problems
+            </h3>
+            <ul className="mt-2 space-y-2">
+              {detail.problems.map((p) => (
+                <li
+                  key={p.position}
+                  className="rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-2"
+                >
+                  <p className="text-[13px] font-semibold text-white">
+                    Problem {p.position} · {p.title}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                    {p.difficulty}
+                    {p.category ? ` · ${p.category}` : ''}
+                    {p.tags?.length ? ` · ${p.tags.join(', ')}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+
+            {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="dj-btn dj-btn-primary"
+                disabled={busy}
+                onClick={() => void cta.action()}
+              >
+                {busy ? 'Please wait…' : cta.label}
+              </button>
+              <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+                Back
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
-
-      {detail.instructions ? (
-        <section className="dj-panel rounded-md p-4 sm:p-5">
-          <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-            Rules
-          </h3>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] text-slate-300">
-            {detail.instructions}
-          </pre>
-        </section>
-      ) : null}
-
-      <section className="dj-panel rounded-md p-4 sm:p-5">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-          Eligibility
-        </h3>
-        <p className="mt-2 text-[12px] text-slate-300">
-          IV Year students only. Eligibility is enforced server-side when you start the contest.
-        </p>
-      </section>
-
-      {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="dj-btn dj-btn-primary"
-          disabled={busy}
-          onClick={() => void cta.action()}
-        >
-          {busy ? 'Please wait…' : cta.label}
-        </button>
-        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
-          Back
-        </Link>
-      </div>
     </div>
   );
 }

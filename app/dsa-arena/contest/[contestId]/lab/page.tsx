@@ -160,7 +160,6 @@ export default function ContestLabPage() {
       };
       setLastSubmit(snapshot);
       setPublicResults(json.publicResults ?? null);
-      // refresh lab progress
       const labRes = await fetch(`/api/student/dsa/contests/${encodeURIComponent(contestId)}/lab`, {
         credentials: 'include',
         cache: 'no-store',
@@ -217,7 +216,7 @@ export default function ContestLabPage() {
 
   if (error && !data) {
     return (
-      <div className="ex-portal dsa-journey flex min-h-[100dvh] flex-col items-center justify-center gap-3 p-6">
+      <div className="code-lab flex min-h-[100dvh] flex-col items-center justify-center gap-3 p-6">
         <p className="text-sm text-rose-300">{error}</p>
         <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
           Back to Contests
@@ -228,57 +227,62 @@ export default function ContestLabPage() {
 
   if (!data) {
     return (
-      <div className="ex-portal dsa-journey flex min-h-[100dvh] items-center justify-center text-sm text-slate-400">
+      <div className="code-lab flex min-h-[100dvh] items-center justify-center text-sm text-slate-400">
         Loading contest Code Lab…
       </div>
     );
   }
 
   return (
-    <div className="ex-portal dsa-journey min-h-[100dvh] bg-[#070b14] text-slate-100">
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-3 px-3 py-3 sm:px-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <Link
-              href={`/dsa-arena/contest/${contestId}`}
-              className="text-[11px] font-semibold text-cyan-300/90 hover:text-cyan-200"
-            >
-              ← Contest brief
-            </Link>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
-              DSA Arena Contest
-            </p>
-            <h1 className="text-sm font-semibold text-white">{data.contest.title}</h1>
-            <p className="text-[11px] text-slate-500">
-              Problem {activeIdx + 1} / {shellProblems.length} · Solved {solvedCount}/3
-            </p>
+    <div className="code-lab text-slate-100">
+      <div className="mx-auto flex max-w-[1480px] flex-col gap-2 px-2 py-2 sm:px-3 sm:py-3">
+        <header className="code-lab-panel code-lab-mission-bar rounded-sm">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Link
+                href={`/dsa-arena/contest/${contestId}`}
+                className="text-[11px] font-semibold text-cyan-300/90 hover:text-cyan-200"
+              >
+                ← Contest brief
+              </Link>
+              <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
+                DSA Arena Contest
+              </p>
+              <p className="text-[11px] font-semibold text-white">{data.contest.title}</p>
+              <p className="text-[11px] tabular-nums text-slate-400">
+                Problem {activeIdx + 1} / {shellProblems.length} · Solved {solvedCount}/3 ·{' '}
+                {data.contest.durationMinutes} min
+              </p>
+            </div>
           </div>
-          <button
-            type="button"
-            className="dj-btn dj-btn-primary"
-            disabled={busy === 'finish'}
-            onClick={() => void finish()}
-          >
-            Finish Contest
-          </button>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {data.problems.map((p, idx) => (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {data.problems.map((p, idx) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onSelectProblem(idx)}
+                className={`min-w-[2.1rem] rounded-sm border px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                  idx === activeIdx
+                    ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-50'
+                    : p.progress === 'solved'
+                      ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
+                      : 'border-white/10 bg-white/[0.03] text-slate-400'
+                }`}
+              >
+                {p.position ?? idx + 1}
+                {p.progress === 'solved' ? ' ✓' : ''}
+              </button>
+            ))}
             <button
-              key={p.id}
               type="button"
-              onClick={() => onSelectProblem(idx)}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-                idx === activeIdx
-                  ? 'bg-cyan-500/25 text-cyan-100 ring-1 ring-cyan-400/40'
-                  : 'bg-white/[0.05] text-slate-400'
-              }`}
+              className="code-lab-btn code-lab-btn-primary"
+              disabled={busy === 'finish'}
+              onClick={() => void finish()}
             >
-              {p.position ?? idx + 1}. {p.progress ?? 'not_started'}
+              Finish Contest
             </button>
-          ))}
-        </div>
+          </div>
+        </header>
 
         <CodeLabShell
           dayTitle={data.contest.title}
@@ -304,6 +308,8 @@ export default function ContestLabPage() {
           onConsoleTabChange={setConsoleTab}
           codingPassed={solvedCount}
           minCoding={3}
+          expandProblemDocument
+          hideMissionChrome
         />
       </div>
     </div>
