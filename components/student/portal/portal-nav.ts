@@ -4,7 +4,6 @@ import {
   Swords,
   ClipboardList,
   BookOpen,
-  Trophy,
   Medal,
   Award,
   User,
@@ -29,20 +28,12 @@ export const PORTAL_NAV: PortalNavItem[] = [
     href: '/dsa-arena',
     label: 'DSA Arena',
     icon: Swords,
-    isActive: (p) => {
-      const onContest =
-        p === '/dsa-arena/contest' ||
-        p.startsWith('/dsa-arena/contest/') ||
-        p.startsWith('/dsa-arena/contests') ||
-        p.startsWith('/contests');
-      if (onContest) return false;
-      return (
-        p === '/dsa-arena' ||
-        p.startsWith('/dsa-arena/') ||
-        p === '/dsa' ||
-        (p.startsWith('/dsa/') && !p.startsWith('/dsa/history'))
-      );
-    },
+    isActive: (p) =>
+      p === '/dsa-arena' ||
+      p.startsWith('/dsa-arena/') ||
+      p.startsWith('/contests') ||
+      p === '/dsa' ||
+      (p.startsWith('/dsa/') && !p.startsWith('/dsa/history')),
   },
   {
     href: '/exams',
@@ -55,16 +46,6 @@ export const PORTAL_NAV: PortalNavItem[] = [
     label: 'Learning Hub',
     icon: BookOpen,
     isActive: (p) => p.startsWith('/learning'),
-  },
-  {
-    href: '/dsa-arena/contest',
-    label: 'Contests',
-    icon: Trophy,
-    isActive: (p) =>
-      p.startsWith('/contests') ||
-      p === '/dsa-arena/contest' ||
-      p.startsWith('/dsa-arena/contest/') ||
-      p.startsWith('/dsa-arena/contests'),
   },
   {
     href: '/leaderboard',

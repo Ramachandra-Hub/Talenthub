@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ContestCard, type ContestCardModel } from '@/components/dsa-arena/contest-card';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
+import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 import { cn } from '@/lib/utils';
 
 type FilterId = 'all' | 'live' | 'in_progress' | 'completed' | 'upcoming' | 'ended';
@@ -30,7 +31,7 @@ function matchesFilter(c: ContestCardModel, filter: FilterId): boolean {
 
 export default function DsaArenaContestsPage() {
   return (
-    <DsaArenaPageFrame title="Contests" subtitle="DSA Arena coding contests">
+    <DsaArenaPageFrame title="DSA Arena" subtitle="Coding Contests">
       {() => <ContestsBody />}
     </DsaArenaPageFrame>
   );
@@ -77,14 +78,16 @@ function ContestsBody() {
 
   return (
     <div className="space-y-4 pb-8">
+      <DsaArenaSubnav />
+
       <section className="dj-panel rounded-md p-4 sm:p-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
-          Left nav · Contests
+          DSA Arena · Contests
         </p>
         <h2 className="mt-1 text-base font-semibold text-white">Coding Contests</h2>
         <p className="mt-1 text-[12px] text-slate-400">
-          All DSA Arena contests live here only. Each contest has 3 coding problems — Java and
-          Python — graded on the server.
+          All coding contests are here next to Home and Roadmap. Each contest has 3 problems —
+          Java and Python — graded on the server.
         </p>
         {!loading && !error ? (
           <p className="mt-3 text-[12px] font-semibold tabular-nums text-cyan-200/90">

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
+import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 
 type Detail = {
   id: string;
@@ -26,7 +27,7 @@ type Detail = {
 
 export default function ContestBriefPage() {
   return (
-    <DsaArenaPageFrame title="Contests" subtitle="Contest brief">
+    <DsaArenaPageFrame title="DSA Arena" subtitle="Contest brief">
       {() => <BriefBody />}
     </DsaArenaPageFrame>
   );
@@ -88,6 +89,7 @@ function BriefBody() {
   if (error && !detail) {
     return (
       <div className="space-y-3">
+        <DsaArenaSubnav />
         <p className="text-sm text-rose-300">{error}</p>
         <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
           ← Back to Contests
@@ -97,7 +99,12 @@ function BriefBody() {
   }
 
   if (!detail) {
-    return <p className="text-sm text-slate-400">Loading contest…</p>;
+    return (
+      <div className="space-y-3">
+        <DsaArenaSubnav />
+        <p className="text-sm text-slate-400">Loading contest…</p>
+      </div>
+    );
   }
 
   const submitted = detail.attempt?.status === 'submitted';
@@ -122,12 +129,7 @@ function BriefBody() {
 
   return (
     <div className="space-y-3 pb-4">
-      <Link
-        href="/dsa-arena/contest"
-        className="inline-flex text-[12px] font-semibold text-cyan-300/90 hover:text-cyan-200"
-      >
-        ← Contests
-      </Link>
+      <DsaArenaSubnav />
 
       <article className="dj-panel rounded-md p-4 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
