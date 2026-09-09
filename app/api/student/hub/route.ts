@@ -53,7 +53,7 @@ export async function GET(request: Request) {
           available: dsa.assigned,
           unavailableReason: dsa.assigned
             ? null
-            : 'Not assigned to your roll number. Contact Training & Placement if you believe this is an error.',
+            : 'DSA Arena is for IV Year (4th year) students. Sign in with 4th year selected, or ask faculty to assign your roll.',
         },
       },
     });

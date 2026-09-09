@@ -1,9 +1,15 @@
 import { prisma } from '@/lib/prisma';
 import { ensureDsaTables } from '@/lib/dsa/ensure-tables';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
+import { academicYearsMatch } from '@/lib/academic-year-match';
 
 export function normalizeDsaRoll(roll: string): string {
   return roll.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+/** IV / 4th year students get DSA Arena practice without a roster row. */
+export function isFourthYearForDsa(academicYear: string | null | undefined): boolean {
+  return academicYearsMatch(academicYear, 'IV Year');
 }
 
 export async function isRollAssignedToDsa(rollNumber: string | null | undefined): Promise<boolean> {
@@ -31,22 +37,40 @@ export async function isUserAssignedToDsa(userId: string): Promise<{
   assigned: boolean;
   rollNumber: string;
   fullName: string | null;
+  via: 'roster' | 'iv_year' | 'none';
 }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { rollNumber: true, fullName: true, email: true },
+    select: { rollNumber: true, fullName: true, email: true, academicYear: true },
   });
   const roll =
     (user?.rollNumber ? normalizeDsaRoll(user.rollNumber) : '') ||
     normalizeDsaRoll(rollNumberFromUser(user?.email ?? ''));
-  const assigned = await isRollAssignedToDsa(roll);
-  return { assigned, rollNumber: roll, fullName: user?.fullName ?? null };
+
+  if (isFourthYearForDsa(user?.academicYear)) {
+    return {
+      assigned: true,
+      rollNumber: roll,
+      fullName: user?.fullName ?? null,
+      via: 'iv_year',
+    };
+  }
+
+  const onRoster = await isRollAssignedToDsa(roll);
+  return {
+    assigned: onRoster,
+    rollNumber: roll,
+    fullName: user?.fullName ?? null,
+    via: onRoster ? 'roster' : 'none',
+  };
 }
 
 export async function assertUserAssignedToDsa(userId: string): Promise<void> {
   const { assigned } = await isUserAssignedToDsa(userId);
   if (!assigned) {
-    const err = new Error('DSA practice is not assigned to your roll number.');
+    const err = new Error(
+      'DSA Arena is available to IV Year (4th year) students, or rolls assigned by faculty.',
+    );
     (err as Error & { status: number }).status = 403;
     throw err;
   }
