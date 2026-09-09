@@ -143,7 +143,11 @@ export async function listContestsForStudent(userId: string) {
 }
 
 export async function getContestDetailForStudent(userId: string, contestIdOrSlug: string) {
-  await assertDsaCodingContestEligible(userId);
+  /** Browse brief without eligibility; start / lab / submit stay gated. */
+  const eligible = await assertDsaCodingContestEligible(userId).then(
+    () => true,
+    () => false,
+  );
   const contest = await loadContestOrThrow(contestIdOrSlug);
   const life = deriveContestLifecycle(contest);
   if (life === 'draft' || life === 'unavailable') {
@@ -168,6 +172,7 @@ export async function getContestDetailForStudent(userId: string, contestIdOrSlug
     startsAt: contest.startsAt,
     endsAt: contest.endsAt,
     lifecycle: life,
+    eligible,
     languages: ['java', 'python'],
     problems: contest.problems.map((link) => ({
       position: link.position,

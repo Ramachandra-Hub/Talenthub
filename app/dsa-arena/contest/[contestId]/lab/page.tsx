@@ -219,7 +219,7 @@ export default function ContestLabPage() {
       <div className="code-lab flex min-h-[100dvh] flex-col items-center justify-center gap-3 p-6">
         <p className="text-sm text-rose-300">{error}</p>
         <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
-          Back to Contests
+          ← Back to Contests
         </Link>
       </div>
     );

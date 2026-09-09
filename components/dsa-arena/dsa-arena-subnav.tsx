@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
+/** Arena-only tabs. Contests live exclusively under left-nav Contests. */
 const TABS = [
   { href: '/dsa-arena', label: 'Home', match: (p: string) => p === '/dsa-arena' },
   {
@@ -11,23 +12,12 @@ const TABS = [
     label: 'Roadmap',
     match: (p: string) => p.startsWith('/dsa-arena/roadmap'),
   },
-  {
-    href: '/dsa-arena/contest',
-    label: 'Contest',
-    match: (p: string) =>
-      p === '/dsa-arena/contest' ||
-      p.startsWith('/dsa-arena/contest/') ||
-      p.startsWith('/dsa-arena/contests'),
-  },
 ] as const;
 
 export function DsaArenaSubnav() {
   const pathname = usePathname() || '';
   return (
-    <nav
-      className="mb-4 flex flex-wrap gap-2"
-      aria-label="DSA Arena sections"
-    >
+    <nav className="mb-4 flex flex-wrap gap-2" aria-label="DSA Arena sections">
       {TABS.map((tab) => {
         const active = tab.match(pathname);
         return (

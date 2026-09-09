@@ -55,9 +55,6 @@ export default function DsaArenaHomePage() {
                   <Link href="/dsa-arena/roadmap" className="dj-btn dj-btn-primary">
                     Open Roadmap
                   </Link>
-                  <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
-                    Contest
-                  </Link>
                   <Link href="/dsa" className="dj-btn dj-btn-ghost">
                     Adventure Map
                   </Link>

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
-import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 
 type ResultPayload = {
   contest: { title: string; slug: string };
@@ -50,7 +49,7 @@ function formatDuration(sec: number | null): string {
 
 export default function ContestResultPage() {
   return (
-    <DsaArenaPageFrame title="DSA Arena" subtitle="Contest Result">
+    <DsaArenaPageFrame title="Contests" subtitle="Contest result">
       {() => <ResultBody />}
     </DsaArenaPageFrame>
   );
@@ -64,40 +63,47 @@ function ResultBody() {
 
   useEffect(() => {
     const load = async () => {
-      const res = await fetch(`/api/student/dsa/contests/${encodeURIComponent(contestId)}/result`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error ?? 'Failed to load result');
-        return;
+      try {
+        const res = await fetch(
+          `/api/student/dsa/contests/${encodeURIComponent(contestId)}/result`,
+          { credentials: 'include', cache: 'no-store' },
+        );
+        const json = await res.json();
+        if (!res.ok) {
+          setError(json.error ?? 'Failed to load result');
+          return;
+        }
+        setData(json as ResultPayload);
+      } catch {
+        setError('Failed to load result');
       }
-      setData(json as ResultPayload);
     };
     void load();
   }, [contestId]);
 
   if (error) {
     return (
-      <div className="space-y-4">
-        <DsaArenaSubnav />
+      <div className="space-y-3">
         <p className="text-sm text-rose-300">{error}</p>
+        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+          ← Back to Contests
+        </Link>
       </div>
     );
   }
   if (!data) {
-    return (
-      <div className="space-y-4">
-        <DsaArenaSubnav />
-        <p className="text-sm text-slate-400">Loading result…</p>
-      </div>
-    );
+    return <p className="text-sm text-slate-400">Loading result…</p>;
   }
 
   return (
     <div className="space-y-4 pb-8">
-      <DsaArenaSubnav />
+      <Link
+        href="/dsa-arena/contest"
+        className="inline-flex text-[12px] font-semibold text-cyan-300/90 hover:text-cyan-200"
+      >
+        ← Contests
+      </Link>
+
       <section className="dj-panel rounded-md p-4 sm:p-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
           Coding Contest Result
@@ -129,8 +135,8 @@ function ResultBody() {
                   {p.position}. {p.title}
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  {p.language ?? '—'} · {p.passed}/{p.total} tests ·{' '}
-                  {p.submissionCount} submission(s)
+                  {p.language ?? '—'} · {p.passed}/{p.total} tests · {p.submissionCount}{' '}
+                  submission(s)
                 </p>
               </div>
               <div className="text-right">
@@ -179,11 +185,8 @@ function ResultBody() {
       </section>
 
       <div className="flex flex-wrap gap-2">
-        <Link href="/dsa-arena" className="dj-btn dj-btn-primary">
-          Return to DSA Arena
-        </Link>
-        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
-          Back to Contest list
+        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-primary">
+          Back to Contests
         </Link>
       </div>
     </div>
