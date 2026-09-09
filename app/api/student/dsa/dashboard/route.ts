@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server-auth';
 import { getDsaDashboard, httpErrorStatus } from '@/lib/dsa/service';
-import { ensureDsaTables, isMissingDsaTableError } from '@/lib/dsa/ensure-tables';
+import {
+  ensureDsaTables,
+  ensureDsaSchemaExtensions,
+  isMissingDsaTableError,
+} from '@/lib/dsa/ensure-tables';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -18,6 +22,7 @@ export async function GET(request: Request) {
     if (isMissingDsaTableError(err)) {
       try {
         await ensureDsaTables();
+        await ensureDsaSchemaExtensions();
         const data = await getDsaDashboard(auth.ctx.user.id);
         return NextResponse.json(data);
       } catch (retryErr) {

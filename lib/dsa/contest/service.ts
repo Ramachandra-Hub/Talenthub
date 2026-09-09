@@ -8,12 +8,13 @@ import {
   type DsaFailureType,
 } from '@/lib/dsa/contest/types';
 import { assertContestPublishable } from '@/lib/dsa/contest/publish-rules';
-import { ensureDsaTables } from '@/lib/dsa/ensure-tables';
+import { ensureDsaTables, ensureDsaSchemaExtensions } from '@/lib/dsa/ensure-tables';
 import { ensureDsaContestTables } from '@/lib/dsa/contest/ensure-tables';
 import { isCodingLanguageId } from '@/lib/coding/languages';
 
 async function ensureContestReady() {
   await ensureDsaTables();
+  await ensureDsaSchemaExtensions();
   await ensureDsaContestTables();
 }
 

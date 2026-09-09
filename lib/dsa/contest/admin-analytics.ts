@@ -1,10 +1,11 @@
 import { prisma } from '@/lib/prisma';
-import { ensureDsaTables } from '@/lib/dsa/ensure-tables';
+import { ensureDsaTables, ensureDsaSchemaExtensions } from '@/lib/dsa/ensure-tables';
 import { ensureDsaContestTables } from '@/lib/dsa/contest/ensure-tables';
 import { assertContestPublishable } from '@/lib/dsa/contest/publish-rules';
 
 async function ready() {
   await ensureDsaTables();
+  await ensureDsaSchemaExtensions();
   await ensureDsaContestTables();
 }
 

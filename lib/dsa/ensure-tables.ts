@@ -326,6 +326,8 @@ export async function ensureDsaTables(): Promise<void> {
   // Always verify journey table — older warm instances may have cached tablesReady
   // before this table existed in code/migrations.
   await ensureDsaJourneyMissionsTable();
+  // Contest-era columns on dsa_problems / dsa_code_submissions (Prisma SELECTs them).
+  await ensureDsaSchemaExtensions();
   await syncRosterFromEnv();
 }
 
@@ -422,6 +424,50 @@ export function isMissingDsaTableError(err: unknown): boolean {
     /dsa_/i.test(message) &&
     (/does not exist/i.test(message) ||
       /P2021/.test(message) ||
-      /relation .* does not exist/i.test(message))
+      /P2022/.test(message) ||
+      /relation .* does not exist/i.test(message) ||
+      /column .* does not exist/i.test(message))
   );
+}
+
+/**
+ * Additive columns required by the current Prisma schema for Arena contests.
+ * Safe to run repeatedly (IF NOT EXISTS).
+ */
+export async function ensureDsaSchemaExtensions(): Promise<void> {
+  const statements = [
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "student_explanation" TEXT`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "source_bank_key" TEXT`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "category_label" TEXT`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "tags_json" JSONB`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "reference_solutions_json" JSONB`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "reference_solution_status" TEXT NOT NULL DEFAULT 'missing'`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "time_limit_ms" INTEGER`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "memory_limit_kb" INTEGER`,
+    `ALTER TABLE "dsa_problems" ADD COLUMN IF NOT EXISTS "contest_bank" BOOLEAN NOT NULL DEFAULT false`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_problems_source_bank_key_key" ON "dsa_problems"("source_bank_key")`,
+    `CREATE INDEX IF NOT EXISTS "dsa_problems_contest_bank_is_active_idx" ON "dsa_problems"("contest_bank", "is_active")`,
+    `ALTER TABLE "dsa_code_submissions" ALTER COLUMN "week_attempt_id" DROP NOT NULL`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "contest_id" UUID`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "contest_attempt_id" UUID`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "compile_ok" BOOLEAN`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "failure_type" TEXT`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "public_passed" INTEGER`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "public_total" INTEGER`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "hidden_passed" INTEGER`,
+    `ALTER TABLE "dsa_code_submissions" ADD COLUMN IF NOT EXISTS "hidden_total" INTEGER`,
+    `CREATE INDEX IF NOT EXISTS "dsa_code_submissions_contest_attempt_id_problem_id_created_at_idx" ON "dsa_code_submissions"("contest_attempt_id", "problem_id", "created_at")`,
+    `CREATE INDEX IF NOT EXISTS "dsa_code_submissions_contest_id_created_at_idx" ON "dsa_code_submissions"("contest_id", "created_at")`,
+  ];
+
+  for (const sql of statements) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/already exists|duplicate/i.test(msg)) {
+        console.warn('[dsa] schema extension warning:', msg.slice(0, 220));
+      }
+    }
+  }
 }
