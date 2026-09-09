@@ -2,29 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Home,
-  Swords,
-  ClipboardList,
-  BookOpen,
-  Trophy,
-  Medal,
-  Award,
-  User,
-  type LucideIcon,
-} from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const NAV: Array<{ href: string; label: string; icon: LucideIcon }> = [
-  { href: '/home', label: 'Home', icon: Home },
-  { href: '/dsa', label: 'DSA Arena', icon: Swords },
-  { href: '/exams', label: 'Exam Center', icon: ClipboardList },
-  { href: '/home', label: 'Learning Hub', icon: BookOpen },
-  { href: '/dsa/history', label: 'Contests', icon: Trophy },
-  { href: '/dsa/history', label: 'Leaderboard', icon: Medal },
-  { href: '/dsa/history', label: 'Achievements', icon: Award },
-  { href: '/home', label: 'Profile', icon: User },
-];
+import { PORTAL_NAV } from '@/components/student/portal/portal-nav';
 
 type Props = {
   open?: boolean;
@@ -32,13 +11,13 @@ type Props = {
 };
 
 export function ArenaSidebar({ open = false, onClose }: Props) {
-  const pathname = usePathname();
+  const pathname = usePathname() || '/dsa';
 
   return (
     <>
       <div
         className={cn(
-          'fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] lg:hidden transition-opacity',
+          'fixed inset-0 z-40 bg-black/65 backdrop-blur-[2px] lg:hidden transition-opacity duration-200',
           open ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
         onClick={onClose}
@@ -46,66 +25,64 @@ export function ArenaSidebar({ open = false, onClose }: Props) {
       />
       <aside
         className={cn(
-          'fixed left-0 top-0 z-50 flex h-[100dvh] w-[190px] flex-col border-r border-cyan-500/10 bg-[#070d18]/95 backdrop-blur-xl transition-transform lg:translate-x-0',
+          'fixed left-0 top-0 z-50 flex h-[100dvh] w-[196px] flex-col border-r border-cyan-500/15 bg-[#050b14]/92 backdrop-blur-xl transition-transform duration-200 lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         )}
       >
-        <div className="px-4 pt-6 pb-5 border-b border-white/5">
-          <p className="text-[11px] font-bold tracking-[0.28em] text-cyan-300">ELEVATE-X</p>
-          <p className="mt-1 text-[10px] tracking-wide text-slate-400">Code. Play. Grow.</p>
+        <div className="px-4 pt-7 pb-5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-400/30 bg-gradient-to-br from-cyan-500/30 to-indigo-700/40 text-[11px] font-black tracking-tight text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.25)]">
+              EX
+            </span>
+            <div>
+              <p className="text-[12px] font-bold tracking-[0.22em] text-white">ELEVATE-X</p>
+              <p className="mt-0.5 text-[10px] tracking-wide text-slate-400">Code. Play. Grow.</p>
+            </div>
+          </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5" aria-label="Arena navigation">
-          {NAV.map((item) => {
-            const isActive =
-              item.label === 'DSA Arena'
-                ? pathname === '/dsa' ||
-                  (pathname.startsWith('/dsa/') &&
-                    !pathname.startsWith('/dsa/history'))
-                : item.label === 'Achievements' ||
-                    item.label === 'Leaderboard' ||
-                    item.label === 'Contests'
-                  ? pathname.startsWith('/dsa/history')
-                  : item.label === 'Exam Center'
-                    ? pathname.startsWith('/exams')
-                    : item.label === 'Home'
-                      ? pathname === '/home'
-                      : false;
-
+        <nav className="flex-1 overflow-y-auto px-2.5 pb-3 space-y-1" aria-label="Arena navigation">
+          {PORTAL_NAV.map((item) => {
+            const isActive = item.isActive(pathname);
             const Icon = item.icon;
             return (
               <Link
-                key={`${item.label}-${item.href}`}
+                key={item.label}
                 href={item.href}
                 onClick={onClose}
                 className={cn(
-                  'group relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[12px] font-medium transition-colors duration-200',
+                  'group relative flex items-center gap-2.5 rounded-md px-3 py-2.5 text-[12px] font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-cyan-500/15 text-cyan-100 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.25)]'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-100',
+                    ? 'bg-cyan-500/12 text-cyan-50 shadow-[inset_3px_0_0_0_#22d3ee,0_0_20px_rgba(34,211,238,0.08)]'
+                    : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-100',
                 )}
               >
-                {isActive ? (
-                  <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-                ) : null}
-                <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-cyan-300' : 'text-slate-500 group-hover:text-slate-300')} />
+                <Icon
+                  className={cn(
+                    'h-4 w-4 shrink-0 transition-colors duration-200',
+                    isActive ? 'text-cyan-300' : 'text-slate-500 group-hover:text-slate-300',
+                  )}
+                />
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        <div className="m-3 overflow-hidden rounded-xl border border-cyan-500/15 bg-gradient-to-br from-[#0c1a2e] to-[#08101c] p-3">
-          <div className="relative h-16 rounded-lg bg-[radial-gradient(ellipse_at_bottom,_#1e3a5f_0%,_#0a1525_70%)] overflow-hidden">
-            <div className="absolute inset-x-0 bottom-0 h-8 bg-[linear-gradient(90deg,transparent,#334155,#64748b,#334155,transparent)] opacity-40" />
-            <div className="absolute left-3 bottom-2 h-6 w-10 rounded-t-full bg-slate-600/50" />
-            <div className="absolute right-4 bottom-3 h-8 w-6 rounded-sm bg-slate-500/40" />
+        <div className="m-3 overflow-hidden rounded-lg border border-cyan-500/20 arena-panel p-0">
+          <div
+            className="relative h-[72px] bg-cover bg-center"
+            style={{ backgroundImage: "url('/elevatex/arena-map-bg.png')" }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-t from-[#050b14] via-[#050b14]/40 to-transparent" />
           </div>
-          <p className="mt-3 text-[11px] font-semibold leading-snug text-slate-200">
-            Small Steps
-            <br />
-            <span className="text-cyan-300/90">Big Careers</span>
-          </p>
+          <div className="px-3 pb-3 pt-2">
+            <p className="text-[11px] font-semibold leading-snug text-slate-200">
+              Small Steps
+              <br />
+              <span className="text-cyan-300">Big Careers</span>
+            </p>
+          </div>
         </div>
       </aside>
     </>
