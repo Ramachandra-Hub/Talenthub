@@ -88,6 +88,7 @@ model User {
   dsaCodeSubmissions   DsaCodeSubmission[]
   dsaMcqAttempts       DsaMcqAttempt[]
   dsaAuditEvents       DsaAuditEvent[]
+  dsaCodingContestAttempts DsaCodingContestAttempt[]
 
   @@index([email])
   @@index([rollNumber])
@@ -696,9 +697,22 @@ model DsaProblem {
   expectedComplexity String? @map("expected_complexity")
   hintsJson       Json     @default("[]") @map("hints_json")
   explanation     String?  @db.Text
+  /// Student-safe prose only — never store reference code here.
+  studentExplanation String? @map("student_explanation") @db.Text
   starterCodeJson Json     @map("starter_code_json")
   testCasesJson   Json     @map("test_cases_json")
   languagesJson   Json     @map("languages_json")
+  /// Stable import key e.g. tree-network-bank:1
+  sourceBankKey   String?  @unique @map("source_bank_key")
+  categoryLabel   String?  @map("category_label")
+  tagsJson        Json?    @map("tags_json")
+  /// { java?: string, python?: string } — ADMIN/SERVER ONLY
+  referenceSolutionsJson Json? @map("reference_solutions_json")
+  /// missing | needs_validation | validated
+  referenceSolutionStatus String @default("missing") @map("reference_solution_status")
+  timeLimitMs     Int?     @map("time_limit_ms")
+  memoryLimitKb   Int?     @map("memory_limit_kb")
+  contestBank     Boolean  @default(false) @map("contest_bank")
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -706,9 +720,11 @@ model DsaProblem {
   topic        DsaTopic            @relation(fields: [topicId], references: [id], onDelete: Restrict)
   submissions  DsaCodeSubmission[]
   assignments  DsaDayAssignment[]
+  contestLinks DsaCodingContestProblem[]
 
   @@index([topicId, difficulty])
   @@index([conceptSlug])
+  @@index([contestBank, isActive])
   @@map("dsa_problems")
 }
 
@@ -834,7 +850,8 @@ model DsaDayAssignment {
 model DsaCodeSubmission {
   id              String   @id @default(uuid()) @db.Uuid
   userId          String   @map("user_id") @db.Uuid
-  weekAttemptId   String   @map("week_attempt_id") @db.Uuid
+  /// Required for DSA Day submissions; null for Arena coding contests.
+  weekAttemptId   String?  @map("week_attempt_id") @db.Uuid
   problemId       String   @map("problem_id") @db.Uuid
   language        String
   sourceCode      String   @map("source_code") @db.Text
@@ -847,15 +864,96 @@ model DsaCodeSubmission {
   runtimeMs       Int?     @map("runtime_ms")
   memoryKb        Int?     @map("memory_kb")
   kind            String   @default("official")
+  contestId       String?  @map("contest_id") @db.Uuid
+  contestAttemptId String? @map("contest_attempt_id") @db.Uuid
+  compileOk       Boolean? @map("compile_ok")
+  failureType     String?  @map("failure_type")
+  publicPassed    Int?     @map("public_passed")
+  publicTotal     Int?     @map("public_total")
+  hiddenPassed    Int?     @map("hidden_passed")
+  hiddenTotal     Int?     @map("hidden_total")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  weekAttempt DsaWeekAttempt @relation(fields: [weekAttemptId], references: [id], onDelete: Cascade)
-  problem     DsaProblem     @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekAttempt    DsaWeekAttempt?          @relation(fields: [weekAttemptId], references: [id], onDelete: Cascade)
+  problem        DsaProblem               @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  contest        DsaCodingContest?        @relation(fields: [contestId], references: [id], onDelete: SetNull)
+  contestAttempt DsaCodingContestAttempt? @relation(fields: [contestAttemptId], references: [id], onDelete: SetNull)
 
   @@index([userId, problemId, createdAt])
   @@index([weekAttemptId, problemId])
+  @@index([contestAttemptId, problemId, createdAt])
+  @@index([contestId, createdAt])
   @@map("dsa_code_submissions")
+}
+
+/// DSA Arena coding contest (exactly 3 problems when published).
+model DsaCodingContest {
+  id               String    @id @default(uuid()) @db.Uuid
+  slug             String    @unique
+  title            String
+  description      String?   @db.Text
+  instructions     String?   @db.Text
+  difficulty       String    @default("mixed")
+  /// draft | published | active | ended | archived
+  status           String    @default("draft")
+  startsAt         DateTime? @map("starts_at")
+  endsAt           DateTime? @map("ends_at")
+  durationMinutes  Int       @default(90) @map("duration_minutes")
+  isPublished      Boolean   @default(false) @map("is_published")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  problems   DsaCodingContestProblem[]
+  attempts   DsaCodingContestAttempt[]
+  submissions DsaCodeSubmission[]
+
+  @@index([status, isPublished, isActive])
+  @@map("dsa_coding_contests")
+}
+
+model DsaCodingContestProblem {
+  id        String   @id @default(uuid()) @db.Uuid
+  contestId String   @map("contest_id") @db.Uuid
+  problemId String   @map("problem_id") @db.Uuid
+  position  Int
+  points    Int      @default(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  contest DsaCodingContest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problem DsaProblem       @relation(fields: [problemId], references: [id], onDelete: Restrict)
+
+  @@unique([contestId, problemId])
+  @@unique([contestId, position])
+  @@index([problemId])
+  @@map("dsa_coding_contest_problems")
+}
+
+model DsaCodingContestAttempt {
+  id              String    @id @default(uuid()) @db.Uuid
+  contestId       String    @map("contest_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  startedAt       DateTime  @default(now()) @map("started_at")
+  submittedAt     DateTime? @map("submitted_at")
+  /// not_started | in_progress | submitted | expired
+  status          String    @default("in_progress")
+  totalScore      Int       @default(0) @map("total_score")
+  maxScore        Int       @default(300) @map("max_score")
+  solvedCount     Int       @default(0) @map("solved_count")
+  attemptedCount  Int       @default(0) @map("attempted_count")
+  durationSeconds Int?      @map("duration_seconds")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  contest     DsaCodingContest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissions DsaCodeSubmission[]
+
+  @@unique([contestId, userId])
+  @@index([userId, status])
+  @@index([contestId, status])
+  @@map("dsa_coding_contest_attempts")
 }
 
 model DsaMcqAttempt {

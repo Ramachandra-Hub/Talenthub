@@ -2,8 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { PortalShell } from '@/components/student/portal/portal-shell';
-import { derivePortalGamification } from '@/components/student/portal/portal-gamification';
+import { DsaArenaShell } from '@/components/dsa-arena/dsa-arena-shell';
 import { getClientUser } from '@/lib/client-auth';
 import type { ArenaProgressionSnapshot } from '@/lib/dsa/arena-progression';
 
@@ -19,7 +18,6 @@ type Props = {
 export function DsaArenaPageFrame({ title, subtitle, children }: Props) {
   const router = useRouter();
   const [studentName, setStudentName] = useState('Cadet');
-  const [roll, setRoll] = useState('');
   const [progression, setProgression] = useState<ArenaProgressionSnapshot | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -43,7 +41,6 @@ export function DsaArenaPageFrame({ title, subtitle, children }: Props) {
             student?: { name?: string; rollNumber?: string };
           };
           if (hub.student?.name) setStudentName(hub.student.name);
-          if (hub.student?.rollNumber) setRoll(hub.student.rollNumber);
         }
         if (progRes.ok) {
           setProgression((await progRes.json()) as ArenaProgressionSnapshot);
@@ -65,19 +62,11 @@ export function DsaArenaPageFrame({ title, subtitle, children }: Props) {
     );
   }
 
-  const gamification = derivePortalGamification({ rollNumber: roll });
-
   return (
     <div className="dsa-journey">
-      <PortalShell
-        title={title}
-        subtitle={subtitle}
-        studentName={studentName}
-        gamification={gamification}
-        showSearch={false}
-      >
+      <DsaArenaShell title={title} subtitle={subtitle} studentName={studentName}>
         {children({ studentName, progression })}
-      </PortalShell>
+      </DsaArenaShell>
     </div>
   );
 }

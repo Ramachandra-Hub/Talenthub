@@ -1,6 +1,11 @@
 export const ADMIN_NAV_ITEMS = [
   { href: '/admin/dashboard', label: 'Overview', description: 'College-wide performance summary' },
   {
+    href: '/admin/dsa-arena/contests',
+    label: 'DSA Contests',
+    description: 'DSA Arena coding contest analytics and submissions',
+  },
+  {
     href: '/admin/reports',
     label: 'Test reports',
     description: 'Per-exam dashboards — filter students and download PDF/CSV reports',

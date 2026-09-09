@@ -29,6 +29,8 @@
     "migrate:admin": "node scripts/apply-admin-setup.mjs",
     "migrate:question-bank": "node scripts/apply-question-bank-migration.mjs",
     "seed:question-bank": "node scripts/seed-question-bank.mjs",
+    "seed:java-array": "npx tsx scripts/seed-java-array-bank.mjs",
+    "import:dsa-contests": "npx tsx scripts/import-dsa-coding-question-bank.ts",
     "seed:elevatex": "node scripts/seed-elevatex-sample.mjs",
     "reset:elevatex": "node scripts/reset-elevatex-sample.mjs",
     "reset:all-students": "node scripts/reset-all-students.mjs",

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
+import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 import { DsaRoadmap } from '@/components/dsa-arena/dsa-roadmap';
 import { MissionBreadcrumb } from '@/components/dsa-arena/mission-breadcrumb';
 
@@ -10,6 +11,7 @@ export default function DsaArenaRoadmapPage() {
     <DsaArenaPageFrame title="DSA Roadmap" subtitle="Your skill journey">
       {({ progression }) => (
         <div className="space-y-4 pb-10">
+          <DsaArenaSubnav />
           <MissionBreadcrumb
             items={[
               { label: 'DSA Arena', href: '/dsa-arena' },

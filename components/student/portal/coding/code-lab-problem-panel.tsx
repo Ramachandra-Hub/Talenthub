@@ -66,6 +66,15 @@ export function CodeLabProblemPanel({ problem }: Props) {
             <p className="whitespace-pre-wrap text-slate-400">{problem.constraints}</p>
           </section>
         ) : null}
+
+        {problem.studentExplanation ? (
+          <details className="rounded border border-white/[0.06] bg-black/20 p-2">
+            <summary className="cursor-pointer text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              Explanation
+            </summary>
+            <p className="mt-2 whitespace-pre-wrap text-slate-400">{problem.studentExplanation}</p>
+          </details>
+        ) : null}
       </div>
     </div>
   );

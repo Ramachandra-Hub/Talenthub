@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { AchievementCard } from '@/components/dsa-arena/achievement-card';
 import { DsaArenaHeader } from '@/components/dsa-arena/dsa-arena-header';
 import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
+import { DsaArenaSubnav } from '@/components/dsa-arena/dsa-arena-subnav';
 import { MissionStatus } from '@/components/dsa-arena/mission-status';
 import { SkillProgress } from '@/components/dsa-arena/skill-progress';
 import {
@@ -27,6 +28,7 @@ export default function DsaArenaHomePage() {
 
         return (
           <div className="space-y-4 pb-8">
+            <DsaArenaSubnav />
             <DsaArenaHeader studentName={studentName} profile={DSA_ARENA_DEMO_PROFILE} />
 
             <p className="rounded-md border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100/90">
@@ -52,6 +54,9 @@ export default function DsaArenaHomePage() {
                 <div className="flex flex-wrap gap-2">
                   <Link href="/dsa-arena/roadmap" className="dj-btn dj-btn-primary">
                     Open Roadmap
+                  </Link>
+                  <Link href="/dsa-arena/contests" className="dj-btn dj-btn-ghost">
+                    Contests
                   </Link>
                   <Link href="/dsa" className="dj-btn dj-btn-ghost">
                     Adventure Map

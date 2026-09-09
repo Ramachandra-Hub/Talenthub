@@ -27,4 +27,8 @@ export type CodeLabProblem = {
   sampleTests: Array<{ input: string; expectedOutput: string }>;
   hiddenTestCount: number;
   best: { passed: number; total: number; status: string; language: string } | null;
+  category?: string | null;
+  tags?: string[];
+  /** Student-safe prose only — never reference code. */
+  studentExplanation?: string | null;
 };
