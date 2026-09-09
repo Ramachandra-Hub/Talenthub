@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { ensureDsaCurriculum } from '@/lib/dsa/ensure-curriculum';
+import { ensureDsaSchemaExtensions } from '@/lib/dsa/ensure-tables';
 import { parseProgramConfig } from '@/lib/dsa/parse-config';
 import { assignItemsWithoutRepeat } from '@/lib/dsa/assign';
 import { evaluateDayCompletion, evaluateWeekQualification } from '@/lib/dsa/policy';
@@ -18,6 +19,7 @@ function asDifficulty(value: string): DsaDifficulty {
 
 async function loadProgramBundle() {
   const { programId } = await ensureDsaCurriculum();
+  await ensureDsaSchemaExtensions();
   const program = await prisma.dsaProgram.findUniqueOrThrow({
     where: { id: programId },
     include: {
