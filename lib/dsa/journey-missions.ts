@@ -99,10 +99,23 @@ export async function resolveJourneyMissionForStudent(
 
   // Curriculum ensure also seeds authoritative journey mappings.
   await ensureDsaCurriculum();
+  const { ensureDsaJourneyMissionsTable, isMissingDsaTableError } = await import(
+    '@/lib/dsa/ensure-tables'
+  );
+  await ensureDsaJourneyMissionsTable();
 
-  const mapping = await prisma.dsaJourneyMission.findUnique({
-    where: { missionKey },
-  });
+  let mapping: Awaited<ReturnType<typeof prisma.dsaJourneyMission.findUnique>> = null;
+  try {
+    mapping = await prisma.dsaJourneyMission.findUnique({
+      where: { missionKey },
+    });
+  } catch (err) {
+    if (!isMissingDsaTableError(err)) throw err;
+    await ensureDsaJourneyMissionsTable();
+    mapping = await prisma.dsaJourneyMission.findUnique({
+      where: { missionKey },
+    });
+  }
 
   if (!mapping) {
     return unresolved(missionKey, 'Mission is not connected to a coding workspace yet.');

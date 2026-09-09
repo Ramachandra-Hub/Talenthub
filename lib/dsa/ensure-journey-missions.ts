@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import { ensureDsaTables } from '@/lib/dsa/ensure-tables';
+import {
+  ensureDsaTables,
+  ensureDsaJourneyMissionsTable,
+  isMissingDsaTableError,
+} from '@/lib/dsa/ensure-tables';
 import { DSA_PROGRAM_SLUG } from '@/lib/dsa/curriculum';
 import { DSA_JOURNEY_MISSION_SEEDS } from '@/lib/dsa/journey-mission-seeds';
 
@@ -9,6 +13,7 @@ import { DSA_JOURNEY_MISSION_SEEDS } from '@/lib/dsa/journey-mission-seeds';
  */
 export async function ensureJourneyMissionMappings(): Promise<void> {
   await ensureDsaTables();
+  await ensureDsaJourneyMissionsTable();
 
   const program = await prisma.dsaProgram.findUnique({
     where: { slug: DSA_PROGRAM_SLUG },
@@ -35,32 +40,27 @@ export async function ensureJourneyMissionMappings(): Promise<void> {
     });
     if (!day) continue;
 
-    const existing = await prisma.dsaJourneyMission.findUnique({
-      where: { missionKey: seed.missionKey },
-      select: { id: true },
-    });
+    const payload = {
+      topicKey: seed.topicKey,
+      dayId: day.id,
+      focusProblemSlug: seed.focusProblemSlug ?? null,
+      sortOrder: seed.sortOrder,
+      isActive: seed.isActive ?? true,
+    };
 
-    if (existing) {
-      await prisma.dsaJourneyMission.update({
+    try {
+      await prisma.dsaJourneyMission.upsert({
         where: { missionKey: seed.missionKey },
-        data: {
-          topicKey: seed.topicKey,
-          dayId: day.id,
-          focusProblemSlug: seed.focusProblemSlug ?? null,
-          sortOrder: seed.sortOrder,
-          isActive: seed.isActive ?? true,
-        },
+        create: { missionKey: seed.missionKey, ...payload },
+        update: payload,
       });
-    } else {
-      await prisma.dsaJourneyMission.create({
-        data: {
-          missionKey: seed.missionKey,
-          topicKey: seed.topicKey,
-          dayId: day.id,
-          focusProblemSlug: seed.focusProblemSlug ?? null,
-          sortOrder: seed.sortOrder,
-          isActive: seed.isActive ?? true,
-        },
+    } catch (err) {
+      if (!isMissingDsaTableError(err)) throw err;
+      await ensureDsaJourneyMissionsTable();
+      await prisma.dsaJourneyMission.upsert({
+        where: { missionKey: seed.missionKey },
+        create: { missionKey: seed.missionKey, ...payload },
+        update: payload,
       });
     }
   }

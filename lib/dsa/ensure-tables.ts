@@ -2,17 +2,54 @@ import { prisma } from '@/lib/prisma';
 
 let tablesReady = false;
 
-async function dsaProgramsTableExists(): Promise<boolean> {
+async function dsaTableExists(tableName: string): Promise<boolean> {
   const rows = await prisma.$queryRaw<Array<{ exists: boolean | string | number }>>`
     SELECT EXISTS (
       SELECT 1
       FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND table_name = 'dsa_programs'
+        AND table_name = ${tableName}
     ) AS exists
   `;
   const value = rows[0]?.exists;
   return value === true || value === 't' || value === 1 || value === 'true';
+}
+
+async function dsaProgramsTableExists(): Promise<boolean> {
+  return dsaTableExists('dsa_programs');
+}
+
+/** Idempotent: create journey mapping table on databases that predate Phase 1. */
+export async function ensureDsaJourneyMissionsTable(): Promise<void> {
+  if (await dsaTableExists('dsa_journey_missions')) return;
+
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "dsa_journey_missions" (
+    "id" UUID NOT NULL,
+    "mission_key" TEXT NOT NULL,
+    "topic_key" TEXT NOT NULL,
+    "day_id" UUID NOT NULL,
+    "focus_problem_slug" TEXT,
+    "sort_order" INTEGER NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "dsa_journey_missions_pkey" PRIMARY KEY ("id")
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_journey_missions_mission_key_key" ON "dsa_journey_missions"("mission_key")`,
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "dsa_journey_missions_topic_key_idx" ON "dsa_journey_missions"("topic_key")`,
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "dsa_journey_missions_day_id_idx" ON "dsa_journey_missions"("day_id")`,
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "dsa_journey_missions_is_active_idx" ON "dsa_journey_missions"("is_active")`,
+  );
+  await addFk(
+    `ALTER TABLE "dsa_journey_missions" ADD CONSTRAINT "dsa_journey_missions_day_id_fkey" FOREIGN KEY ("day_id") REFERENCES "dsa_days"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+  );
 }
 
 const STATEMENTS = [
@@ -229,6 +266,22 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_roster_roll_number_key" ON "dsa_roster"("roll_number")`,
   `CREATE INDEX IF NOT EXISTS "dsa_roster_is_active_idx" ON "dsa_roster"("is_active")`,
+  `CREATE TABLE IF NOT EXISTS "dsa_journey_missions" (
+    "id" UUID NOT NULL,
+    "mission_key" TEXT NOT NULL,
+    "topic_key" TEXT NOT NULL,
+    "day_id" UUID NOT NULL,
+    "focus_problem_slug" TEXT,
+    "sort_order" INTEGER NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "dsa_journey_missions_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_journey_missions_mission_key_key" ON "dsa_journey_missions"("mission_key")`,
+  `CREATE INDEX IF NOT EXISTS "dsa_journey_missions_topic_key_idx" ON "dsa_journey_missions"("topic_key")`,
+  `CREATE INDEX IF NOT EXISTS "dsa_journey_missions_day_id_idx" ON "dsa_journey_missions"("day_id")`,
+  `CREATE INDEX IF NOT EXISTS "dsa_journey_missions_is_active_idx" ON "dsa_journey_missions"("is_active")`,
 ];
 
 async function addFk(sql: string) {
@@ -249,7 +302,7 @@ export async function ensureDsaTables(): Promise<void> {
       // FKs applied below after both branches
       await applyDsaForeignKeys();
     } else {
-      // Programs exist from an earlier deploy — still ensure roster table.
+      // Programs exist from an earlier deploy — still ensure roster + journey mapping tables.
       await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "dsa_roster" (
         "id" UUID NOT NULL,
         "roll_number" TEXT NOT NULL,
@@ -263,9 +316,16 @@ export async function ensureDsaTables(): Promise<void> {
       await prisma.$executeRawUnsafe(
         `CREATE UNIQUE INDEX IF NOT EXISTS "dsa_roster_roll_number_key" ON "dsa_roster"("roll_number")`,
       );
+      await prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "dsa_roster_is_active_idx" ON "dsa_roster"("is_active")`,
+      );
     }
     tablesReady = true;
   }
+
+  // Always verify journey table — older warm instances may have cached tablesReady
+  // before this table existed in code/migrations.
+  await ensureDsaJourneyMissionsTable();
   await syncRosterFromEnv();
 }
 
@@ -329,6 +389,9 @@ async function applyDsaForeignKeys() {
   );
   await addFk(
     `ALTER TABLE "dsa_audit_events" ADD CONSTRAINT "dsa_audit_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+  );
+  await addFk(
+    `ALTER TABLE "dsa_journey_missions" ADD CONSTRAINT "dsa_journey_missions_day_id_fkey" FOREIGN KEY ("day_id") REFERENCES "dsa_days"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
   );
 }
 

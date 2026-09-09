@@ -3,6 +3,10 @@ import { ensureDsaCurriculum } from '@/lib/dsa/ensure-curriculum';
 import { getDsaDashboard } from '@/lib/dsa/service';
 import { assertUserAssignedToDsa, isUserAssignedToDsa } from '@/lib/dsa/roster';
 import { DSA_ARENA_TOPICS } from '@/lib/dsa-arena/curriculum';
+import {
+  ensureDsaJourneyMissionsTable,
+  isMissingDsaTableError,
+} from '@/lib/dsa/ensure-tables';
 
 /** Authoritative Arena mission presentation (derived from DSA day state). */
 export type ArenaMissionAccess = 'accessible' | 'locked' | 'unmapped';
@@ -287,11 +291,27 @@ export async function getArenaProgressionForStudent(
   userId: string,
 ): Promise<ArenaProgressionSnapshot> {
   await ensureDsaCurriculum();
+  await ensureDsaJourneyMissionsTable();
 
-  const mappings = await prisma.dsaJourneyMission.findMany({
-    where: { isActive: true },
-    select: { missionKey: true, topicKey: true, dayId: true, isActive: true },
-  });
+  let mappings: Array<{
+    missionKey: string;
+    topicKey: string;
+    dayId: string;
+    isActive: boolean;
+  }> = [];
+  try {
+    mappings = await prisma.dsaJourneyMission.findMany({
+      where: { isActive: true },
+      select: { missionKey: true, topicKey: true, dayId: true, isActive: true },
+    });
+  } catch (err) {
+    if (!isMissingDsaTableError(err)) throw err;
+    await ensureDsaJourneyMissionsTable();
+    mappings = await prisma.dsaJourneyMission.findMany({
+      where: { isActive: true },
+      select: { missionKey: true, topicKey: true, dayId: true, isActive: true },
+    });
+  }
   const mappingByKey = new Map(mappings.map((m) => [m.missionKey, m]));
 
   const { assigned } = await isUserAssignedToDsa(userId);
