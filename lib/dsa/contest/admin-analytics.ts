@@ -98,6 +98,48 @@ export async function adminContestOverview() {
   };
 }
 
+export async function adminContestSummary(contestId: string) {
+  await ready();
+  const contest = await prisma.dsaCodingContest.findUnique({
+    where: { id: contestId },
+    include: { _count: { select: { problems: true, attempts: true, submissions: true } } },
+  });
+  if (!contest) throw new Error('Contest not found');
+  const attempts = await prisma.dsaCodingContestAttempt.findMany({
+    where: { contestId },
+    select: {
+      status: true,
+      totalScore: true,
+      maxScore: true,
+      durationSeconds: true,
+    },
+  });
+  const completed = attempts.filter((a) => a.status === 'submitted');
+  const avgScore =
+    attempts.length > 0
+      ? attempts.reduce((s, a) => s + (a.maxScore ? a.totalScore / a.maxScore : 0), 0) /
+        attempts.length
+      : 0;
+  const withDuration = completed.filter((a) => a.durationSeconds != null);
+  const avgCompletion =
+    withDuration.length > 0
+      ? Math.round(
+          withDuration.reduce((s, a) => s + (a.durationSeconds ?? 0), 0) / withDuration.length,
+        )
+      : null;
+  return {
+    contestId: contest.id,
+    title: contest.title,
+    status: contest.status,
+    problemCount: contest._count.problems,
+    totalParticipants: attempts.length,
+    completedAttempts: completed.length,
+    totalSubmissions: contest._count.submissions,
+    averageScorePercent: Math.round(avgScore * 10000) / 100,
+    averageCompletionSeconds: avgCompletion,
+  };
+}
+
 export async function adminContestStudents(contestId: string) {
   await ready();
   const attempts = await prisma.dsaCodingContestAttempt.findMany({
@@ -181,7 +223,11 @@ export async function adminContestProblems(contestId: string) {
       totalAttempts: rows.length,
       uniqueStudents: users.size,
       solvedCount: solvedUsers.size,
+      failedCount: Math.max(0, users.size - solvedUsers.size),
       successRate: users.size
+        ? Math.round((solvedUsers.size / users.size) * 10000) / 100
+        : 0,
+      solvePercent: users.size
         ? Math.round((solvedUsers.size / users.size) * 10000) / 100
         : 0,
       averageScore:

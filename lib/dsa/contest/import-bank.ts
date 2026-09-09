@@ -17,18 +17,16 @@ import { contestProblemStarter, slugForBankProblem } from '@/lib/dsa/contest/sta
 export function resolveQuestionBankPath(explicit?: string): string {
   if (explicit && existsSync(explicit)) return explicit;
   const candidates = [
+    path.join(process.cwd(), 'data', 'exam_portal_questions_with_solutions(2).json'),
     path.join(process.cwd(), 'data', 'exam_portal_questions_with_solutions(1).json'),
     path.join(process.cwd(), 'data', 'exam_portal_questions_with_solutions.json'),
-    path.join(
-      process.cwd(),
-      'exam_portal_questions_with_solutions(1).json',
-    ),
+    path.join(process.cwd(), 'exam_portal_questions_with_solutions(2).json'),
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
   throw new Error(
-    'Question bank JSON not found. Place exam_portal_questions_with_solutions(1).json under data/.',
+    'Question bank JSON not found. Place exam_portal_questions_with_solutions(2).json under data/.',
   );
 }
 
@@ -176,7 +174,7 @@ export async function ensureSeededContests(
     const n = String(i + 1).padStart(2, '0');
     const slug = `dsa-arena-coding-contest-${n}`;
     const titles = pack.map((id) => problemsBySourceId.get(id)?.title ?? `#${id}`);
-    const title = `DSA Arena Coding Contest ${n}`;
+    const title = `DSA Arena Coding Challenge ${n}`;
     const description = `Three coding problems: ${titles.join(' · ')}. Java and Python. Server-side grading.`;
     const instructions = [
       'Solve exactly 3 coding problems.',
@@ -198,7 +196,7 @@ export async function ensureSeededContests(
         status: 'active',
         startsAt: new Date('2026-01-01T00:00:00.000Z'),
         endsAt: new Date('2027-12-31T23:59:59.000Z'),
-        durationMinutes: 90,
+        durationMinutes: 60,
         isPublished: true,
         isActive: true,
       },
@@ -209,7 +207,9 @@ export async function ensureSeededContests(
         status: 'active',
         isPublished: true,
         isActive: true,
-        durationMinutes: 90,
+        durationMinutes: 60,
+        startsAt: new Date('2026-01-01T00:00:00.000Z'),
+        endsAt: new Date('2027-12-31T23:59:59.000Z'),
       },
     });
 
@@ -270,10 +270,23 @@ export async function importDsaCodingQuestionBank(options?: {
     contests = await ensureSeededContests(bySource);
   }
 
+  const assignedIds = new Set(contests.flatMap((c) => c.sourceIds));
+  const poolRemaining = validated.questions
+    .map((q) => q.sourceId)
+    .filter((id) => !assignedIds.has(id));
+
   return {
     filePath,
+    questionCountExpected: 50,
     imported: validated.questions.length,
+    rejected: validated.issues.filter((i) => i.level === 'error').length,
+    duplicates: validated.issues.filter((i) => /duplicate/i.test(i.message)).length,
+    invalid: validated.issues.filter(
+      (i) => i.level === 'error' && !/duplicate/i.test(i.message),
+    ).length,
     issues: validated.issues,
     contests,
+    questionsAssignedToContests: assignedIds.size,
+    poolRemainingSourceIds: poolRemaining,
   };
 }

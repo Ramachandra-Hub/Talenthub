@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/server-auth';
 import {
-  adminContestOverview,
   adminContestProblems,
   adminContestStudents,
   adminContestSubmissions,
+  adminContestSummary,
   adminPublishContest,
 } from '@/lib/dsa/contest/admin-analytics';
 
@@ -16,16 +16,18 @@ export async function GET(request: Request, ctx: Ctx) {
   const auth = await requireAuth(['admin'], request);
   if ('response' in auth) return auth.response;
   const { contestId } = await ctx.params;
-  const view = new URL(request.url).searchParams.get('view') ?? 'students';
+  const view = new URL(request.url).searchParams.get('view') ?? 'summary';
   try {
-    if (view === 'overview') return NextResponse.json(await adminContestOverview());
+    if (view === 'students') {
+      return NextResponse.json({ students: await adminContestStudents(contestId) });
+    }
     if (view === 'problems') {
       return NextResponse.json({ problems: await adminContestProblems(contestId) });
     }
     if (view === 'submissions') {
       return NextResponse.json({ submissions: await adminContestSubmissions(contestId) });
     }
-    return NextResponse.json({ students: await adminContestStudents(contestId) });
+    return NextResponse.json(await adminContestSummary(contestId));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed' },

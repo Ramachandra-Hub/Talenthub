@@ -19,6 +19,7 @@ type Detail = {
     title: string;
     difficulty: string;
     category: string | null;
+    tags?: string[];
     points: number;
   }>;
   attempt: { id: string; status: string } | null;
@@ -84,8 +85,8 @@ function BriefBody() {
       <div className="space-y-4">
         <DsaArenaSubnav />
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/dsa-arena/contests" className="dj-btn dj-btn-ghost">
-          Back to Contests
+        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+          Back to Contest
         </Link>
       </div>
     );
@@ -136,6 +137,7 @@ function BriefBody() {
                 <p className="text-[11px] text-slate-500">
                   {p.difficulty}
                   {p.category ? ` · ${p.category}` : ''}
+                  {p.tags?.length ? ` · ${p.tags.join(', ')}` : ''}
                 </p>
               </div>
               <span className="text-[11px] tabular-nums text-cyan-200/90">{p.points} pts</span>
@@ -155,6 +157,15 @@ function BriefBody() {
         </section>
       ) : null}
 
+      <section className="dj-panel rounded-md p-4 sm:p-5">
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+          Eligibility
+        </h3>
+        <p className="mt-2 text-[12px] text-slate-300">
+          IV Year students only. Eligibility is enforced server-side when you start the contest.
+        </p>
+      </section>
+
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 
       <div className="flex flex-wrap gap-2">
@@ -166,7 +177,7 @@ function BriefBody() {
         >
           {busy ? 'Please wait…' : cta.label}
         </button>
-        <Link href="/dsa-arena/contests" className="dj-btn dj-btn-ghost">
+        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
           Back
         </Link>
       </div>

@@ -101,7 +101,7 @@ function ContestsBody() {
                 ? { href: `/dsa-arena/contest/${c.slug}/result`, label: 'View Result' }
                 : c.attempt
                   ? { href: `/dsa-arena/contest/${c.slug}`, label: 'Continue Contest' }
-                  : { href: `/dsa-arena/contest/${c.slug}`, label: 'Open Contest' };
+                  : { href: `/dsa-arena/contest/${c.slug}`, label: 'Start Contest' };
             return (
               <article key={c.id} className="dj-panel rounded-md p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-2">

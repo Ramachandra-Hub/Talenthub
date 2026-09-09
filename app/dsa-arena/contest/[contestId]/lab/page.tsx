@@ -219,7 +219,7 @@ export default function ContestLabPage() {
     return (
       <div className="ex-portal dsa-journey flex min-h-[100dvh] flex-col items-center justify-center gap-3 p-6">
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/dsa-arena/contests" className="dj-btn dj-btn-ghost">
+        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
           Back to Contests
         </Link>
       </div>
@@ -245,10 +245,12 @@ export default function ContestLabPage() {
             >
               ← Contest brief
             </Link>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
+              DSA Arena Contest
+            </p>
             <h1 className="text-sm font-semibold text-white">{data.contest.title}</h1>
             <p className="text-[11px] text-slate-500">
-              Contest Code Lab · Problem {activeIdx + 1} / {shellProblems.length} · Solved{' '}
-              {solvedCount}/3
+              Problem {activeIdx + 1} / {shellProblems.length} · Solved {solvedCount}/3
             </p>
           </div>
           <button

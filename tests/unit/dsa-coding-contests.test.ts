@@ -46,6 +46,20 @@ describe('classifyBankFields', () => {
 });
 
 describe('validateQuestionBank', () => {
+  it('validates the real 50-question bank file (2)', () => {
+    const file = path.join(
+      process.cwd(),
+      'data',
+      'exam_portal_questions_with_solutions(2).json',
+    );
+    const raw = JSON.parse(readFileSync(file, 'utf8'));
+    expect(raw.question_count).toBe(50);
+    const result = validateQuestionBank(raw);
+    expect(result.ok).toBe(true);
+    expect(result.questions).toHaveLength(50);
+    expect(result.questions.every((q) => q.javaReference || q.studentExplanation)).toBe(true);
+  });
+
   it('validates the real 50-question bank file', () => {
     const file = path.join(
       process.cwd(),
@@ -137,11 +151,16 @@ describe('contest triples', () => {
   it('builds balanced packs of 3 without intra-contest duplicates', () => {
     const ids = Array.from({ length: 50 }, (_, i) => i + 1);
     const triples = buildContestTriples(ids);
-    expect(triples.length).toBeGreaterThan(0);
+    expect(triples).toHaveLength(16);
+    const used = triples.flat();
+    expect(used).toHaveLength(48);
+    expect(new Set(used).size).toBe(48);
     for (const t of triples) {
       expect(t).toHaveLength(CONTEST_PROBLEM_COUNT);
       expect(new Set(t).size).toBe(CONTEST_PROBLEM_COUNT);
     }
+    const remaining = ids.filter((id) => !used.includes(id));
+    expect(remaining).toEqual([19, 20]);
   });
 });
 

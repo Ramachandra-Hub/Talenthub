@@ -12,9 +12,12 @@ const TABS = [
     match: (p: string) => p.startsWith('/dsa-arena/roadmap'),
   },
   {
-    href: '/dsa-arena/contests',
-    label: 'Contests',
-    match: (p: string) => p.startsWith('/dsa-arena/contest'),
+    href: '/dsa-arena/contest',
+    label: 'Contest',
+    match: (p: string) =>
+      p === '/dsa-arena/contest' ||
+      p.startsWith('/dsa-arena/contest/') ||
+      p.startsWith('/dsa-arena/contests'),
   },
 ] as const;
 

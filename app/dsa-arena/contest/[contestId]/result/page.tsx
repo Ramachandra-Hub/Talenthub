@@ -178,9 +178,14 @@ function ResultBody() {
         </table>
       </section>
 
-      <Link href="/dsa-arena/contests" className="dj-btn dj-btn-ghost">
-        Back to Contests
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <Link href="/dsa-arena" className="dj-btn dj-btn-primary">
+          Return to DSA Arena
+        </Link>
+        <Link href="/dsa-arena/contest" className="dj-btn dj-btn-ghost">
+          Back to Contest list
+        </Link>
+      </div>
     </div>
   );
 }

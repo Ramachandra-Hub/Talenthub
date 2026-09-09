@@ -1,0 +1,1505 @@
+{
+  "bank_name": "Tree and Network Coding Exam Question Bank",
+  "version": "2.0",
+  "question_count": 50,
+  "intended_use": "Upload directly into a coding exam portal and keep solution code server-side.",
+  "candidate_fields": [
+    "id",
+    "title",
+    "category",
+    "difficulty",
+    "tags",
+    "problem_statement",
+    "input_format",
+    "output_format",
+    "constraints",
+    "sample_input",
+    "sample_output",
+    "sample_explanation"
+  ],
+  "admin_only_fields": [
+    "solution"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "title": "Railway Track Maintenance",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "A railway network has stations connected as a tree. Each track has a maintenance cost. Answer route-cost queries and replace the cost of an existing track.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 2,
+      "title": "Hospital Ambulance Routes",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "A hospital system connects medical centers with roads forming a tree. Every road has a travel cost. Calculate ambulance route costs and process road-cost updates.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 3,
+      "title": "Electric Grid Loss",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "An electricity grid contains substations joined by transmission lines in a tree. Each line has a loss value. Answer path-loss queries and update line losses.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "3 1 2\n1 2 8\n2 3 6\n3\n1 1 3 0\n2 1 2 2\n1 1 3 0",
+      "sample_output": "22",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first answer is 14. After changing 1-2 to 2, the second answer is 8. Total is 22."
+      }
+    },
+    {
+      "id": 4,
+      "title": "Campus Shuttle Distance",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "A campus has buildings connected by shuttle roads in a tree. Each road has a distance. Calculate route distances and support distance changes.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 5,
+      "title": "Water Pipeline Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "A water network is a tree of reservoirs and junctions. Each pipe has a pressure-loss cost. Query losses between nodes and update a pipe.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 6,
+      "title": "Data Center Link Expense",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Data centers are connected by leased links forming a tree. Each link has an expense. Find path expense and modify link expense.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "3 1 2\n1 2 8\n2 3 6\n3\n1 1 3 0\n2 1 2 2\n1 1 3 0",
+      "sample_output": "22",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first answer is 14. After changing 1-2 to 2, the second answer is 8. Total is 22."
+      }
+    },
+    {
+      "id": 7,
+      "title": "Bus Route Fare",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Bus stops form a tree of direct connections. Every connection has a fare. Calculate fares between stops and update a connection fare.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 8,
+      "title": "Fiber Cable Repair",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Fiber junctions form a tree and each cable has a repair cost. Answer repair-cost paths and update cable costs.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 9,
+      "title": "Factory Conveyor Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Conveyor stations form a tree and every segment has an operating cost. Query station-to-station cost and replace segment cost.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "3 1 2\n1 2 8\n2 3 6\n3\n1 1 3 0\n2 1 2 2\n1 1 3 0",
+      "sample_output": "22",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first answer is 14. After changing 1-2 to 2, the second answer is 8. Total is 22."
+      }
+    },
+    {
+      "id": 10,
+      "title": "Cloud Region Latency",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Cloud regions are connected as a tree. Each private link has latency. Calculate latency between regions and update a link.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 11,
+      "title": "Warehouse Robot Energy",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Warehouse locations form a tree and each aisle has an energy cost. Find energy needed between locations and update aisle cost.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 12,
+      "title": "Metro Maintenance Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Metro stations form a tree. Each connecting section has a maintenance cost. Answer maintenance-path queries and update section costs.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "3 1 2\n1 2 8\n2 3 6\n3\n1 1 3 0\n2 1 2 2\n1 1 3 0",
+      "sample_output": "22",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first answer is 14. After changing 1-2 to 2, the second answer is 8. Total is 22."
+      }
+    },
+    {
+      "id": 13,
+      "title": "Airport Service Road Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Airport service points are connected as a tree. Each service road has a cost. Calculate route cost and process cost changes.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 14,
+      "title": "Oil Pipeline Inspection Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Pipeline checkpoints form a tree. Each pipe segment has an inspection cost. Query path cost and update a segment.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 15,
+      "title": "School Transport Network",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "School buildings are linked by roads in a tree. Each road has a transport cost. Find path costs and update roads.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "3 1 2\n1 2 8\n2 3 6\n3\n1 1 3 0\n2 1 2 2\n1 1 3 0",
+      "sample_output": "22",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first answer is 14. After changing 1-2 to 2, the second answer is 8. Total is 22."
+      }
+    },
+    {
+      "id": 16,
+      "title": "Retail Distribution Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Distribution centers form a tree. Each connection has a delivery cost. Answer delivery-path queries and modify connection costs.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 17,
+      "title": "Server Backup Route",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Backup servers are connected in a tree. Each link has a transfer cost. Query transfer-path cost and update a link.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 18,
+      "title": "Smart Farm Irrigation Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Farm reservoirs and fields form a tree. Each pipe has a flow cost. Calculate path cost and update pipe cost.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "3 1 2\n1 2 8\n2 3 6\n3\n1 1 3 0\n2 1 2 2\n1 1 3 0",
+      "sample_output": "22",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first answer is 14. After changing 1-2 to 2, the second answer is 8. Total is 22."
+      }
+    },
+    {
+      "id": 19,
+      "title": "Construction Material Route",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Construction sites are connected by temporary roads forming a tree. Each road has a material-transport cost. Query and update route costs.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5 1 4\n1 2 3\n1 3 2\n2 4 4\n2 5 1\n4\n1 4 5 0\n2 1 2 10\n1 1 4 0\n1 1 3 0",
+      "sample_output": "21",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The three path answers are 5, 14 and 2; their sum is 21."
+      }
+    },
+    {
+      "id": 20,
+      "title": "Telecom Junction Cost",
+      "category": "Weighted Tree Path Queries",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "weighted-path",
+        "edge-update"
+      ],
+      "problem_statement": "Telecom junctions form a tree with a cost on each cable. Calculate cable cost between junctions and update cable costs.",
+      "input_format": "First line: N R M, where M=N-1. Next M lines contain U V W. Next line contains Q. Each query is `1 A B 0` for a path-cost query or `2 U V W` to replace the cost of edge U-V with W.",
+      "output_format": "Print the sum of the answers of all type-1 queries.",
+      "constraints": [
+        "2 <= N <= 1000",
+        "1 <= Q <= 3000",
+        "1 <= U,V,R <= N",
+        "0 <= W <= 100000",
+        "The N-1 edges form a connected tree.",
+        "Every type-2 update refers to an existing edge.",
+        "The final answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "4 1 3\n1 2 5\n2 3 7\n2 4 2\n3\n1 3 4 0\n2 2 3 3\n1 1 3 0",
+      "sample_output": "17",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static class Edge {\n        int to, w;\n        Edge(int to, int w) { this.to = to; this.w = w; }\n    }\n    static List<Edge>[] g;\n    static boolean[] vis;\n\n    static long pathSum(int s, int t) {\n        vis = new boolean[g.length];\n        return dfs(s, t);\n    }\n\n    static long dfs(int u, int target) {\n        if (u == target) return 0;\n        vis[u] = true;\n        for (Edge e : g[u]) {\n            if (!vis[e.to]) {\n                long x = dfs(e.to, target);\n                if (x != Long.MIN_VALUE) return e.w + x;\n            }\n        }\n        return Long.MIN_VALUE;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs = new FastScanner(System.in);\n        int n = fs.nextInt(), root = fs.nextInt(), m = fs.nextInt();\n        g = new ArrayList[n + 1];\n        for (int i = 1; i <= n; i++) g[i] = new ArrayList<>();\n        for (int i = 0; i < m; i++) {\n            int u = fs.nextInt(), v = fs.nextInt(), w = fs.nextInt();\n            g[u].add(new Edge(v, w));\n            g[v].add(new Edge(u, w));\n        }\n        int q = fs.nextInt();\n        long answer = 0;\n        for (int i = 0; i < q; i++) {\n            int type = fs.nextInt();\n            int a = fs.nextInt(), b = fs.nextInt();\n            if (type == 1) {\n                fs.nextInt();\n                answer += pathSum(a, b);\n            } else {\n                int w = fs.nextInt();\n                update(g, a, b, w);\n            }\n        }\n        System.out.println(answer);\n    }\n\n    static void update(List<Edge>[] g, int a, int b, int w) {\n        for (Edge e : g[a]) if (e.to == b) e.w = w;\n        for (Edge e : g[b]) if (e.to == a) e.w = w;\n    }\n\n    static class FastScanner {\n        private final InputStream in; private final byte[] buf = new byte[1 << 16];\n        private int ptr=0,len=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException {\n            if(ptr>=len){len=in.read(buf);ptr=0;if(len<0)return -1;}\n            return buf[ptr++];\n        }\n        int nextInt() throws IOException {\n            int c, s=1, x=0;\n            do c=read(); while(c<=32);\n            if(c=='-'){s=-1;c=read();}\n            while(c>32){x=x*10+c-'0';c=read();}\n            return x*s;\n        }\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The first path costs 9. After the update, the second path costs 8. Total is 17."
+      }
+    },
+    {
+      "id": 21,
+      "title": "Smart City Traffic Toll",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this smart city traffic toll problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 22,
+      "title": "Delivery Hub Road Toll",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this delivery hub road toll problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 23,
+      "title": "Game Level Travel Cost",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this game level travel cost problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 24,
+      "title": "Satellite Routing Charge",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this satellite routing charge problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 25,
+      "title": "Warehouse Forklift Toll",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this warehouse forklift toll problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 26,
+      "title": "Metro Congestion Charge",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this metro congestion charge problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 27,
+      "title": "Cloud Link Usage",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this cloud link usage problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 28,
+      "title": "Emergency Route Toll",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this emergency route toll problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 29,
+      "title": "IoT Gateway Traffic Fee",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this iot gateway traffic fee problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "10",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<Long, Long> cost = new HashMap<>();\n\n    static long edgeKey(long a, long b) {\n        long x = Math.min(a,b), y = Math.max(a,b);\n        return (x * 1000003L) ^ y;\n    }\n\n    static void addPath(long x, long y, long value) {\n        while (x != y) {\n            if (x > y) {\n                long p = x / 2;\n                long k = edgeKey(x,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                x = p;\n            } else {\n                long p = y / 2;\n                long k = edgeKey(y,p);\n                cost.put(k, cost.getOrDefault(k,0L) + value);\n                y = p;\n            }\n        }\n    }\n\n    static long queryPath(long x, long y) {\n        long ans = 0;\n        while (x != y) {\n            if (x > y) {\n                long p=x/2;\n                ans += cost.getOrDefault(edgeKey(x,p),0L);\n                x=p;\n            } else {\n                long p=y/2;\n                ans += cost.getOrDefault(edgeKey(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt();\n        long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(), y=fs.nextLong(), t=fs.nextLong();\n            if(type==1) addPath(x,y,t);\n            else total += queryPath(x,y);\n        }\n        System.out.println(total);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        long nextLong() throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt() throws IOException{return (int)nextLong();}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 30,
+      "title": "Virtual World Edge Cost",
+      "category": "Infinite Binary Tree Path Updates",
+      "difficulty": "Medium",
+      "tags": [
+        "binary-tree",
+        "parent",
+        "path-update",
+        "path-query"
+      ],
+      "problem_statement": "A system contains an infinite binary tree of numbered nodes. Node i is directly connected to 2i and 2i+1.\n        All edge costs initially equal zero. In this virtual world edge cost problem, operation type 1 adds t to every edge on the\n        unique path from x to y. Operation type 2 asks for the current sum of edge costs on the path from x to y.\n        Print the sum of all type-2 answers.",
+      "input_format": "First line: q. Each of the next q lines contains `1 x y t` for an update or `2 x y 0` for a query.",
+      "output_format": "Print one integer: the sum of all type-2 query results.",
+      "constraints": [
+        "1 <= q <= 10000",
+        "1 <= x,y <= 10^18",
+        "0 <= t <= 10^9",
+        "Node numbers are positive integers.",
+        "The total answer fits in signed 64-bit integer."
+      ],
+      "sample_input": "5\n1 1 4 3\n1 2 7 2\n2 4 7 0\n2 5 7 0\n2 2 4 0",
+      "sample_output": "12",
+      "sample_explanation": "The path 4->7 is 4->2->1->3->7. Its edge costs are 3, 5, 2 and 2, totaling 12. The other queried paths have zero cost.",
+      "solution": {
+        "language": "Java 17",
+        "code": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static Map<String, Long> cost = new HashMap<>();\n    static String key(long a,long b){\n        long x=Math.min(a,b), y=Math.max(a,b);\n        return x + \"#\" + y;\n    }\n    static void updatePath(long x,long y,long t){\n        while(x!=y){\n            if(x>y){\n                long p=x/2, k=0;\n                String s=key(x,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                x=p;\n            }else{\n                long p=y/2;\n                String s=key(y,p);\n                cost.put(s,cost.getOrDefault(s,0L)+t);\n                y=p;\n            }\n        }\n    }\n    static long query(long x,long y){\n        long ans=0;\n        while(x!=y){\n            if(x>y){\n                long p=x/2;\n                ans+=cost.getOrDefault(key(x,p),0L);\n                x=p;\n            }else{\n                long p=y/2;\n                ans+=cost.getOrDefault(key(y,p),0L);\n                y=p;\n            }\n        }\n        return ans;\n    }\n    public static void main(String[]args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int q=fs.nextInt(); long total=0;\n        while(q-->0){\n            int type=fs.nextInt();\n            long x=fs.nextLong(),y=fs.nextLong(),t=fs.nextLong();\n            if(type==1) updatePath(x,y,t);\n            else total+=query(x,y);\n        }\n        System.out.println(total);\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        long nextLong()throws IOException{int c;do c=read();while(c<=32);long x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n        int nextInt()throws IOException{return(int)nextLong();}\n    }\n}"
+      }
+    },
+    {
+      "id": 31,
+      "title": "Forest Ranger Safe Leaves",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In forest ranger safe leaves, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 32,
+      "title": "Mountain Rescue Safe Camps",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In mountain rescue safe camps, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 33,
+      "title": "Power Line Hazard Inspection",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In power line hazard inspection, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 34,
+      "title": "Pipeline Hazard Patrol",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In pipeline hazard patrol, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 35,
+      "title": "Chemical Plant Safety Routes",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In chemical plant safety routes, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 36,
+      "title": "Mining Tunnel Safe Exits",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In mining tunnel safe exits, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 37,
+      "title": "Airport Service Path Safety",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In airport service path safety, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 38,
+      "title": "Railway Signal Safety",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In railway signal safety, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 39,
+      "title": "Construction Site Safe Access",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In construction site safe access, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 40,
+      "title": "Hospital Emergency Corridor Safety",
+      "category": "Rooted Tree DFS Constraint",
+      "difficulty": "Easy-Medium",
+      "tags": [
+        "tree",
+        "dfs",
+        "leaf",
+        "constraint"
+      ],
+      "problem_statement": "In hospital emergency corridor safety, locations are represented by a tree rooted at node 1. Every node is either safe (0)\n        or hazardous (1). A worker may reach a non-root leaf only if the path from node 1 to that leaf never contains\n        more than M consecutive hazardous nodes. Count all reachable leaves.",
+      "input_format": "First line: N. Second line: M. Third line: K=N-1. Fourth line contains N binary values for nodes 1..N. Next K lines contain U V.",
+      "output_format": "Print the number of reachable non-root leaves.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "0 <= M <= N",
+        "K=N-1",
+        "Each node value is 0 or 1.",
+        "The edges form a connected tree.",
+        "The root node 1 is never counted as a leaf."
+      ],
+      "sample_input": "7\n1\n6\n1 0 1 1 0 0 0\n1 2\n1 3\n2 4\n2 5\n3 6\n3 7",
+      "sample_output": "2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] mark;\n    static int limit, answer;\n\n    static void dfs(int u, int parent, int consecutive) {\n        if (mark[u] == 1) consecutive++;\n        else consecutive = 0;\n        if (consecutive > limit) return;\n\n        boolean leaf = (u != 1);\n        for (int v : g[u]) {\n            if (v == parent) continue;\n            leaf = false;\n            dfs(v,u,consecutive);\n        }\n        if (leaf) answer++;\n    }\n\n    public static void main(String[] args) throws Exception {\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        limit=fs.nextInt();\n        int k=fs.nextInt();\n        mark=new int[n+1];\n        for(int i=1;i<=n;i++) mark[i]=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++) g[i]=new ArrayList<>();\n        for(int i=0;i<k;i++){\n            int u=fs.nextInt(),v=fs.nextInt();\n            g[u].add(v);g[v].add(u);\n        }\n        dfs(1,0,0);\n        System.out.println(answer);\n    }\n\n    static class FastScanner {\n        InputStream in; byte[] b=new byte[1<<16]; int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read() throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return -1;}return b[p++];}\n        int nextInt() throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "Leaves 4, 5, 6 and 7 exist. Paths to 4 and 5 have at most one consecutive hazardous node. Paths to 6 and 7 contain two consecutive hazardous nodes, so only 2 leaves are valid."
+      }
+    },
+    {
+      "id": 41,
+      "title": "Employee Reporting Distance",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for employee reporting distance is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 42,
+      "title": "University Building Hops",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for university building hops is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 43,
+      "title": "Hospital Department Hops",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for hospital department hops is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 44,
+      "title": "Warehouse Aisle Hops",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for warehouse aisle hops is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 45,
+      "title": "Road Junction Distance",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for road junction distance is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 46,
+      "title": "Game Level Hops",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for game level hops is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 47,
+      "title": "Company Hierarchy Distance",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for company hierarchy distance is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 48,
+      "title": "Server Hop Count",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for server hop count is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 49,
+      "title": "Campus Security Route",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for campus security route is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    },
+    {
+      "id": 50,
+      "title": "Delivery Network Hops",
+      "category": "Unweighted Tree Path",
+      "difficulty": "Easy",
+      "tags": [
+        "tree",
+        "dfs",
+        "path-distance"
+      ],
+      "problem_statement": "A network for delivery network hops is represented by an unweighted tree. For each pair of nodes, determine\n        the number of edges on the unique path between them.",
+      "input_format": "First line: N. Next N-1 lines contain U V. Next line: Q. Each of the next Q lines contains A B.",
+      "output_format": "Print the number of edges on the path from A to B for each query, one per line.",
+      "constraints": [
+        "2 <= N <= 5000",
+        "1 <= Q <= 5000",
+        "1 <= U,V,A,B <= N",
+        "The N-1 edges form a connected tree."
+      ],
+      "sample_input": "5\n1 2\n1 3\n2 4\n2 5\n3\n4 5\n3 5\n1 4",
+      "sample_output": "2\n3\n2",
+      "sample_explanation": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static List<Integer>[] g;\n    static int[] parent;\n\n    static int distance(int s,int t){\n        parent=new int[g.length];\n        Arrays.fill(parent,-1);\n        ArrayDeque<Integer> q=new ArrayDeque<>();\n        q.add(s); parent[s]=0;\n        while(!q.isEmpty()){\n            int u=q.poll();\n            if(u==t) break;\n            for(int v:g[u]) if(parent[v]==-1){parent[v]=u;q.add(v);}\n        }\n        int d=0,cur=t;\n        while(cur!=s){cur=parent[cur];d++;}\n        return d;\n    }\n\n    public static void main(String[] args)throws Exception{\n        FastScanner fs=new FastScanner(System.in);\n        int n=fs.nextInt();\n        g=new ArrayList[n+1];\n        for(int i=1;i<=n;i++)g[i]=new ArrayList<>();\n        for(int i=0;i<n-1;i++){int u=fs.nextInt(),v=fs.nextInt();g[u].add(v);g[v].add(u);}\n        int q=fs.nextInt();\n        while(q-->0){\n            int a=fs.nextInt(),b=fs.nextInt();\n            System.out.println(distance(a,b));\n        }\n    }\n    static class FastScanner{\n        InputStream in;byte[]b=new byte[1<<16];int p=0,n=0;\n        FastScanner(InputStream in){this.in=in;}\n        int read()throws IOException{if(p>=n){n=in.read(b);p=0;if(n<0)return-1;}return b[p++];}\n        int nextInt()throws IOException{int c;do c=read();while(c<=32);int x=0;while(c>32){x=x*10+c-'0';c=read();}return x;}\n    }\n}",
+      "solution": {
+        "language": "Java 17",
+        "code": "The paths contain respectively 2, 3 and 2 edges."
+      }
+    }
+  ]
+}
