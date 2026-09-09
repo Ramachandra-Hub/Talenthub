@@ -78,7 +78,7 @@ export function DsaAssessmentView({ weekId }: { weekId: string }) {
           `💀 Defeat (${Math.round(json.percent ?? 0)}%). ${(json.reasons ?? []).join(' ')} Respawn at Day 1 — attempt ${json.newAttemptNumber}. Your history is safe.`,
         );
       }
-      router.push('/dsa');
+      router.push('/dsa-arena');
     } finally {
       setBusy(false);
     }
@@ -99,7 +99,7 @@ export function DsaAssessmentView({ weekId }: { weekId: string }) {
           <p className="text-4xl">🛡️</p>
           <p className="font-black text-purple-900 mt-2">Boss battle locked</p>
           <p className="text-sm text-slate-600 mt-2">{error}</p>
-          <Link href="/dsa" className="mt-4 inline-block rounded-2xl bg-violet-600 px-6 py-2 text-sm font-bold text-white">
+          <Link href="/dsa-arena" className="mt-4 inline-block rounded-2xl bg-violet-600 px-6 py-2 text-sm font-bold text-white">
             Back to map
           </Link>
         </div>
@@ -110,7 +110,7 @@ export function DsaAssessmentView({ weekId }: { weekId: string }) {
   return (
     <div className="dsa-game-bg min-h-screen pb-12">
       <div className="border-b-4 border-amber-400 bg-gradient-to-r from-red-700 via-purple-700 to-indigo-800 px-4 py-6 text-center">
-        <Link href="/dsa" className="text-xs font-bold text-amber-200 float-left">← Map</Link>
+        <Link href="/dsa-arena" className="text-xs font-bold text-amber-200 float-left">← Map</Link>
         <p className="text-[10px] font-black uppercase tracking-widest text-amber-200">Final boss</p>
         <h1 className="text-2xl font-black text-white mt-1">{title}</h1>
         <p className="text-sm font-bold text-white/85 mt-2">

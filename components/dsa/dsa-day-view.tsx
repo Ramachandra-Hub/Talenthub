@@ -166,10 +166,10 @@ export function DsaDayView({ dayId }: { dayId: string }) {
           <h1 className="text-xl font-semibold text-white">Mission locked</h1>
           <p className="mt-3 text-sm text-slate-400">{data.lockReason}</p>
           <Link
-            href="/dsa"
+            href="/dsa-arena"
             className="mt-6 inline-block rounded-md border border-cyan-400/40 bg-cyan-500/15 px-5 py-2.5 text-sm font-semibold text-cyan-50"
           >
-            Back to Adventure Map
+            Back to DSA Arena
           </Link>
         </div>
       </div>
@@ -181,8 +181,8 @@ export function DsaDayView({ dayId }: { dayId: string }) {
       <div className="code-lab min-h-screen flex items-center justify-center px-4">
         <div className="code-lab-panel max-w-md rounded-md p-6 text-center">
           <p className="font-semibold text-rose-300">{error}</p>
-          <Link href="/dsa" className="mt-4 inline-block text-cyan-300 font-semibold text-sm">
-            ← Adventure Map
+          <Link href="/dsa-arena" className="mt-4 inline-block text-cyan-300 font-semibold text-sm">
+            ← DSA Arena
           </Link>
         </div>
       </div>
@@ -310,7 +310,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
           ? `Day ${json.nextDayNumber} is now on the map!`
           : 'All days done — Boss Battle (weekly assignment) awaits!',
       });
-      window.setTimeout(() => router.push('/dsa'), 4500);
+      window.setTimeout(() => router.push('/dsa-arena'), 4500);
     } finally {
       setBusy(null);
     }
@@ -332,7 +332,7 @@ export function DsaDayView({ dayId }: { dayId: string }) {
         open={missionResultOpen}
         result={missionResult}
         onBackToCodeLab={clearMissionResult}
-        onReturnToArena={() => router.push('/dsa')}
+        onReturnToArena={() => router.push('/dsa-arena')}
         showFinishDay={canOfferFinishDay}
         finishDayDisabled={busy != null}
         finishDayLabel={busy === 'complete' ? 'Finishing…' : 'Finish Day'}
@@ -364,8 +364,8 @@ export function DsaDayView({ dayId }: { dayId: string }) {
           dayTitle={data?.day?.title ?? 'Code Lab'}
           weekLabel={weekLabel}
           kind={kind}
-          backHref="/dsa"
-          backLabel="Back to Adventure Map"
+          backHref="/dsa-arena"
+          backLabel="Back to DSA Arena"
           problems={problems}
           activeProblemIdx={activeProblemIdx}
           onSelectProblem={(i) => {

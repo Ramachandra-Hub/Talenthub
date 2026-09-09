@@ -218,7 +218,7 @@ export default function ContestLabPage() {
     return (
       <div className="code-lab flex min-h-[100dvh] flex-col items-center justify-center gap-3 p-6">
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/contests" className="dj-btn dj-btn-ghost">
+        <Link href="/contests" className="code-lab-btn code-lab-btn-ghost">
           ← Back to Contests
         </Link>
       </div>
@@ -234,61 +234,36 @@ export default function ContestLabPage() {
   }
 
   return (
-    <div className="code-lab text-slate-100">
-      <div className="mx-auto flex max-w-[1480px] flex-col gap-2 px-2 py-2 sm:px-3 sm:py-3">
-        <header className="code-lab-panel code-lab-mission-bar rounded-sm">
+    <div className="code-lab min-h-screen pb-8 text-slate-100">
+      <div
+        className="mx-auto max-w-[1600px] space-y-2 px-2 py-2 sm:px-3"
+        style={{ ['--cl-chrome' as string]: '12.5rem' }}
+      >
+        <div className="code-lab-panel code-lab-mission-bar rounded-sm">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <Link
-                href={`/dsa-arena/contest/${contestId}`}
-                className="text-[11px] font-semibold text-cyan-300/90 hover:text-cyan-200"
-              >
-                ← Contest brief
-              </Link>
-              <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
-                DSA Arena Contest
-              </p>
-              <p className="text-[11px] font-semibold text-white">{data.contest.title}</p>
-              <p className="text-[11px] tabular-nums text-slate-400">
-                Problem {activeIdx + 1} / {shellProblems.length} · Solved {solvedCount}/3 ·{' '}
-                {data.contest.durationMinutes} min
-              </p>
-            </div>
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              Contest · {data.contest.durationMinutes} min
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Solved {solvedCount}/3 · Problem {activeIdx + 1} of {shellProblems.length}
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {data.problems.map((p, idx) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onSelectProblem(idx)}
-                className={`min-w-[2.1rem] rounded-sm border px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
-                  idx === activeIdx
-                    ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-50'
-                    : p.progress === 'solved'
-                      ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
-                      : 'border-white/10 bg-white/[0.03] text-slate-400'
-                }`}
-              >
-                {p.position ?? idx + 1}
-                {p.progress === 'solved' ? ' ✓' : ''}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="code-lab-btn code-lab-btn-primary"
-              disabled={busy === 'finish'}
-              onClick={() => void finish()}
-            >
-              Finish Contest
-            </button>
-          </div>
-        </header>
+          <button
+            type="button"
+            className="code-lab-btn code-lab-btn-primary"
+            disabled={busy === 'finish'}
+            onClick={() => void finish()}
+          >
+            {busy === 'finish' ? 'Finishing…' : 'Finish Contest'}
+          </button>
+        </div>
 
         <CodeLabShell
           dayTitle={data.contest.title}
-          weekLabel="Contest"
+          weekLabel="Coding Contest"
           kind="official"
           backHref={`/dsa-arena/contest/${contestId}`}
+          backLabel="Back to Contest brief"
           problems={shellProblems}
           activeProblemIdx={activeIdx}
           onSelectProblem={onSelectProblem}
@@ -308,9 +283,16 @@ export default function ContestLabPage() {
           onConsoleTabChange={setConsoleTab}
           codingPassed={solvedCount}
           minCoding={3}
-          expandProblemDocument
-          hideMissionChrome
         />
+
+        <button
+          type="button"
+          className="code-lab-btn code-lab-btn-ghost w-full sm:w-auto"
+          disabled={busy != null}
+          onClick={() => void finish()}
+        >
+          {busy === 'finish' ? 'Finishing…' : 'Finish Contest & view result'}
+        </button>
       </div>
     </div>
   );

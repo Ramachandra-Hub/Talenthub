@@ -1,9 +1,6 @@
-import { DsaArena } from '@/components/dsa/arena/dsa-arena';
+import { redirect } from 'next/navigation';
 
-export const metadata = {
-  title: 'DSA Arena — ELEVATE-X',
-};
-
+/** Canonical DSA Arena entry is /dsa-arena (Adventure Map). */
 export default function DsaPage() {
-  return <DsaArena />;
+  redirect('/dsa-arena');
 }

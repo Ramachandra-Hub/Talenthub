@@ -51,8 +51,8 @@ export function DsaHistoryView() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
-      <Link href="/dsa" className="text-sm font-semibold text-[#1e3a5f] hover:underline">
-        ← DSA dashboard
+      <Link href="/dsa-arena" className="text-sm font-semibold text-[#1e3a5f] hover:underline">
+        ← Adventure Map
       </Link>
       <h1 className="text-2xl font-bold text-[#0c2340]">DSA progress history</h1>
       {!data ? <p className="text-sm text-slate-600">Loading…</p> : null}
