@@ -24,6 +24,8 @@ type Props = {
   contest: ContestCardModel;
   eligible: boolean;
   className?: string;
+  /** portal = Exam Center / Contests chrome; arena = dj-panel journey style */
+  variant?: 'portal' | 'arena';
 };
 
 function statusLabel(contest: ContestCardModel, eligible: boolean) {
@@ -72,15 +74,16 @@ function ctaFor(contest: ContestCardModel, eligible: boolean) {
   };
 }
 
-export function ContestCard({ contest, eligible, className }: Props) {
+export function ContestCard({ contest, eligible, className, variant = 'portal' }: Props) {
   const status = statusLabel(contest, eligible);
   const cta = ctaFor(contest, eligible);
   const locked = status.tone === 'locked' && !contest.attempt;
+  const portal = variant === 'portal';
 
   return (
     <article
       className={cn(
-        'dj-panel rounded-md p-4',
+        portal ? 'ex-panel rounded-lg p-4' : 'dj-panel rounded-md p-4',
         locked && 'opacity-70',
         status.tone === 'in_progress' && 'ring-1 ring-cyan-400/35',
         className,
@@ -128,15 +131,25 @@ export function ContestCard({ contest, eligible, className }: Props) {
       </div>
 
       {cta.disabled || !cta.href ? (
-        <button type="button" className="dj-btn dj-btn-ghost mt-4 w-full" disabled>
+        <button
+          type="button"
+          className={cn('mt-4 w-full', portal ? 'ex-btn-ghost' : 'dj-btn dj-btn-ghost')}
+          disabled
+        >
           {cta.label}
         </button>
       ) : (
         <Link
           href={cta.href}
           className={cn(
-            'dj-btn mt-4 w-full',
-            contest.attempt?.status === 'submitted' ? 'dj-btn-ghost' : 'dj-btn-primary',
+            'mt-4 w-full',
+            portal
+              ? contest.attempt?.status === 'submitted'
+                ? 'ex-btn-ghost'
+                : 'ex-btn-primary'
+              : contest.attempt?.status === 'submitted'
+                ? 'dj-btn dj-btn-ghost'
+                : 'dj-btn dj-btn-primary',
           )}
         >
           {cta.label}

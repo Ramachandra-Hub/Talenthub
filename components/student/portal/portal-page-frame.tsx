@@ -41,6 +41,9 @@ export function PortalPageFrame({
               <Link href="/home" className="block text-slate-300 hover:text-cyan-300">
                 Command Center
               </Link>
+              <Link href="/contests" className="block text-slate-300 hover:text-cyan-300">
+                Contests
+              </Link>
               <Link href="/dsa-arena" className="block text-slate-300 hover:text-cyan-300">
                 DSA Arena
               </Link>

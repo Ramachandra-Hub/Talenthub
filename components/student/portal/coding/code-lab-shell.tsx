@@ -19,6 +19,8 @@ type Props = {
   weekLabel: string;
   kind: 'official' | 'practice';
   backHref: string;
+  /** Link label next to the back chevron. Default: Back to DSA Arena */
+  backLabel?: string;
   problems: CodeLabProblem[];
   activeProblemIdx: number;
   onSelectProblem: (idx: number) => void;
@@ -48,6 +50,7 @@ export function CodeLabShell({
   weekLabel,
   kind,
   backHref,
+  backLabel = 'Back to DSA Arena',
   problems,
   activeProblemIdx,
   onSelectProblem,
@@ -91,7 +94,7 @@ export function CodeLabShell({
                 href={backHref}
                 className="text-[11px] font-semibold text-cyan-300/90 hover:text-cyan-200"
               >
-                ← Back to DSA Arena
+                ← {backLabel}
               </Link>
               <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-cyan-400/85">
                 Code mission

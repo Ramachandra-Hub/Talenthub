@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
+import { ContestsPortalFrame } from '@/components/student/portal/contests/contests-portal-frame';
 
 type Detail = {
   id: string;
@@ -26,9 +26,9 @@ type Detail = {
 
 export default function ContestBriefPage() {
   return (
-    <DsaArenaPageFrame title="Contests" subtitle="Contest brief">
-      {() => <BriefBody />}
-    </DsaArenaPageFrame>
+    <ContestsPortalFrame title="CONTESTS" subtitle="Contest brief">
+      <BriefBody />
+    </ContestsPortalFrame>
   );
 }
 
@@ -89,7 +89,7 @@ function BriefBody() {
     return (
       <div className="space-y-3">
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/contests" className="dj-btn dj-btn-ghost">
+        <Link href="/contests" className="ex-btn-ghost">
           ← Back to Contests
         </Link>
       </div>
@@ -129,7 +129,7 @@ function BriefBody() {
         ← Contests
       </Link>
 
-      <article className="dj-panel rounded-md p-4 sm:p-6">
+      <article className="ex-panel rounded-lg p-4 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
@@ -208,14 +208,14 @@ function BriefBody() {
           {primary ? (
             <button
               type="button"
-              className="dj-btn dj-btn-primary"
-              disabled={busy}
-              onClick={() => void primary.action()}
-            >
-              {busy ? 'Please wait…' : primary.label}
-            </button>
-          ) : null}
-          <Link href="/contests" className="dj-btn dj-btn-ghost">
+                className="ex-btn-primary"
+                disabled={busy}
+                onClick={() => void primary.action()}
+              >
+                {busy ? 'Please wait…' : primary.label}
+              </button>
+            ) : null}
+          <Link href="/contests" className="ex-btn-ghost">
             Back to Contests
           </Link>
         </div>

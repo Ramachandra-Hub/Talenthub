@@ -49,7 +49,7 @@ export async function GET(request: Request) {
           id: 'dsa',
           title: 'DSA Practice',
           subtitle: 'Day-wise coding track & weekly qualification',
-          href: '/dsa',
+          href: '/dsa-arena',
           available: dsa.assigned,
           unavailableReason: dsa.assigned
             ? null

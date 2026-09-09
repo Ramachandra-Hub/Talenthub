@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { DsaArenaPageFrame } from '@/components/dsa-arena/dsa-arena-page-frame';
+import { ContestsPortalFrame } from '@/components/student/portal/contests/contests-portal-frame';
 
 type ResultPayload = {
   contest: { title: string; slug: string };
@@ -49,9 +49,9 @@ function formatDuration(sec: number | null): string {
 
 export default function ContestResultPage() {
   return (
-    <DsaArenaPageFrame title="Contests" subtitle="Contest result">
-      {() => <ResultBody />}
-    </DsaArenaPageFrame>
+    <ContestsPortalFrame title="CONTESTS" subtitle="Contest result">
+      <ResultBody />
+    </ContestsPortalFrame>
   );
 }
 
@@ -85,7 +85,7 @@ function ResultBody() {
     return (
       <div className="space-y-3">
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href="/contests" className="dj-btn dj-btn-ghost">
+        <Link href="/contests" className="ex-btn-ghost">
           ← Back to Contests
         </Link>
       </div>
@@ -104,7 +104,7 @@ function ResultBody() {
         ← Contests
       </Link>
 
-      <section className="dj-panel rounded-md p-4 sm:p-5">
+      <section className="ex-panel rounded-lg p-4 sm:p-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
           Coding Contest Result
         </p>
@@ -120,7 +120,7 @@ function ResultBody() {
         </div>
       </section>
 
-      <section className="dj-panel rounded-md p-4 sm:p-5">
+      <section className="ex-panel rounded-lg p-4 sm:p-5">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
           Problem Results
         </h3>
@@ -148,7 +148,7 @@ function ResultBody() {
         </ul>
       </section>
 
-      <section className="dj-panel rounded-md p-4 sm:p-5 overflow-x-auto">
+      <section className="ex-panel rounded-lg p-4 sm:p-5 overflow-x-auto">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
           Submission History
         </h3>
@@ -185,7 +185,7 @@ function ResultBody() {
       </section>
 
       <div className="flex flex-wrap gap-2">
-        <Link href="/contests" className="dj-btn dj-btn-primary">
+        <Link href="/contests" className="ex-btn-primary">
           Back to Contests
         </Link>
       </div>

@@ -1,7 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { Flame, Coins, Trophy, ArrowRight, Zap, Swords, ClipboardList } from 'lucide-react';
+import {
+  Flame,
+  Coins,
+  Trophy,
+  ArrowRight,
+  Zap,
+  Swords,
+  ClipboardList,
+} from 'lucide-react';
 import type { PortalGamification } from '@/components/student/portal/portal-nav';
 import { cn } from '@/lib/utils';
 
@@ -99,6 +107,12 @@ export function PortalQuickLinks() {
       <Link href="/dsa-arena" className="ex-btn-primary w-full justify-between">
         <span className="inline-flex items-center gap-2">
           <Swords className="h-3.5 w-3.5" /> Enter DSA Arena
+        </span>
+        <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+      <Link href="/contests" className="ex-btn-ghost w-full justify-between">
+        <span className="inline-flex items-center gap-2">
+          <Trophy className="h-3.5 w-3.5" /> Open Contests
         </span>
         <ArrowRight className="h-3.5 w-3.5" />
       </Link>
