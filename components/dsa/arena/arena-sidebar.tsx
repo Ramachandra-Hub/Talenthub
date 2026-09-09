@@ -72,7 +72,7 @@ export function ArenaSidebar({ open = false, onClose }: Props) {
         <div className="m-3 overflow-hidden rounded-lg border border-cyan-500/20 arena-panel p-0">
           <div
             className="relative h-[72px] bg-cover bg-center"
-            style={{ backgroundImage: "url('/elevatex/arena-map-bg.png')" }}
+            style={{ backgroundImage: "url('/elevatex/arena-map-bg.svg')" }}
           >
             <div className="absolute inset-0 bg-gradient-to-t from-[#050b14] via-[#050b14]/40 to-transparent" />
           </div>
