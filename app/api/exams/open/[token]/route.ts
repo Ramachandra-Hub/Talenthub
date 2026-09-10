@@ -13,6 +13,8 @@ export async function GET(_request: NextRequest, context: Params) {
     return NextResponse.json({
       title: exam.title,
       duration: exam.duration,
+      kind: exam.kind,
+      yearRestriction: exam.yearRestriction,
       // Do not expose the shared exam password to unauthenticated callers.
       requiresPassword: Boolean(exam.defaultPassword),
     });

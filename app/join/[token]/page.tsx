@@ -29,6 +29,8 @@ export default function OpenExamJoinPage() {
 
   const [title, setTitle] = useState('Open exam');
   const [duration, setDuration] = useState<number | null>(null);
+  const [kind, setKind] = useState<'exam' | 'dsa_hard_open'>('exam');
+  const [yearRestriction, setYearRestriction] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rollNumber, setRollNumber] = useState('');
   const [password, setPassword] = useState('');
@@ -47,6 +49,8 @@ export default function OpenExamJoinPage() {
         title?: string;
         duration?: number;
         requiresPassword?: boolean;
+        kind?: 'exam' | 'dsa_hard_open';
+        yearRestriction?: string | null;
       };
       if (cancelled) return;
       if (!res.ok) {
@@ -55,6 +59,11 @@ export default function OpenExamJoinPage() {
       }
       setTitle(json.title ?? 'Open exam');
       setDuration(json.duration ?? null);
+      setKind(json.kind === 'dsa_hard_open' ? 'dsa_hard_open' : 'exam');
+      setYearRestriction(json.yearRestriction ?? null);
+      if (json.yearRestriction === 'IV Year' || json.kind === 'dsa_hard_open') {
+        setYear('IV Year');
+      }
     })().catch(() => {
       if (!cancelled) setLoadError('Could not load this exam link.');
     });
@@ -115,11 +124,21 @@ export default function OpenExamJoinPage() {
       <div className="relative z-10 mx-auto w-full max-w-lg">
         <AuthCard
           title={title}
-          description={`${COLLEGE.rce} open exam link. Sign in with your roll number, the default password, branch, and year.`}
+          description={
+            kind === 'dsa_hard_open'
+              ? `${COLLEGE.rce} hard coding open link. IV Year students only — sign in with roll number, exam password, and department.`
+              : `${COLLEGE.rce} open exam link. Sign in with your roll number, the default password, branch, and year.`
+          }
         >
           <form onSubmit={onSubmit} className="space-y-5">
             {duration ? (
               <p className="text-sm text-slate-600">Duration: {duration} minutes</p>
+            ) : null}
+            {kind === 'dsa_hard_open' ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Hard coding exam · 5 Java/Python problems from the campus coding bank · IV Year
+                (4th year) only.
+              </p>
             ) : null}
             {error ? <StatusAlert variant="error">{error}</StatusAlert> : null}
 
@@ -171,17 +190,27 @@ export default function OpenExamJoinPage() {
                   </SelectContent>
                 </Select>
               </FormField>
-              <FormField label="Academic year" error={fieldErrors.year}>
-                <Select value={year} onValueChange={setYear}>
+              <FormField
+                label="Academic year"
+                error={fieldErrors.year}
+                hint={yearRestriction === 'IV Year' ? 'Locked to IV Year for this coding open link.' : undefined}
+              >
+                <Select
+                  value={year}
+                  onValueChange={setYear}
+                  disabled={yearRestriction === 'IV Year'}
+                >
                   <SelectTrigger className={portalSelectTriggerClass}>
                     <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent className={portalSelectContentClass}>
-                    {ACADEMIC_YEARS.map((y) => (
-                      <SelectItem key={y} value={y} className={portalSelectItemClass}>
-                        {y}
-                      </SelectItem>
-                    ))}
+                    {(yearRestriction === 'IV Year' ? (['IV Year'] as const) : ACADEMIC_YEARS).map(
+                      (y) => (
+                        <SelectItem key={y} value={y} className={portalSelectItemClass}>
+                          {y}
+                        </SelectItem>
+                      ),
+                    )}
                   </SelectContent>
                 </Select>
               </FormField>
@@ -192,7 +221,11 @@ export default function OpenExamJoinPage() {
               disabled={loading}
               className="w-full h-12 text-base font-semibold rounded-xl bg-gradient-to-r from-[#1e3a5f] to-[#16304f] text-white"
             >
-              {loading ? 'Joining exam…' : 'Open exam →'}
+              {loading
+                ? 'Joining exam…'
+                : kind === 'dsa_hard_open'
+                  ? 'Open coding lab →'
+                  : 'Open exam →'}
             </Button>
           </form>
         </AuthCard>

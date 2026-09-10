@@ -6,6 +6,11 @@ export const ADMIN_NAV_ITEMS = [
     description: 'DSA Arena coding contest analytics and submissions',
   },
   {
+    href: '/admin/dsa-arena/hard-open',
+    label: 'Hard Coding Open Link',
+    description: 'IV Year open-link hard coding exam from the 50-question bank',
+  },
+  {
     href: '/admin/reports',
     label: 'Test reports',
     description: 'Per-exam dashboards — filter students and download PDF/CSV reports',

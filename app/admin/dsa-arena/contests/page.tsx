@@ -338,15 +338,23 @@ export default function AdminDsaContestsPage() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          DSA Arena
-        </p>
-        <h1 className="text-2xl font-semibold text-slate-900">Coding Contests</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Manage contests and review student results with ElevateX-style feedback reports.
-        </p>
-      </div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              DSA Arena
+            </p>
+            <h1 className="text-2xl font-semibold text-slate-900">Coding Contests</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Manage contests and review student results with ElevateX-style feedback reports.
+            </p>
+          </div>
+          <Link
+            href="/admin/dsa-arena/hard-open"
+            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Hard Coding Open Link
+          </Link>
+        </div>
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}

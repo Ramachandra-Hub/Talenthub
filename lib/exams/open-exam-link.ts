@@ -6,6 +6,7 @@ import { normalizeRoll } from '@/lib/exam-schedule-slots';
 import { DEFAULT_EXAM_STUDENT_PASSWORD } from '@/lib/roster-credentials-export';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
+import { academicYearsMatch } from '@/lib/academic-year-match';
 import * as XLSX from 'xlsx';
 
 export function newOpenLinkToken(): string {
@@ -25,6 +26,8 @@ export type OpenExamPublicInfo = {
   duration: number;
   defaultPassword: string;
   token: string;
+  kind: 'exam' | 'dsa_hard_open';
+  yearRestriction: 'IV Year' | null;
 };
 
 export async function getOpenExamByToken(token: string): Promise<OpenExamPublicInfo | null> {
@@ -40,9 +43,12 @@ export async function getOpenExamByToken(token: string): Promise<OpenExamPublicI
     },
   });
   if (!exam?.openLinkEnabled || !exam.publishedTestId) return null;
+  const isDsaHard = exam.publishedTestId.startsWith('dsa_hard_open:');
   return {
     title: exam.title,
     duration: exam.duration,
+    kind: isDsaHard ? 'dsa_hard_open' : 'exam',
+    yearRestriction: isDsaHard ? 'IV Year' : null,
     defaultPassword: resolveOpenLinkPassword(exam.openLinkPassword),
     token,
   };
@@ -87,6 +93,12 @@ export async function joinOpenExam(input: {
   });
   if (!exam?.openLinkEnabled || !exam.publishedTestId) {
     throw new Error('This open exam link is not active.');
+  }
+
+  const { isDsaHardOpenTestId } = await import('@/lib/exams/dsa-hard-open');
+  const dsaHard = isDsaHardOpenTestId(exam.publishedTestId);
+  if (dsaHard && !academicYearsMatch(year, 'IV Year')) {
+    throw new Error('This coding open link is for IV Year (4th year) students only.');
   }
 
   const expected = resolveOpenLinkPassword(exam.openLinkPassword);
@@ -201,8 +213,17 @@ export async function joinOpenExam(input: {
     }
   }
 
+  const { isDsaHardOpenTestId, examIdFromDsaHardOpenTestId } = await import(
+    '@/lib/exams/dsa-hard-open'
+  );
+  const dsaHard = isDsaHardOpenTestId(exam.publishedTestId);
+  const hardExamId = dsaHard ? examIdFromDsaHardOpenTestId(exam.publishedTestId) : null;
+
   return {
-    takeUrl: studentTakeUrlForTestId(exam.publishedTestId),
+    takeUrl:
+      hardExamId != null
+        ? `/open-coding/${hardExamId}/lab`
+        : studentTakeUrlForTestId(exam.publishedTestId),
     rollNumber,
     userId: user.id,
   };
