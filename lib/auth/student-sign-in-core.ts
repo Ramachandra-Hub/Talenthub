@@ -17,6 +17,10 @@ export type StudentSignInInput = {
   password: string;
   department?: string;
   year?: string;
+  /** Set after open-link join already authenticated the student. */
+  openJoinProof?: string;
+  /** Open-link exams: take over any stale device lock for this roll. */
+  forceClaimSession?: boolean;
 };
 
 export type StudentSignInResult =
@@ -103,8 +107,12 @@ export async function runStudentCredentialSignIn(
   const password = input.password ?? '';
   const department = input.department?.trim() ?? '';
   const year = input.year?.trim() ?? '';
+  const openJoinProof = input.openJoinProof?.trim() ?? '';
 
-  if (!rollNumber || !password) {
+  if (!rollNumber) {
+    return { error: 'Roll number is required.' };
+  }
+  if (!password && !openJoinProof) {
     return { error: 'Roll number and password are required.' };
   }
 
@@ -113,7 +121,7 @@ export async function runStudentCredentialSignIn(
 
   const isIvYear = isFourthYearForDsa(year);
 
-  if (isIvYear) {
+  if (isIvYear && !openJoinProof) {
     try {
       const provisioned = await ensureIvYearStudentAccount({
         rollNumber,
@@ -138,7 +146,8 @@ export async function runStudentCredentialSignIn(
   try {
     result = await signIn('student', {
       rollNumber,
-      password,
+      password: password || 'open-join',
+      openJoinProof: openJoinProof || undefined,
       redirect: false,
     });
   } catch (err) {
@@ -151,6 +160,9 @@ export async function runStudentCredentialSignIn(
   }
 
   if (result?.error) {
+    if (openJoinProof) {
+      return { error: 'Could not start the open-link exam session. Try joining again.' };
+    }
     if (isIvYear) {
       return {
         error:
@@ -191,7 +203,11 @@ export async function runStudentCredentialSignIn(
   }
 
   const sessionId = createStudentSessionId();
-  const lock = await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
+  let lock = await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
+  if (!lock.lockActive && input.forceClaimSession) {
+    const { forceClaimStudentSessionPrisma } = await import('@/lib/student-session-lock-prisma');
+    lock = await forceClaimStudentSessionPrisma(rollNumber, user.id, sessionId);
+  }
   if (!lock.lockActive) {
     return {
       error:

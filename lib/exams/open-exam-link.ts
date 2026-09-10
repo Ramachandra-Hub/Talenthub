@@ -124,17 +124,18 @@ export async function joinOpenExam(input: {
     },
   });
 
-  // Existing accounts must authenticate with THEIR password — never overwrite
-  // passwordHash with the shared open-link password (account takeover).
+  const sharedOk = password === expected;
+  let accountOk = false;
   if (existing?.passwordHash) {
-    const existingMatches = await verifyPassword(password, existing.passwordHash);
-    if (!existingMatches) {
-      throw new Error(
-        'Incorrect password for this roll number. Use your student login password, not the shared exam password.',
-      );
-    }
-  } else if (password !== expected) {
-    throw new Error('Incorrect exam password for this open link.');
+    accountOk = await verifyPassword(password, existing.passwordHash);
+  }
+  // Open-link exams accept the shared exam password OR the student's own login password.
+  if (!sharedOk && !accountOk) {
+    throw new Error(
+      existing?.passwordHash
+        ? 'Incorrect password. Use the open-link exam password from faculty, or your student login password.'
+        : 'Incorrect exam password for this open link.',
+    );
   }
 
   const passwordHash = existing?.passwordHash

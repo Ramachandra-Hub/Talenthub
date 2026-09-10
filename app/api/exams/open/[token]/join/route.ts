@@ -7,6 +7,7 @@ import {
 import { guardLoginAttempt } from '@/lib/auth/login-rate-limit';
 import { DEFAULT_EXAM_STUDENT_PASSWORD } from '@/lib/roster-credentials-export';
 import { openCodingLockCookieHeader } from '@/lib/exams/open-coding-lock';
+import { createOpenJoinProof } from '@/lib/exams/open-join-proof';
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -39,11 +40,14 @@ export async function POST(request: NextRequest, context: Params) {
       year: body.year ?? '',
     });
 
+    const openJoinProof = createOpenJoinProof(joined.userId);
     const signed = await runStudentCredentialSignIn({
       rollNumber: joined.rollNumber,
       password: body.password || DEFAULT_EXAM_STUDENT_PASSWORD,
       department: body.branch,
       year: body.year,
+      openJoinProof,
+      forceClaimSession: true,
     });
     if ('error' in signed) {
       return NextResponse.json(
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest, context: Params) {
       takeUrl: joined.takeUrl,
       lockedOpenCoding: Boolean(joined.openCodingExamId),
     });
-    const withSession = copyAuthSessionCookiesToResponse(json, signed.sessionId);
+    const withSession = await copyAuthSessionCookiesToResponse(json, signed.sessionId);
     if (joined.openCodingExamId) {
       withSession.headers.append(
         'Set-Cookie',

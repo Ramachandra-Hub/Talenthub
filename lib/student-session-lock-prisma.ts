@@ -58,6 +58,41 @@ export async function claimStudentSessionPrisma(
   }
 }
 
+/** Open-link / exam join: release other device locks for this roll, then claim. */
+export async function forceClaimStudentSessionPrisma(
+  rollNumber: string,
+  userId: string,
+  sessionId: string,
+  now = Date.now(),
+): Promise<ClaimStudentSessionResult> {
+  const roll = normalizeStudentRoll(rollNumber);
+  if (!roll || !userId || !sessionId) {
+    return { ok: true, lockActive: false };
+  }
+  try {
+    await purgeStaleSessions(now);
+    await prisma.studentActiveSession.deleteMany({
+      where: {
+        user: {
+          OR: [{ rollNumber: roll }, { rollNumber: roll.replace(/\s+/g, '') }],
+        },
+      },
+    });
+    await prisma.studentActiveSession.create({
+      data: {
+        userId,
+        sessionId,
+        lockedAt: new Date(now),
+        lastHeartbeat: new Date(now),
+      },
+    });
+    return { ok: true, lockActive: true };
+  } catch (err) {
+    console.error('[student-session-lock-prisma] force claim failed — allowing login:', err);
+    return { ok: true, lockActive: true };
+  }
+}
+
 export async function touchStudentSessionPrisma(userId: string, sessionId?: string): Promise<void> {
   if (!userId) return;
   const now = new Date();

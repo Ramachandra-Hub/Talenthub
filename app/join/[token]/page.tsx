@@ -161,7 +161,11 @@ export default function OpenExamJoinPage() {
             <FormField
               id="password"
               label="Password"
-              hint="New students: use the exam password from faculty. Returning students: use your student login password."
+              hint={
+                kind === 'dsa_hard_open'
+                  ? 'Use the open-link exam password from faculty (or your student login password if you already have an account).'
+                  : 'New students: use the exam password from faculty. Returning students: exam password or your student login password.'
+              }
               error={fieldErrors.password}
             >
               <Input

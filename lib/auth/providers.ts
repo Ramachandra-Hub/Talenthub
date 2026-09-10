@@ -37,14 +37,37 @@ export function buildAuthProviders(): Provider[] {
       credentials: {
         rollNumber: { label: 'Roll number', type: 'text' },
         password: { label: 'Password', type: 'password' },
+        openJoinProof: { label: 'Open join proof', type: 'text' },
       },
       async authorize(credentials) {
         await ensureSchemaForAuth();
         const roll = normalizeRoll(String(credentials?.rollNumber ?? ''));
         const password = String(credentials?.password ?? '');
+        const openJoinProof = String(credentials?.openJoinProof ?? '').trim();
         const rollErr = validateRollNumber(roll);
+        if (rollErr) return null;
+
+        if (openJoinProof) {
+          const { verifyOpenJoinProof } = await import('@/lib/exams/open-join-proof');
+          const userId = verifyOpenJoinProof(openJoinProof);
+          if (!userId) return null;
+          const proven = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { adminUser: true },
+          });
+          if (!proven?.passwordHash || proven.adminUser) return null;
+          const provenRoll = normalizeRoll(proven.rollNumber ?? '');
+          if (provenRoll && provenRoll !== roll) return null;
+          return {
+            id: proven.id,
+            email: proven.email,
+            name: proven.fullName ?? roll,
+            role: 'student' as const,
+          };
+        }
+
         const passErr = validatePassword(password);
-        if (rollErr || passErr) return null;
+        if (passErr) return null;
 
         const email = studentAuthEmail(roll);
         const user = await prisma.user.findFirst({
