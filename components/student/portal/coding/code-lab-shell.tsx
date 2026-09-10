@@ -21,6 +21,13 @@ type Props = {
   backHref: string;
   /** Link label next to the back chevron. Default: Back to DSA Arena */
   backLabel?: string;
+  /** Hide the back link (locked open-link exams). */
+  hideBackLink?: boolean;
+  /**
+   * Show problem number switcher beside the language buttons instead of the
+   * mission-bar right edge (avoids proctor HUD overlap on exams).
+   */
+  problemTabsBesideLanguage?: boolean;
   problems: CodeLabProblem[];
   activeProblemIdx: number;
   onSelectProblem: (idx: number) => void;
@@ -51,6 +58,8 @@ export function CodeLabShell({
   kind,
   backHref,
   backLabel = 'Back to DSA Arena',
+  hideBackLink = false,
+  problemTabsBesideLanguage = false,
   problems,
   activeProblemIdx,
   onSelectProblem,
@@ -84,18 +93,53 @@ export function CodeLabShell({
     .join(' · ')
     .toUpperCase();
 
+  const problemTabs =
+    problems.length > 1 ? (
+      <div className="flex flex-wrap gap-1" role="tablist" aria-label="Problems">
+        {problems.map((p, i) => {
+          const solved = p.best?.status === 'passed';
+          const current = i === activeProblemIdx;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              role="tab"
+              aria-selected={current}
+              aria-label={`Problem ${i + 1}${solved ? ', solved' : ''}`}
+              onClick={() => onSelectProblem(i)}
+              className={cn(
+                'min-w-[2.1rem] rounded-sm border px-1.5 py-0.5 text-[11px] font-bold tabular-nums transition-colors',
+                current && 'border-cyan-400/50 bg-cyan-500/15 text-cyan-50',
+                !current &&
+                  solved &&
+                  'border-emerald-400/35 bg-emerald-500/10 text-emerald-100',
+                !current &&
+                  !solved &&
+                  'border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20',
+              )}
+            >
+              {String(i + 1).padStart(2, '0')}
+              {solved ? ' ✓' : ''}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
+
   return (
     <section id="code-lab" className="code-lab-shell scroll-mt-2" aria-label="Code Lab">
       {!hideMissionChrome ? (
         <header className="code-lab-panel code-lab-mission-bar shrink-0 rounded-sm">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-              <Link
-                href={backHref}
-                className="text-[11px] font-semibold text-cyan-300/90 hover:text-cyan-200"
-              >
-                ← {backLabel}
-              </Link>
+              {!hideBackLink ? (
+                <Link
+                  href={backHref}
+                  className="text-[11px] font-semibold text-cyan-300/90 hover:text-cyan-200"
+                >
+                  ← {backLabel}
+                </Link>
+              ) : null}
               <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-cyan-400/85">
                 Code mission
               </p>
@@ -119,37 +163,7 @@ export function CodeLabShell({
             ) : null}
           </div>
 
-          {problems.length > 1 ? (
-            <div className="flex flex-wrap gap-1" role="tablist" aria-label="Problems">
-              {problems.map((p, i) => {
-                const solved = p.best?.status === 'passed';
-                const current = i === activeProblemIdx;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={current}
-                    aria-label={`Problem ${i + 1}${solved ? ', solved' : ''}`}
-                    onClick={() => onSelectProblem(i)}
-                    className={cn(
-                      'min-w-[2.1rem] rounded-sm border px-1.5 py-0.5 text-[11px] font-bold tabular-nums transition-colors',
-                      current && 'border-cyan-400/50 bg-cyan-500/15 text-cyan-50',
-                      !current &&
-                        solved &&
-                        'border-emerald-400/35 bg-emerald-500/10 text-emerald-100',
-                      !current &&
-                        !solved &&
-                        'border-white/10 bg-white/[0.03] text-slate-400 hover:border-white/20',
-                    )}
-                  >
-                    {String(i + 1).padStart(2, '0')}
-                    {solved ? ' ✓' : ''}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+          {!problemTabsBesideLanguage ? problemTabs : null}
         </header>
       ) : null}
 
@@ -191,6 +205,18 @@ export function CodeLabShell({
                     {id}
                   </button>
                 ))}
+                {problemTabsBesideLanguage && problemTabs ? (
+                  <>
+                    <span
+                      className="ml-1 hidden h-4 w-px bg-white/15 sm:inline-block"
+                      aria-hidden
+                    />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                      Problem
+                    </span>
+                    {problemTabs}
+                  </>
+                ) : null}
               </div>
               <div className="code-lab-editor-wrap rounded-sm">
                 <CodeEditor

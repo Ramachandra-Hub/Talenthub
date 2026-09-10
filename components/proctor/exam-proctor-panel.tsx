@@ -48,7 +48,7 @@ export function ExamProctorPanel({
   return createPortal(
     <>
       <div
-        className="fixed top-[4.5rem] right-3 z-[200] w-[6.75rem] sm:w-[7.25rem] rounded-lg border border-slate-300/90 bg-white/95 shadow-md backdrop-blur-sm overflow-hidden pointer-events-auto"
+        className="fixed top-[4.5rem] right-3 z-[200] w-[6.75rem] sm:w-[7.25rem] rounded-lg border border-slate-300/90 bg-white/95 shadow-md backdrop-blur-sm overflow-hidden pointer-events-auto max-sm:top-auto max-sm:bottom-3"
         aria-label="Proctoring monitor"
       >
         <div className="px-2 py-1 bg-[#0c2340] text-white flex items-center justify-between gap-1">

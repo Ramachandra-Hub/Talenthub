@@ -439,6 +439,8 @@ export default function OpenCodingLabPage() {
           kind="official"
           backHref={`/open-coding/${examId}`}
           backLabel="Challenge questions"
+          hideBackLink
+          problemTabsBesideLanguage
           problems={shellProblems}
           activeProblemIdx={activeIdx}
           onSelectProblem={onSelectProblem}
