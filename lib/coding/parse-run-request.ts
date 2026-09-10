@@ -26,7 +26,9 @@ export function normalizeCodingLanguage(raw: unknown): CodingLanguageId | null {
   return LANGUAGE_ALIASES[key] ?? null;
 }
 
-export function parseCodingRunRequest(body: unknown): CodingRunRequest | { error: string } {
+export function parseCodingRunRequest(
+  body: unknown,
+): CodingRunRequest | { error: string; empty?: boolean } {
   if (!body || typeof body !== 'object') {
     return { error: 'JSON body required' };
   }
@@ -50,7 +52,10 @@ export function parseCodingRunRequest(body: unknown): CodingRunRequest | { error
 
   const sourceCode = rawSource.length > 0 ? rawSource : '';
   if (!sourceCode.trim()) {
-    return { error: 'Source code is empty. Type your solution in the editor before running.' };
+    return {
+      error: 'Source code is empty. Type your solution in the editor before running.',
+      empty: true,
+    };
   }
 
   const stdin =

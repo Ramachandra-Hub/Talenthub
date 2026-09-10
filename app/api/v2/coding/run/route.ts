@@ -39,6 +39,18 @@ export async function POST(request: Request) {
 
     const parsed = parseCodingRunRequest(body);
     if ('error' in parsed) {
+      // Empty editor is soft validation — 200 so the UI shows the message without Network 400.
+      if (parsed.empty) {
+        return NextResponse.json({
+          stdout: '',
+          stderr: parsed.error,
+          exitCode: 1,
+          runtimeMs: 0,
+          memoryKb: null,
+          engine: 'fallback',
+          error: parsed.error,
+        });
+      }
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 

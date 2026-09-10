@@ -222,6 +222,11 @@ export default function OpenCodingLabPage() {
 
   const onRun = async () => {
     if (!problem) return;
+    if (!code.trim()) {
+      setRunOut('Source code is empty. Type your Java/Python solution in the editor, then click Run Code.');
+      setConsoleTab('errors');
+      return;
+    }
     setBusy('run');
     setConsoleTab('output');
     try {
