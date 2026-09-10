@@ -15,6 +15,22 @@ export default function GlobalBackButton() {
     return null;
   }
 
+  if (
+    pathname === '/dsa' ||
+    pathname.startsWith('/dsa/') ||
+    pathname.startsWith('/dev/') ||
+    pathname === '/home' ||
+    pathname.startsWith('/exams') ||
+    pathname.startsWith('/learning') ||
+    pathname.startsWith('/contests') ||
+    pathname.startsWith('/leaderboard') ||
+    pathname.startsWith('/achievements') ||
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/open-coding')
+  ) {
+    return null;
+  }
+
   return (
     <button
       type="button"

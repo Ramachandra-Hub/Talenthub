@@ -32,6 +32,10 @@ type Props = {
   finishDayDisabled?: boolean;
   finishDayLabel?: string;
   onFinishDay?: () => void;
+  /** Hide Return to Arena (open-link exams). */
+  hideReturnToArena?: boolean;
+  /** Label for the primary dismiss button. */
+  continueLabel?: string;
 };
 
 export function MissionResult({
@@ -43,6 +47,8 @@ export function MissionResult({
   finishDayDisabled,
   finishDayLabel = 'Finish Day',
   onFinishDay,
+  hideReturnToArena = false,
+  continueLabel = 'Back to Code Lab',
 }: Props) {
   if (!open || !result) return null;
 
@@ -193,15 +199,17 @@ export function MissionResult({
             className="code-lab-btn code-lab-btn-primary sm:flex-1"
             onClick={onBackToCodeLab}
           >
-            Back to Code Lab
+            {continueLabel}
           </button>
-          <button
-            type="button"
-            className="code-lab-btn code-lab-btn-ghost sm:flex-1"
-            onClick={onReturnToArena}
-          >
-            Return to Arena
-          </button>
+          {!hideReturnToArena ? (
+            <button
+              type="button"
+              className="code-lab-btn code-lab-btn-ghost sm:flex-1"
+              onClick={onReturnToArena}
+            >
+              Return to Arena
+            </button>
+          ) : null}
           {showFinishDay ? (
             <button
               type="button"

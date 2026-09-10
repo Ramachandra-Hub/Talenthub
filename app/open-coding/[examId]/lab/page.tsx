@@ -252,10 +252,14 @@ export default function OpenCodingLabPage() {
     if (!code.trim()) {
       setRunOut('Write your solution in the editor before submitting.');
       setConsoleTab('errors');
+      setError('Write your solution before submitting.');
       return;
     }
     setBusy('submit');
+    setError(null);
     setConsoleTab('tests');
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 55_000);
     try {
       const res = await fetch(
         `/api/student/open-coding/${encodeURIComponent(examId)}/problems/${problem.id}/submit`,
@@ -264,16 +268,29 @@ export default function OpenCodingLabPage() {
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ language, sourceCode: code }),
+          signal: controller.signal,
+          cache: 'no-store',
         },
       );
-      const json = await res.json();
+      const text = await res.text();
+      let json: Record<string, unknown> = {};
+      try {
+        json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      } catch {
+        setRunOut(text.slice(0, 240) || 'Submit failed (invalid response).');
+        setConsoleTab('errors');
+        setError('Submit failed. Try again.');
+        return;
+      }
       if (res.status === 410) {
         router.replace(`/open-coding/${examId}/result`);
         return;
       }
       if (!res.ok) {
-        setRunOut(json.error ?? 'Submit failed');
+        const msg = String(json.error ?? 'Submit failed');
+        setRunOut(msg);
         setConsoleTab('errors');
+        setError(msg);
         return;
       }
 
@@ -283,17 +300,19 @@ export default function OpenCodingLabPage() {
       const points = Number(json.points ?? 0);
       const totalScore = Number(json.totalScore ?? data.attempt.totalScore ?? 0);
       const maxScore = Number(json.maxScore ?? data.attempt.maxScore ?? 100);
+      const publicRows = Array.isArray(json.publicResults)
+        ? (json.publicResults as PublicTestRow[])
+        : null;
       setLastSubmit({
         passed,
         total,
         status,
-        compileOk: json.compileOk,
-        scorePercent: json.scorePercent,
-        language: json.language,
-        publicResults: json.publicResults,
+        compileOk: json.compileOk as boolean | undefined,
+        scorePercent: json.scorePercent as number | undefined,
+        language: json.language as string | undefined,
+        publicResults: publicRows ?? undefined,
       });
-      setPublicResults(Array.isArray(json.publicResults) ? json.publicResults : null);
-      if (json.publicResults?.length) setConsoleTab('tests');
+      setPublicResults(publicRows);
       setRunOut(
         json.compileOk === false
           ? `Compilation issue · ${passed}/${total} test cases · ${points} marks`
@@ -310,23 +329,31 @@ export default function OpenCodingLabPage() {
         passed,
         total,
         status,
-        compileOk: json.compileOk,
-        scorePercent: json.scorePercent,
+        compileOk: json.compileOk as boolean | undefined,
+        scorePercent: json.scorePercent as number | undefined,
         points,
         maxPoints: problem.points ?? 20,
         totalScore,
         examMaxScore: maxScore,
-        language: json.language ?? language,
-        publicResults: Array.isArray(json.publicResults) ? json.publicResults : undefined,
+        language: (json.language as string | undefined) ?? language,
+        publicResults: publicRows ?? undefined,
       });
       setMissionResultOpen(true);
 
       const refreshed = await loadLab();
       if (refreshed) setData(refreshed);
     } catch (err) {
-      setRunOut(err instanceof Error ? err.message : 'Submit failed');
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
+      const msg = aborted
+        ? 'Submit timed out. Click Submit Solution again.'
+        : err instanceof Error
+          ? err.message
+          : 'Submit failed';
+      setRunOut(msg);
       setConsoleTab('errors');
+      setError(msg);
     } finally {
+      window.clearTimeout(timer);
       setBusy(null);
     }
   };
@@ -403,6 +430,8 @@ export default function OpenCodingLabPage() {
         result={missionResult}
         onBackToCodeLab={clearMissionResult}
         onReturnToArena={() => clearMissionResult()}
+        hideReturnToArena
+        continueLabel="Continue coding"
         showFinishDay
         finishDayDisabled={busy != null}
         finishDayLabel={busy === 'finish' ? 'Submitting…' : 'Finish exam & leave'}
@@ -410,8 +439,8 @@ export default function OpenCodingLabPage() {
       />
 
       <div
-        className="mx-auto max-w-[1600px] space-y-2 px-2 py-2 sm:px-3"
-        style={{ ['--cl-chrome' as string]: '12.5rem' }}
+        className="mx-auto max-w-[1600px] space-y-2 px-2 py-2 sm:px-3 pb-16"
+        style={{ ['--cl-chrome' as string]: '10.5rem' }}
       >
         <div className="code-lab-panel code-lab-mission-bar rounded-sm">
           <div className="min-w-0 flex-1">
@@ -452,6 +481,7 @@ export default function OpenCodingLabPage() {
           backHref={`/open-coding/${examId}`}
           backLabel="Challenge questions"
           hideBackLink
+          hideMissionChrome
           problemTabsBesideLanguage
           disablePaste
           problems={shellProblems}

@@ -60,6 +60,12 @@
     },
     "app/api/v2/coding/run-batch/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/student/open-coding/[examId]/problems/[problemId]/submit/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/student/open-coding/[examId]/result/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [

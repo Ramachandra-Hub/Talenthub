@@ -200,4 +200,6 @@
   border: 1px solid var(--cl-border);
   background: var(--cl-panel-2);
   flex-shrink: 0;
+  position: relative;
+  z-index: 30;
 }
