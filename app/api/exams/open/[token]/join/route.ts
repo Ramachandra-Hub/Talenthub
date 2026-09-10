@@ -64,14 +64,10 @@ export async function POST(request: NextRequest, context: Params) {
       takeUrl: joined.takeUrl,
       lockedOpenCoding: Boolean(joined.openCodingExamId),
     });
-    const withSession = await copyAuthSessionCookiesToResponse(json, signed.sessionId);
-    if (joined.openCodingExamId) {
-      withSession.headers.append(
-        'Set-Cookie',
-        openCodingLockCookieHeader(joined.openCodingExamId, joined.durationMinutes ?? 60),
-      );
-    }
-    return withSession;
+    const extraCookies = joined.openCodingExamId
+      ? [openCodingLockCookieHeader(joined.openCodingExamId, joined.durationMinutes ?? 60)]
+      : undefined;
+    return copyAuthSessionCookiesToResponse(json, signed.sessionId, extraCookies);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not join exam';
     return NextResponse.json({ error: message }, { status: 400 });

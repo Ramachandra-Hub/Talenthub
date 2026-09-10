@@ -1,4 +1,5 @@
 import { signIn } from '@/auth';
+import { NextResponse } from 'next/server';
 import { studentAuthEmail, validatePassword, validateRollNumber } from '@/lib/college-auth';
 import { normalizeRoll } from '@/lib/exam-schedule-slots';
 import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
@@ -234,7 +235,8 @@ export async function runStudentCredentialSignIn(
 export async function copyAuthSessionCookiesToResponse(
   response: Response,
   studentSessionId?: string,
-): Promise<Response> {
+  extraSetCookies?: string[],
+): Promise<NextResponse> {
   const jar = await cookies();
   const isProd = process.env.NODE_ENV === 'production';
   const headers = new Headers(response.headers);
@@ -249,7 +251,11 @@ export async function copyAuthSessionCookiesToResponse(
     const { studentSessionCookieHeader } = await import('@/lib/student-session-cookie');
     headers.append('Set-Cookie', studentSessionCookieHeader(studentSessionId));
   }
-  return new Response(response.body, {
+  for (const cookie of extraSetCookies ?? []) {
+    if (cookie?.trim()) headers.append('Set-Cookie', cookie);
+  }
+  const bodyText = await response.text();
+  return new NextResponse(bodyText, {
     status: response.status,
     statusText: response.statusText,
     headers,
