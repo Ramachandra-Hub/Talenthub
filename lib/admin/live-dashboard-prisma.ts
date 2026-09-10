@@ -28,6 +28,11 @@ import { livePartialScoreFromAttemptRow } from '@/lib/admin/elevatex-partial-sco
 import { parseElevateXScorecardFromAnswers } from '@/lib/placement/scorecard-payload';
 import { resolveStoredPercent, testIdsMatch } from '@/lib/test-attempts';
 import { syncExpiredLiveExamSchedulesPrisma } from '@/lib/exam-schedule-sync';
+import {
+  ensureDsaHardOpenTables,
+  examIdFromDsaHardOpenTestId,
+  isDsaHardOpenTestId,
+} from '@/lib/exams/dsa-hard-open';
 
 /** Prisma filter matching {@link isLiveForDashboard} — no row cap so rescheduled exams are not dropped. */
 function examScheduleLiveWindowWhere(now: Date): Prisma.ExamScheduleWhereInput {
@@ -100,6 +105,90 @@ export function isElevateXSchedule(schedule: ExamScheduleRow): boolean {
     isElevateXTestId(schedule.test_id) ||
     /elevatex/i.test(schedule.title ?? '')
   );
+}
+
+export function isDsaHardOpenSchedule(schedule: ExamScheduleRow): boolean {
+  return isDsaHardOpenTestId(schedule.test_id);
+}
+
+/**
+ * Published Exam rows (open-link, hard coding, builder publishes) that are in-window
+ * but may not have an ExamSchedule — surface them on the live dashboard with the exam title.
+ */
+async function listPublishedExamsAsLiveSchedules(now: number): Promise<ExamScheduleRow[]> {
+  const nowDate = new Date(now);
+  const exams = await prisma.exam.findMany({
+    where: {
+      status: 'published',
+      publishedTestId: { not: null },
+      startTime: { lte: nowDate },
+      endTime: { gte: nowDate },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 100,
+  });
+
+  const out: ExamScheduleRow[] = [];
+  for (const exam of exams) {
+    const testId = String(exam.publishedTestId ?? '').trim();
+    if (!testId || testId === 'pending') continue;
+    const mapped: ExamScheduleRow = {
+      id: `exam-live:${exam.id}`,
+      title: exam.title?.trim() || 'Published exam',
+      description: exam.description ?? null,
+      notice: exam.openLinkEnabled
+        ? isDsaHardOpenTestId(testId)
+          ? 'Hard coding open link'
+          : 'Open exam link'
+        : null,
+      faculty_exam_request_id: exam.facultyExamRequestId ?? null,
+      test_id: testId,
+      status: 'live',
+      starts_at: exam.startTime.toISOString(),
+      ends_at: exam.endTime.toISOString(),
+      target_departments: [],
+      target_years: isDsaHardOpenTestId(testId) ? ['IV Year'] : [],
+      slot_number: null,
+      slot_capacity: null,
+      created_by: exam.createdBy ?? null,
+      created_at: exam.createdAt.toISOString(),
+      updated_at: exam.updatedAt.toISOString(),
+    };
+    if (isLiveForDashboard(mapped, now)) out.push(mapped);
+  }
+  return out;
+}
+
+function mergeLiveSchedulesPreferringTitled(
+  primary: ExamScheduleRow[],
+  extra: ExamScheduleRow[],
+): ExamScheduleRow[] {
+  const byKey = new Map<string, ExamScheduleRow>();
+  const keyOf = (s: ExamScheduleRow) => {
+    const tid = String(s.test_id ?? '').trim();
+    if (tid) return `tid:${tid}`;
+    return `id:${s.id}`;
+  };
+  for (const s of primary) byKey.set(keyOf(s), s);
+  for (const s of extra) {
+    const k = keyOf(s);
+    const prev = byKey.get(k);
+    if (!prev) {
+      byKey.set(k, s);
+      continue;
+    }
+    const prevTitle = (prev.title ?? '').trim();
+    const nextTitle = (s.title ?? '').trim();
+    if (!nextTitle) continue;
+    const prevWeak =
+      prevTitle.length < 3 ||
+      /^exam$/i.test(prevTitle) ||
+      (prevTitle.toLowerCase() === 'elevatex' && !/elevatex/i.test(nextTitle));
+    if (prevWeak || nextTitle.length > prevTitle.length) {
+      byKey.set(k, { ...prev, title: nextTitle });
+    }
+  }
+  return Array.from(byKey.values());
 }
 
 function isLiveForDashboard(schedule: ExamScheduleRow, now = Date.now()): boolean {
@@ -206,7 +295,10 @@ export async function listLiveExamSchedulesPrisma(): Promise<ExamScheduleRow[]> 
     if (isLiveForDashboard(mapped, now)) live.push(mapped);
   }
 
-  const sorted = live.sort(
+  const publishedExams = await listPublishedExamsAsLiveSchedules(now);
+  const merged = mergeLiveSchedulesPreferringTitled(live, publishedExams);
+
+  const sorted = merged.sort(
     (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
   );
   return ensureElevateXLiveScheduleFallback(sorted);
@@ -310,7 +402,56 @@ function mapFreshAttemptRow(
 }
 
 /** Pull live rows directly from RDS so submits / proctor auto-submits appear immediately. */
+async function loadDsaHardOpenAttemptsAsRollup(
+  schedule: ExamScheduleRow,
+): Promise<RollupAttempt[]> {
+  const examId = examIdFromDsaHardOpenTestId(String(schedule.test_id ?? ''));
+  if (!examId) return [];
+  await ensureDsaHardOpenTables();
+  type Row = {
+    id: string;
+    user_id: string;
+    status: string;
+    total_score: number;
+    max_score: number;
+    started_at: Date;
+    submitted_at: Date | null;
+    updated_at: Date;
+  };
+  const rows = await prisma.$queryRawUnsafe<Row[]>(
+    `SELECT "id","user_id","status","total_score","max_score","started_at","submitted_at","updated_at"
+     FROM "dsa_hard_open_attempts"
+     WHERE "exam_id" = $1::uuid
+     ORDER BY "updated_at" DESC
+     LIMIT 800`,
+    examId,
+  );
+  return rows.map((row) => {
+    const submitted = row.status === 'submitted' || Boolean(row.submitted_at);
+    const max = Number(row.max_score) || 100;
+    const score =
+      max > 0 ? Math.round((Number(row.total_score) / max) * 10000) / 100 : 0;
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      test_id: schedule.test_id,
+      test_name: schedule.title,
+      score,
+      status: submitted ? 'completed' : 'in_progress',
+      created_at: new Date(row.started_at).toISOString(),
+      completed_at: row.submitted_at ? new Date(row.submitted_at).toISOString() : null,
+      time_taken: null,
+      source: 'test_attempts',
+    };
+  });
+}
+
+/** Pull live rows directly from RDS so submits / proctor auto-submits appear immediately. */
 async function loadFreshScheduleAttemptsPrisma(schedule: ExamScheduleRow): Promise<RollupAttempt[]> {
+  if (isDsaHardOpenSchedule(schedule)) {
+    return loadDsaHardOpenAttemptsAsRollup(schedule);
+  }
+
   const matchWhere = scheduleAttemptMatchWhere(schedule);
   if (!matchWhere) return [];
 
@@ -353,6 +494,9 @@ function pickBetterAttempt(prev: RollupAttempt, next: RollupAttempt): RollupAtte
 
 function attemptMatchesSchedule(attempt: RollupAttempt, schedule: ExamScheduleRow): boolean {
   const testId = String(schedule.test_id ?? '').trim();
+  if (isDsaHardOpenTestId(testId)) {
+    return Boolean(attempt.test_id && testIdsMatch(attempt.test_id, testId));
+  }
   if (testId && attempt.test_id && testIdsMatch(attempt.test_id, testId)) return true;
   if (isElevateXModule(testId) || isElevateXTestId(testId)) {
     if (attempt.test_id && isElevateXTestId(attempt.test_id)) return true;
@@ -440,28 +584,33 @@ export async function buildLiveExamBoardPrisma(
 ): Promise<LiveExamBoard> {
   const students = preloaded?.students ?? (await loadAdminStudentsPrisma());
   const studentById = new Map(students.map((s) => [s.id, s]));
-  const { attempts: allAttempts } = preloaded?.attempts
-    ? { attempts: preloaded.attempts }
-    : await loadAllAttemptsRollupPrisma();
 
-  let matched = allAttempts.filter((a) => {
-    if (!attemptMatchesSchedule(a, schedule)) return false;
-    if (
-      attemptInLiveExamSession(
-        { created_at: a.created_at, completed_at: a.completed_at },
-        schedule,
-      )
-    ) {
-      return true;
-    }
-    if (!a.completed_at && a.score > 0 && isInProgressStatus(a.status)) {
-      return attemptMatchesSchedule(a, schedule);
-    }
-    return false;
-  });
+  let matched: RollupAttempt[] = [];
+  if (isDsaHardOpenSchedule(schedule)) {
+    matched = await loadDsaHardOpenAttemptsAsRollup(schedule);
+  } else {
+    const { attempts: allAttempts } = preloaded?.attempts
+      ? { attempts: preloaded.attempts }
+      : await loadAllAttemptsRollupPrisma();
 
-  matched.push(...(await loadFreshScheduleAttemptsPrisma(schedule)));
+    matched = allAttempts.filter((a) => {
+      if (!attemptMatchesSchedule(a, schedule)) return false;
+      if (
+        attemptInLiveExamSession(
+          { created_at: a.created_at, completed_at: a.completed_at },
+          schedule,
+        )
+      ) {
+        return true;
+      }
+      if (!a.completed_at && a.score > 0 && isInProgressStatus(a.status)) {
+        return attemptMatchesSchedule(a, schedule);
+      }
+      return false;
+    });
 
+    matched.push(...(await loadFreshScheduleAttemptsPrisma(schedule)));
+  }
   const latestByUser = new Map<string, RollupAttempt>();
   for (const a of matched) {
     const prev = latestByUser.get(a.user_id);
