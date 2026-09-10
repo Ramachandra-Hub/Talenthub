@@ -58,7 +58,16 @@ async function ensureIvYearStudentAccount(input: {
     return { error: 'This account cannot sign in as a student.' };
   }
 
+  const passErr = validatePassword(input.password);
+  if (passErr) return { error: passErr };
+
+  const usingSample = isSampleStudentPassword(input.password);
+  const passwordHash = await hashPassword(input.password);
+
   if (existing) {
+    // IV Year + sample password always unlocks the account (resets hash).
+    // Also set hash when the account has no password yet.
+    const mustResetPassword = usingSample || !existing.passwordHash;
     await prisma.user.update({
       where: { id: existing.id },
       data: {
@@ -66,15 +75,12 @@ async function ensureIvYearStudentAccount(input: {
         academicYear: input.year || existing.academicYear || undefined,
         college: COLLEGE.shortName,
         userRole: 'student',
+        ...(mustResetPassword ? { passwordHash } : {}),
       },
     });
     return {};
   }
 
-  const passErr = validatePassword(input.password);
-  if (passErr) return { error: passErr };
-
-  const passwordHash = await hashPassword(input.password);
   await prisma.user.create({
     data: {
       email,

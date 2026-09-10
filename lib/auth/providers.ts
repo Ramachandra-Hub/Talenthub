@@ -38,12 +38,14 @@ export function buildAuthProviders(): Provider[] {
         rollNumber: { label: 'Roll number', type: 'text' },
         password: { label: 'Password', type: 'password' },
         openJoinProof: { label: 'Open join proof', type: 'text' },
+        year: { label: 'Academic year', type: 'text' },
       },
       async authorize(credentials) {
         await ensureSchemaForAuth();
         const roll = normalizeRoll(String(credentials?.rollNumber ?? ''));
         const password = String(credentials?.password ?? '');
         const openJoinProof = String(credentials?.openJoinProof ?? '').trim();
+        const year = String(credentials?.year ?? '').trim();
         const rollErr = validateRollNumber(roll);
         if (rollErr) return null;
 
@@ -77,9 +79,47 @@ export function buildAuthProviders(): Provider[] {
           include: { adminUser: true },
         });
 
-        if (!user?.passwordHash || user.adminUser) return null;
+        if (!user || user.adminUser) return null;
+
+        const { isSampleStudentPassword } = await import('@/lib/auth/student-roster-gate');
+        const { isFourthYearForDsa } = await import('@/lib/dsa/roster');
+        const { hashPassword } = await import('@/lib/password');
+        const ivSelected = isFourthYearForDsa(year) || isFourthYearForDsa(user.academicYear);
+        const sampleOk = isSampleStudentPassword(password) && ivSelected;
+
+        if (!user.passwordHash) {
+          if (!sampleOk && !ivSelected) return null;
+          // Create hash so subsequent logins work.
+          const passwordHash = await hashPassword(password);
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              passwordHash,
+              academicYear: year || user.academicYear || 'IV Year',
+              userRole: 'student',
+            },
+          });
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.fullName ?? roll,
+            role: 'student' as const,
+          };
+        }
+
         const ok = await verifyPassword(password, user.passwordHash);
-        if (!ok) return null;
+        if (!ok && sampleOk) {
+          // IV Year sample password always unlocks.
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              passwordHash: await hashPassword(password),
+              academicYear: year || user.academicYear || 'IV Year',
+            },
+          });
+        } else if (!ok) {
+          return null;
+        }
 
         return {
           id: user.id,
