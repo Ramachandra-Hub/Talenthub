@@ -151,9 +151,9 @@ export default function OpenCodingBriefPage() {
               {detail.exam.problemCount} coding · Java / Python
             </p>
             <p>
-              <span className="text-slate-500">Result</span>
+              <span className="text-slate-500">After finish</span>
               <br />
-              ElevateX-style scorecard
+              Submit &amp; leave (no student scorecard)
             </p>
           </div>
 
@@ -204,13 +204,18 @@ export default function OpenCodingBriefPage() {
 
           <div className="mt-6">
             {submitted ? (
-              <button
-                type="button"
-                className="rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950"
-                onClick={() => router.replace(`/open-coding/${examId}/result`)}
-              >
-                View ElevateX result
-              </button>
+              <div className="space-y-3">
+                <p className="text-sm text-emerald-200/90">
+                  This exam is already submitted. Scores are visible to administrators only.
+                </p>
+                <button
+                  type="button"
+                  className="rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950"
+                  onClick={() => router.replace(`/open-coding/${examId}/result`)}
+                >
+                  Exit exam
+                </button>
+              </div>
             ) : inProgress ? (
               <button
                 type="button"

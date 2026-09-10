@@ -45,6 +45,8 @@ export default function AdminDsaHardOpenPage() {
     problemPoolSize: number;
   } | null>(null);
   const [origin, setOrigin] = useState('');
+  const [examTitle, setExamTitle] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState(60);
 
   useEffect(() => {
     setOrigin(typeof window !== 'undefined' ? window.location.origin : '');
@@ -91,7 +93,8 @@ export default function AdminDsaHardOpenPage() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          durationMinutes: 60,
+          title: examTitle.trim() || undefined,
+          durationMinutes,
           password: DEFAULT_EXAM_STUDENT_PASSWORD,
         }),
       });
@@ -104,6 +107,7 @@ export default function AdminDsaHardOpenPage() {
         problemPoolSize: json.problemPoolSize,
       });
       setSelectedId(json.examId);
+      setExamTitle('');
       await loadExams();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
@@ -125,26 +129,49 @@ export default function AdminDsaHardOpenPage() {
           </p>
           <h1 className="text-2xl font-bold text-[#0c2340]">Hard Coding Open Link</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Creates a named open-link exam with a random title. Students (IV Year only) join with roll
-            number, then get 5 jumbled Java/Python problems from the contest bank (~50 questions) in
-            the same Code Lab as DSA practice. Full ElevateX-style results show immediately on finish.
+            Publish an open-link coding exam. Enter your own exam title (or leave blank for a
+            random name). IV Year students join with roll number, solve 5 Java/Python problems, then
+            leave — scorecards are admin-only (Test reports + this page).
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link
-            href="/admin/dsa-arena/contests"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
-          >
-            Contests
-          </Link>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void createExam()}
-            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {busy ? 'Creating…' : 'Create hard open link'}
-          </button>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <label className="block w-full max-w-xs text-left text-xs font-semibold text-slate-600">
+            Exam title
+            <input
+              type="text"
+              value={examTitle}
+              onChange={(e) => setExamTitle(e.target.value)}
+              placeholder="e.g. IV Year Hard Coding Round — April"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"
+            />
+          </label>
+          <label className="block w-full max-w-xs text-left text-xs font-semibold text-slate-600">
+            Duration (minutes)
+            <input
+              type="number"
+              min={30}
+              max={180}
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"
+            />
+          </label>
+          <div className="flex gap-2">
+            <Link
+              href="/admin/dsa-arena/contests"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
+            >
+              Contests
+            </Link>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void createExam()}
+              className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {busy ? 'Creating…' : 'Create hard open link'}
+            </button>
+          </div>
         </div>
       </div>
 

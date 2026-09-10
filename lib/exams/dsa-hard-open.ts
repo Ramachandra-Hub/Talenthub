@@ -8,10 +8,22 @@ import { isCodingLanguageId } from '@/lib/coding/languages';
 import { newOpenLinkToken, openJoinPath, resolveOpenLinkPassword } from '@/lib/exams/open-exam-link';
 import { DEFAULT_EXAM_STUDENT_PASSWORD } from '@/lib/roster-credentials-export';
 import type { PlacementScorecard } from '@/lib/placement/types';
+import type { CodingRubricReport } from '@/lib/exam-v2/coding-rubric';
+import {
+  DSA_HARD_OPEN_PICK,
+  DSA_HARD_OPEN_POINTS,
+  DSA_HARD_OPEN_PREFIX,
+} from '@/lib/exams/dsa-hard-open-constants';
+import {
+  buildHardOpenCodingAnalysis,
+  scoreHardOpenProblem,
+} from '@/lib/exams/dsa-hard-open-score';
 
-export const DSA_HARD_OPEN_PREFIX = 'dsa_hard_open:';
-export const DSA_HARD_OPEN_PICK = 5;
-export const DSA_HARD_OPEN_POINTS = 20;
+export {
+  DSA_HARD_OPEN_PICK,
+  DSA_HARD_OPEN_POINTS,
+  DSA_HARD_OPEN_PREFIX,
+} from '@/lib/exams/dsa-hard-open-constants';
 
 const TITLE_POOL = [
   'DSA Hard Coding Challenge',
@@ -153,11 +165,15 @@ export async function createAndPublishDsaHardOpenExam(input: {
     );
   }
 
-  let title = (input.title ?? '').trim() || randomDsaHardOpenTitle();
-  for (let i = 0; i < 5; i += 1) {
+  const requestedTitle = (input.title ?? '').trim();
+  let title = requestedTitle || randomDsaHardOpenTitle();
+  for (let i = 0; i < 8; i += 1) {
     const clash = await prisma.exam.findUnique({ where: { title }, select: { id: true } });
     if (!clash) break;
-    title = randomDsaHardOpenTitle();
+    const suffix = randomBytes(2).toString('hex').toUpperCase();
+    title = requestedTitle
+      ? `${requestedTitle} ${suffix}`
+      : randomDsaHardOpenTitle();
   }
 
   const token = newOpenLinkToken();
@@ -534,9 +550,15 @@ export async function submitDsaHardOpenCode(input: {
     sourceCode: input.sourceCode,
     testCases: cases,
   });
-  const scorePercent = Math.round(grade.fraction * 10000) / 100;
-  const status = grade.total > 0 && grade.passed === grade.total ? 'passed' : 'failed';
-  const points = Math.round((scorePercent / 100) * DSA_HARD_OPEN_POINTS);
+  const scored = scoreHardOpenProblem({
+    passed: grade.passed,
+    total: grade.total,
+    compileOk: grade.compileOk,
+    sourceCode: input.sourceCode,
+    runtimeMs: grade.runtimeMs,
+    stderr: grade.stderr,
+  });
+  const { points, scorePercent, status, rubric } = scored;
 
   const prev = asResultMap(attempt.results_json);
   const nextResult = {
@@ -549,6 +571,13 @@ export async function submitDsaHardOpenCode(input: {
     compileOk: grade.compileOk,
     runtimeMs: grade.runtimeMs,
     publicResults: grade.publicResults,
+    rubric,
+    scoring: {
+      mode: 'tests_first_then_quality',
+      testWeight: 0.7,
+      qualityWeight: 0.3,
+      passRatio: scored.passRatio,
+    },
   };
   const prior = prev[input.problemId];
   const priorPoints = Number(prior?.points ?? 0);
@@ -611,6 +640,7 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
   const strengths: string[] = [];
   const weaknesses: string[] = [];
   const problemResults: NonNullable<PlacementScorecard['problemResults']> = [];
+  const rubricRows: Array<{ questionId: string; title: string; rubric: CodingRubricReport }> = [];
 
   const problems = await prisma.dsaProblem.findMany({ where: { id: { in: ids } } });
   const byId = new Map(problems.map((p) => [p.id, p]));
@@ -626,6 +656,13 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
     if (r) attemptedCount += 1;
     const ok = r?.status === 'passed' || scorePercent >= 100;
     const title = p?.title ?? `Problem ${idx + 1}`;
+    if (r?.rubric && typeof r.rubric === 'object') {
+      rubricRows.push({
+        questionId: id,
+        title,
+        rubric: r.rubric as CodingRubricReport,
+      });
+    }
     problemResults.push({
       position: idx + 1,
       title,
@@ -640,13 +677,18 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
       solvedCount += 1;
       strengths.push(`Solved P${idx + 1}: ${title} (+${pts}/${DSA_HARD_OPEN_POINTS} marks)`);
     } else if (r) {
+      strengths.push(
+        `Partial credit P${idx + 1}: ${title} (+${pts}/${DSA_HARD_OPEN_POINTS} from tests + code quality)`,
+      );
       weaknesses.push(
-        `Gap on P${idx + 1}: ${title} (${pts}/${DSA_HARD_OPEN_POINTS} marks, ${passedTests}/${totalTests || '?'} tests)`,
+        `Tests incomplete on P${idx + 1}: ${title} (${passedTests}/${totalTests || '?'} tests)`,
       );
     } else {
       weaknesses.push(`Skipped P${idx + 1}: ${title} (0/${DSA_HARD_OPEN_POINTS} marks)`);
     }
   });
+
+  const codingAnalysis = buildHardOpenCodingAnalysis(rubricRows);
 
   const maxScore = DSA_HARD_OPEN_PICK * DSA_HARD_OPEN_POINTS;
   const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 10000) / 100 : 0;
@@ -711,9 +753,10 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
     recommendations: [
       percentage >= 70
         ? 'Strong coding round — review missed edge cases and complexity.'
-        : 'Revisit tree/path problems and practice Java/Python I/O carefully.',
+        : 'Partial credit uses test results first, then code quality and rubric parameters. Keep practicing I/O and edge cases.',
     ],
     reportKind: 'exam',
+    codingAnalysis,
   };
 
   await prisma.$executeRawUnsafe(

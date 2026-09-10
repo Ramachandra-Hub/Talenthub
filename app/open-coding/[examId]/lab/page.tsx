@@ -400,7 +400,7 @@ export default function OpenCodingLabPage() {
         onReturnToArena={() => clearMissionResult()}
         showFinishDay
         finishDayDisabled={busy != null}
-        finishDayLabel={busy === 'finish' ? 'Submitting…' : 'Finish exam & view result'}
+        finishDayLabel={busy === 'finish' ? 'Submitting…' : 'Finish exam & leave'}
         onFinishDay={() => void finish()}
       />
 

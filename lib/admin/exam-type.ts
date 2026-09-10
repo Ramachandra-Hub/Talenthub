@@ -66,9 +66,12 @@ export function classifyExamAttempt(input: {
   }
 
   if (
+    testId.startsWith('dsa_hard_open:') ||
     testId === 'programming-assessment-v1' ||
     slug === 'programming' ||
-    /\bprogramming\b/i.test(testName)
+    /\bprogramming\b/i.test(testName) ||
+    /\bhard coding\b/i.test(testName) ||
+    /\bcoding open link\b/i.test(testName)
   ) {
     return 'programming';
   }

@@ -1,76 +1,63 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ElevateXScorecardView } from '@/components/placement/elevatex-scorecard-view';
-import type { PlacementScorecard } from '@/lib/placement/types';
+import { Button } from '@/components/ui/button';
+import { signOutClient } from '@/lib/client-auth';
 
+/** Student-facing finish page — no scorecard (admin-only). */
 export default function OpenCodingResultPage() {
   const params = useParams();
   const examId = String(params.examId ?? '');
-  const [scorecard, setScorecard] = useState<PlacementScorecard | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const load = async () => {
+    // Finalize if needed, clear lock cookie, then sign out so the student leaves the exam.
+    const done = async () => {
       try {
-        const res = await fetch(`/api/student/open-coding/${encodeURIComponent(examId)}/result`, {
+        await fetch(`/api/student/open-coding/${encodeURIComponent(examId)}/result`, {
+          method: 'POST',
           credentials: 'include',
           cache: 'no-store',
         });
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error ?? 'Failed to load result');
-          return;
-        }
-        setScorecard(json.scorecard as PlacementScorecard);
       } catch {
-        setError('Failed to load result');
+        /* already finalized or network — still show thank-you */
       }
+      try {
+        await fetch(`/api/student/open-coding/${encodeURIComponent(examId)}/result`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+      } catch {
+        /* cookie clear via GET */
+      }
+      void signOutClient();
     };
-    void load();
+    void done();
   }, [examId]);
 
-  if (error) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-slate-50 px-4">
-        <p className="text-sm text-rose-600">{error}</p>
-        <Link href={`/open-coding/${examId}`} className="text-sm text-[#1e3a5f] underline">
-          Back to challenge
-        </Link>
-      </div>
-    );
-  }
-
-  if (!scorecard) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 text-sm text-slate-500">
-        Loading ElevateX scorecard…
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-50 to-white px-4 py-8">
-      <div className="mx-auto max-w-4xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Open-link exam · ElevateX-type full result
-            </p>
-            <h1 className="text-xl font-bold text-[#0c2340]">
-              {scorecard.candidate.examName ?? 'Exam scorecard'}
-            </h1>
-          </div>
-          <Link
-            href="/auth/login/student"
-            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white"
-          >
-            Student login
-          </Link>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#1e3a5f]">
+          Exam submitted
+        </p>
+        <h1 className="mt-3 text-2xl font-bold text-[#0c2340]">Thank you.</h1>
+        <p className="mt-2 text-slate-700">
+          Your coding exam has been submitted successfully. You can close this window now.
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          Scores and scorecards are available only to administrators — they are not shown to
+          students.
+        </p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <Button type="button" onClick={() => window.close()}>
+            Close window
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/auth/role">Exit to sign-in page</Link>
+          </Button>
         </div>
-        <ElevateXScorecardView scorecard={scorecard} />
       </div>
     </div>
   );

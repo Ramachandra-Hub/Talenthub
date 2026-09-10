@@ -148,8 +148,9 @@ export async function loadTestReportsPayload(
     loadAdminStudentsPrisma,
     loadAllAttemptsRollupPrisma,
   } = await import('@/lib/admin/attempts-rollup-prisma');
+  const { loadHardOpenAttemptsForTestReports } = await import('@/lib/admin/hard-open-reports');
 
-  const [students, { attempts, testsById }, categoriesRes, testsRes, scheduleOptions] =
+  const [students, rollup, hardOpen, categoriesRes, testsRes, scheduleOptions] =
     await Promise.all([
       loadAdminStudentsPrisma(),
       loadAllAttemptsRollupPrisma({
@@ -158,10 +159,20 @@ export async function loadTestReportsPayload(
         includeAnswers: false,
         includeDashboardStats: !dateBounds,
       }),
+      loadHardOpenAttemptsForTestReports({
+        fromIso: dateBounds?.fromIso,
+        toIso: dateBounds?.toIso,
+      }),
       admin.from('test_categories').select('id, name, slug'),
       admin.from('tests').select('id, title, name, category_id'),
       loadReportScheduleOptions(admin),
     ]);
+
+  const { attempts: baseAttempts, testsById } = rollup;
+  for (const [id, name] of hardOpen.testsById) {
+    if (!testsById.has(id)) testsById.set(id, name);
+  }
+  const attempts = [...baseAttempts, ...hardOpen.attempts];
 
   const categories = categoriesRes.error
     ? []

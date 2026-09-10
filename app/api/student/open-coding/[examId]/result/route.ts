@@ -17,13 +17,17 @@ function withLockCleared(data: unknown, status = 200) {
   return new NextResponse(JSON.stringify(data), { status, headers });
 }
 
+/** Student GET — confirm submitted; never return the scorecard payload. */
 export async function GET(request: Request, ctx: Ctx) {
   const auth = await requireAuth(['student'], request);
   if ('response' in auth) return auth.response;
   const { examId } = await ctx.params;
   try {
-    const scorecard = await getDsaHardOpenResult(examId, auth.ctx.user.id);
-    return withLockCleared({ scorecard });
+    await getDsaHardOpenResult(examId, auth.ctx.user.id);
+    return withLockCleared({
+      submitted: true,
+      message: 'Exam submitted. Results are available to administrators only.',
+    });
   } catch (err) {
     const status = (err as Error & { status?: number }).status ?? 500;
     return NextResponse.json(
@@ -33,13 +37,17 @@ export async function GET(request: Request, ctx: Ctx) {
   }
 }
 
+/** Student POST — finalize attempt; do not return scorecard to the client. */
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireAuth(['student'], request);
   if ('response' in auth) return auth.response;
   const { examId } = await ctx.params;
   try {
-    const scorecard = await finalizeDsaHardOpenAttempt(examId, auth.ctx.user.id);
-    return withLockCleared({ scorecard });
+    await finalizeDsaHardOpenAttempt(examId, auth.ctx.user.id);
+    return withLockCleared({
+      submitted: true,
+      message: 'Exam submitted. Results are available to administrators only.',
+    });
   } catch (err) {
     const status = (err as Error & { status?: number }).status ?? 500;
     return NextResponse.json(
