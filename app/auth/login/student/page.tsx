@@ -109,7 +109,7 @@ function StudentLoginForm() {
 
             <AuthCard
               title="Student sign in"
-              description={`Enter your ${COLLEGE.rce} credentials. IV Year (4th year) students: select IV Year on first login to create your account and open DSA Arena — no admin roster upload needed.`}
+              description={`Enter your ${COLLEGE.rce} credentials. IV Year (4th year): select IV Year and use sample password Exam2026 to sign in (no roster needed). Other years: your roll must be on the exam roster — sample password alone will not work.`}
             >
               <form onSubmit={onSubmit} className="space-y-5">
                 {notice === 'signup_closed' ? (
