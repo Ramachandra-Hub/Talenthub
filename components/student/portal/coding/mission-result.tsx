@@ -12,6 +12,13 @@ export type MissionResultData = {
   status: string;
   compileOk?: boolean;
   scorePercent?: number;
+  /** Marks earned for this problem (e.g. 20). */
+  points?: number;
+  /** Max marks for this problem. */
+  maxPoints?: number;
+  /** Running exam total after this submit. */
+  totalScore?: number;
+  examMaxScore?: number;
   language?: string;
   publicResults?: PublicTestRow[];
 };
@@ -86,6 +93,9 @@ export function MissionResult({
             </p>
             <p className="mt-1 text-[12px] tabular-nums text-slate-300">
               {result.passed} / {result.total} tests passed
+              {typeof result.points === 'number'
+                ? ` · ${result.points}/${result.maxPoints ?? result.points} marks`
+                : ''}
             </p>
           </div>
 
@@ -144,7 +154,14 @@ export function MissionResult({
               <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Status</p>
               <p className="mt-0.5 font-semibold capitalize text-slate-200">{result.status}</p>
             </div>
-            {typeof result.scorePercent === 'number' ? (
+            {typeof result.points === 'number' ? (
+              <div className="border border-white/[0.06] bg-black/20 px-2.5 py-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Marks</p>
+                <p className="mt-0.5 font-semibold tabular-nums text-slate-200">
+                  {result.points}/{result.maxPoints ?? 20}
+                </p>
+              </div>
+            ) : typeof result.scorePercent === 'number' ? (
               <div className="border border-white/[0.06] bg-black/20 px-2.5 py-2">
                 <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Score</p>
                 <p className="mt-0.5 font-semibold tabular-nums text-slate-200">
@@ -154,10 +171,16 @@ export function MissionResult({
             ) : null}
           </div>
 
+          {typeof result.totalScore === 'number' ? (
+            <p className="text-[12px] tabular-nums text-cyan-100/90">
+              Exam total: {result.totalScore}/{result.examMaxScore ?? 100} marks
+            </p>
+          ) : null}
+
           <p className="text-[11px] leading-relaxed text-slate-500">
             {passed
-              ? 'This coding mission is solved. Day completion still requires the configured MCQ and coding thresholds.'
-              : 'Review the public tests, adjust your code, and submit again.'}
+              ? 'This problem is solved. Marks are saved to your exam scorecard.'
+              : 'Review the public tests, adjust your code, and submit again. Best score is kept.'}
           </p>
         </div>
 

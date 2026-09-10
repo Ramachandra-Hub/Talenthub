@@ -16,7 +16,7 @@ import type {
 import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
 import { useExamProctoring } from '@/hooks/use-exam-proctoring';
 import { isCodingLanguageId, type CodingLanguageId } from '@/lib/coding/languages';
-import { runCodingOnServer } from '@/lib/coding/run-client';
+import { formatCodingRunOutput, runCodingOnServer } from '@/lib/coding/run-client';
 import { PROCTOR_MAX_VIOLATIONS } from '@/lib/exam-v2/proctoring-config';
 
 type LabProblem = CodeLabProblem & {
@@ -27,6 +27,14 @@ type LabProblem = CodeLabProblem & {
   progress?: string;
   position?: number;
   points?: number;
+  best?: {
+    passed: number;
+    total: number;
+    status: string;
+    language: string;
+    scorePercent?: number;
+    points?: number;
+  } | null;
 };
 
 type LabPayload = {
@@ -37,6 +45,7 @@ type LabPayload = {
     startedAt: string;
     endsAt?: string;
     solvedCount: number;
+    totalScore?: number;
     maxScore: number;
   };
   problems: LabProblem[];
@@ -209,6 +218,7 @@ export default function OpenCodingLabPage() {
     if (!problem) return;
     setCode(starterFor(problem, language));
     setRunOut(null);
+    setConsoleTab('output');
   };
 
   const onRun = async () => {
@@ -218,15 +228,13 @@ export default function OpenCodingLabPage() {
     try {
       const sample = problem.sampleTests[0];
       const result = await runCodingOnServer(language, code, sample?.input ?? '');
-      setRunOut(
-        [
-          result.stdout ? `stdout:\n${result.stdout}` : '',
-          result.stderr ? `stderr:\n${result.stderr}` : '',
-          `exit: ${result.exitCode}`,
-        ]
-          .filter(Boolean)
-          .join('\n\n'),
-      );
+      const formatted = formatCodingRunOutput(result);
+      setRunOut(formatted);
+      const failed =
+        (result.exitCode != null && result.exitCode !== 0) ||
+        Boolean(result.stderr?.trim()) ||
+        Boolean(result.error?.trim());
+      if (failed) setConsoleTab('errors');
     } catch (err) {
       setRunOut(err instanceof Error ? err.message : 'Run failed');
       setConsoleTab('errors');
@@ -263,6 +271,9 @@ export default function OpenCodingLabPage() {
       const passed = Number(json.passed ?? 0);
       const total = Number(json.total ?? 0);
       const status = String(json.status ?? 'failed');
+      const points = Number(json.points ?? 0);
+      const totalScore = Number(json.totalScore ?? data.attempt.totalScore ?? 0);
+      const maxScore = Number(json.maxScore ?? data.attempt.maxScore ?? 100);
       setLastSubmit({
         passed,
         total,
@@ -276,8 +287,8 @@ export default function OpenCodingLabPage() {
       if (json.publicResults?.length) setConsoleTab('tests');
       setRunOut(
         json.compileOk === false
-          ? `Compilation issue · ${passed}/${total} tests passed.`
-          : `Submitted · ${passed}/${total} tests passed.`,
+          ? `Compilation issue · ${passed}/${total} tests · ${points} marks`
+          : `Submitted · ${passed}/${total} tests · ${points} marks (exam ${totalScore}/${maxScore})`,
       );
       if (json.compileOk === false) setConsoleTab('errors');
 
@@ -289,6 +300,10 @@ export default function OpenCodingLabPage() {
         status,
         compileOk: json.compileOk,
         scorePercent: json.scorePercent,
+        points,
+        maxPoints: problem.points ?? 20,
+        totalScore,
+        examMaxScore: maxScore,
         language: json.language ?? language,
         publicResults: Array.isArray(json.publicResults) ? json.publicResults : undefined,
       });
@@ -333,6 +348,8 @@ export default function OpenCodingLabPage() {
   );
 
   const solvedCount = (data?.problems ?? []).filter((p) => p.progress === 'solved').length;
+  const totalScore = Number(data?.attempt.totalScore ?? 0);
+  const maxScore = Number(data?.attempt.maxScore ?? 100);
 
   if (error && !data) {
     return (
@@ -351,7 +368,7 @@ export default function OpenCodingLabPage() {
   }
 
   return (
-    <div className="code-lab min-h-screen pb-8">
+    <div className="code-lab min-h-screen pb-2 text-slate-100">
       <ExamProctorPanel
         videoRef={proctorVideoRef}
         violationCount={violationCount}
@@ -391,7 +408,8 @@ export default function OpenCodingLabPage() {
             </p>
             <p className="mt-0.5 truncate text-[13px] font-semibold text-white">{data.exam.title}</p>
             <p className="mt-0.5 text-[11px] text-slate-400">
-              Code {solvedCount}/5 · Problem {activeIdx + 1} of {shellProblems.length}
+              Solved {solvedCount}/5 · Marks {totalScore}/{maxScore} · Problem {activeIdx + 1} of{' '}
+              {shellProblems.length}
             </p>
           </div>
           <div
@@ -440,7 +458,6 @@ export default function OpenCodingLabPage() {
           onConsoleTabChange={setConsoleTab}
           codingPassed={solvedCount}
           minCoding={5}
-          expandProblemDocument
         />
       </div>
     </div>

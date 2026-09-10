@@ -10,6 +10,14 @@ export function formatScorePercent(value: number | null | undefined): string {
   return roundScorePercent(value).toFixed(2);
 }
 
+/** Display mark totals without forcing percent-style decimals (20 → "20"). */
+export function formatMarks(value: number | null | undefined): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  if (Number.isInteger(n)) return String(n);
+  return formatScorePercent(n);
+}
+
 /** Display percentage with suffix, e.g. `66.67%`. */
 export function formatScorePercentLabel(value: number | null | undefined): string {
   return `${formatScorePercent(value)}%`;

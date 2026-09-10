@@ -2,7 +2,7 @@
 
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { formatScorePercent, formatScorePercentLabel } from '@/lib/format-score';
+import { formatMarks, formatScorePercent, formatScorePercentLabel } from '@/lib/format-score';
 import { cn } from '@/lib/utils';
 import { findDepartment } from '@/lib/placement/config';
 import type { PlacementScorecard } from '@/lib/placement/types';
@@ -74,7 +74,7 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
               {formatScorePercentLabel(scorecard.percentage)}
             </p>
             <p className="text-sm text-slate-600 mt-1 tabular-nums">
-              {scorecard.earnedMarks} / {scorecard.totalMarks} marks
+              {formatMarks(scorecard.earnedMarks)} / {formatMarks(scorecard.totalMarks)} marks
             </p>
           </div>
         </div>
@@ -139,7 +139,8 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-semibold text-slate-900">{s.name}</p>
                 <p className="text-sm text-slate-600 tabular-nums">
-                  {formatScorePercent(s.earned)} / {s.marks} marks · {formatScorePercentLabel(s.percent)}
+                  {formatMarks(s.earned)} / {formatMarks(s.marks)} marks ·{' '}
+                  {formatScorePercentLabel(s.percent)}
                 </p>
               </div>
               <Progress value={s.percent} className="h-1.5 mt-2" />
@@ -164,6 +165,42 @@ export function ElevateXScorecardView({ scorecard, compact, className }: Elevate
           ))}
         </div>
       </Card>
+
+      {scorecard.problemResults && scorecard.problemResults.length > 0 ? (
+        <Card className={cn('shadow-md border-slate-200', compact ? 'p-4' : 'p-6')}>
+          <h3 className="text-lg font-bold text-slate-900 mb-4">Problem-wise marks</h3>
+          <div className="space-y-3">
+            {scorecard.problemResults.map((p) => {
+              const solved = p.status === 'passed' || p.percent >= 100;
+              return (
+                <div
+                  key={`${p.position}-${p.title}`}
+                  className="rounded-lg border border-slate-200 p-4 bg-white"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-slate-900">
+                      P{p.position}. {p.title}
+                    </p>
+                    <p className="text-sm font-semibold tabular-nums text-slate-800">
+                      {formatMarks(p.earned)} / {formatMarks(p.marks)} marks
+                    </p>
+                  </div>
+                  <Progress value={p.percent} className="h-1.5 mt-2" />
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
+                    <span className={solved ? 'font-semibold text-emerald-700' : 'text-slate-600'}>
+                      {solved ? 'Passed' : p.status === 'skipped' ? 'Skipped' : 'Incomplete'}
+                    </span>
+                    <span className="tabular-nums">
+                      Tests {p.passedTests}/{p.totalTests || '—'}
+                    </span>
+                    <span className="tabular-nums">{formatScorePercentLabel(p.percent)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ) : null}
 
       {scorecard.codingAnalysis ? (
         <Card className={cn('shadow-md border-slate-200', compact ? 'p-4' : 'p-6')}>

@@ -185,6 +185,17 @@ export type PlacementScorecard = {
   recommendations: string[];
   /** Exam Builder / generic exams use subject sections instead of ElevateX employability weights. */
   reportKind?: 'elevatex' | 'exam';
+  /** Per-problem marks for coding open-link / hard exams (shown under subject section). */
+  problemResults?: Array<{
+    position: number;
+    title: string;
+    earned: number;
+    marks: number;
+    percent: number;
+    passedTests: number;
+    totalTests: number;
+    status: string;
+  }>;
   /** Nine-parameter coding deep analysis when the exam includes coding questions. */
   codingAnalysis?: CodingDeepAnalysis | null;
   /** True when coding was deferred at submit and full rubrics are still pending. */

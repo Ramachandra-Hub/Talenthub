@@ -99,8 +99,35 @@ type AttemptRow = {
 };
 
 function asStringArray(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map(String);
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  return value.map(String);
+}
+
+function asResultMap(raw: unknown): Record<string, Record<string, unknown>> {
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      out[key] = { ...(entry as Record<string, unknown>) };
+    }
+  }
+  return out;
 }
 
 export async function createAndPublishDsaHardOpenExam(input: {
@@ -312,10 +339,7 @@ export async function getDsaHardOpenBrief(examId: string, userId: string) {
     const ids = asStringArray(attempt.problem_ids_json);
     const rows = await prisma.dsaProblem.findMany({ where: { id: { in: ids } } });
     const byId = new Map(rows.map((p) => [p.id, p]));
-    const results =
-      attempt.results_json && typeof attempt.results_json === 'object'
-        ? (attempt.results_json as Record<string, { status?: string; scorePercent?: number }>)
-        : {};
+    const results = asResultMap(attempt.results_json);
     problems = ids.map((id, idx) => {
       const p = byId.get(id);
       const best = results[id];
@@ -420,17 +444,12 @@ export async function getDsaHardOpenLabPayload(examId: string, userId: string) {
         position: idx + 1,
         points: DSA_HARD_OPEN_POINTS,
       });
-      const results =
-        attempt.results_json && typeof attempt.results_json === 'object'
-          ? (attempt.results_json as Record<string, { status?: string; scorePercent?: number }>)
-          : {};
+      const results = asResultMap(attempt.results_json);
       const best = results[id];
-      const passedN = Number((best as { passed?: number } | undefined)?.passed ?? 0);
-      const totalN = Number((best as { total?: number } | undefined)?.total ?? 0);
-      const lang =
-        typeof (best as { language?: string } | undefined)?.language === 'string'
-          ? String((best as { language?: string }).language)
-          : 'java';
+      const passedN = Number(best?.passed ?? 0);
+      const totalN = Number(best?.total ?? 0);
+      const pointsN = Number(best?.points ?? 0);
+      const lang = typeof best?.language === 'string' ? String(best.language) : 'java';
       return {
         ...dto,
         progress:
@@ -441,8 +460,9 @@ export async function getDsaHardOpenLabPayload(examId: string, userId: string) {
               : 'not_started',
         best: best
           ? {
-              status: best.status ?? 'failed',
+              status: String(best.status ?? 'failed'),
               scorePercent: Number(best.scorePercent ?? 0),
+              points: pointsN,
               passed: passedN,
               total: totalN,
               language: lang,
@@ -518,11 +538,8 @@ export async function submitDsaHardOpenCode(input: {
   const status = grade.total > 0 && grade.passed === grade.total ? 'passed' : 'failed';
   const points = Math.round((scorePercent / 100) * DSA_HARD_OPEN_POINTS);
 
-  const prev =
-    attempt.results_json && typeof attempt.results_json === 'object'
-      ? { ...(attempt.results_json as Record<string, unknown>) }
-      : {};
-  prev[input.problemId] = {
+  const prev = asResultMap(attempt.results_json);
+  const nextResult = {
     status,
     scorePercent,
     points,
@@ -533,15 +550,27 @@ export async function submitDsaHardOpenCode(input: {
     runtimeMs: grade.runtimeMs,
     publicResults: grade.publicResults,
   };
+  const prior = prev[input.problemId];
+  const priorPoints = Number(prior?.points ?? 0);
+  const priorPercent = Number(prior?.scorePercent ?? 0);
+  // Keep the best score across submits (same as DSA Arena contests).
+  if (
+    !prior ||
+    points > priorPoints ||
+    (points === priorPoints && scorePercent >= priorPercent)
+  ) {
+    prev[input.problemId] = nextResult;
+  }
 
   let totalScore = 0;
   let solvedCount = 0;
   for (const id of ids) {
-    const r = prev[id] as { points?: number; scorePercent?: number; status?: string } | undefined;
+    const r = prev[id];
     if (!r) continue;
     totalScore += Number(r.points ?? 0);
     if (r.status === 'passed' || Number(r.scorePercent) >= 100) solvedCount += 1;
   }
+  const bestForProblem = prev[input.problemId] ?? nextResult;
 
   await prisma.$executeRawUnsafe(
     `UPDATE "dsa_hard_open_attempts"
@@ -557,40 +586,31 @@ export async function submitDsaHardOpenCode(input: {
   );
 
   return {
-    status,
-    passed: grade.passed,
-    total: grade.total,
-    scorePercent,
+    status: String(bestForProblem.status ?? status),
+    passed: Number(bestForProblem.passed ?? grade.passed),
+    total: Number(bestForProblem.total ?? grade.total),
+    scorePercent: Number(bestForProblem.scorePercent ?? scorePercent),
     compileOk: grade.compileOk,
     language: input.language,
     publicResults: grade.publicResults,
-    points,
+    points: Number(bestForProblem.points ?? points),
+    submitPoints: points,
+    totalScore,
+    maxScore: DSA_HARD_OPEN_PICK * DSA_HARD_OPEN_POINTS,
   };
 }
 
 export async function finalizeDsaHardOpenAttempt(examId: string, userId: string) {
   const { attempt, exam, user } = await startOrResumeDsaHardOpenAttempt(examId, userId);
   const ids = asStringArray(attempt.problem_ids_json);
-  const results =
-    attempt.results_json && typeof attempt.results_json === 'object'
-      ? (attempt.results_json as Record<
-          string,
-          {
-            status?: string;
-            scorePercent?: number;
-            points?: number;
-            language?: string;
-            passed?: number;
-            total?: number;
-          }
-        >)
-      : {};
+  const results = asResultMap(attempt.results_json);
 
   let totalScore = 0;
   let solvedCount = 0;
   let attemptedCount = 0;
   const strengths: string[] = [];
   const weaknesses: string[] = [];
+  const problemResults: NonNullable<PlacementScorecard['problemResults']> = [];
 
   const problems = await prisma.dsaProblem.findMany({ where: { id: { in: ids } } });
   const byId = new Map(problems.map((p) => [p.id, p]));
@@ -599,14 +619,32 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
     const p = byId.get(id);
     const r = results[id];
     const pts = Number(r?.points ?? 0);
+    const passedTests = Number(r?.passed ?? 0);
+    const totalTests = Number(r?.total ?? 0);
+    const scorePercent = Number(r?.scorePercent ?? 0);
     totalScore += pts;
     if (r) attemptedCount += 1;
-    const ok = r?.status === 'passed' || Number(r?.scorePercent) >= 100;
+    const ok = r?.status === 'passed' || scorePercent >= 100;
+    const title = p?.title ?? `Problem ${idx + 1}`;
+    problemResults.push({
+      position: idx + 1,
+      title,
+      earned: pts,
+      marks: DSA_HARD_OPEN_POINTS,
+      percent: scorePercent,
+      passedTests,
+      totalTests,
+      status: r ? String(r.status ?? (ok ? 'passed' : 'failed')) : 'skipped',
+    });
     if (ok) {
       solvedCount += 1;
-      strengths.push(`Solved P${idx + 1}: ${p?.title ?? id}`);
+      strengths.push(`Solved P${idx + 1}: ${title} (+${pts}/${DSA_HARD_OPEN_POINTS} marks)`);
+    } else if (r) {
+      weaknesses.push(
+        `Gap on P${idx + 1}: ${title} (${pts}/${DSA_HARD_OPEN_POINTS} marks, ${passedTests}/${totalTests || '?'} tests)`,
+      );
     } else {
-      weaknesses.push(`Gap on P${idx + 1}: ${p?.title ?? id}`);
+      weaknesses.push(`Skipped P${idx + 1}: ${title} (0/${DSA_HARD_OPEN_POINTS} marks)`);
     }
   });
 
@@ -667,6 +705,7 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
     communicationRating: 0,
     placementReadiness: readiness,
     sections: sectionDetails,
+    problemResults,
     strengths: strengths.length ? strengths : ['Keep practicing DSA coding patterns.'],
     weaknesses: weaknesses.length ? weaknesses : ['No major gaps recorded.'],
     recommendations: [
@@ -695,6 +734,101 @@ export async function finalizeDsaHardOpenAttempt(examId: string, userId: string)
   return scorecard;
 }
 
+async function enrichHardOpenScorecard(
+  attempt: AttemptRow,
+  scorecard: PlacementScorecard,
+): Promise<PlacementScorecard> {
+  const ids = asStringArray(attempt.problem_ids_json);
+  const results = asResultMap(attempt.results_json);
+  const problems = await prisma.dsaProblem.findMany({ where: { id: { in: ids } } });
+  const byId = new Map(problems.map((p) => [p.id, p]));
+
+  let totalScore = 0;
+  const problemResults: NonNullable<PlacementScorecard['problemResults']> = [];
+  ids.forEach((id, idx) => {
+    const p = byId.get(id);
+    const r = results[id];
+    const pts = Number(r?.points ?? 0);
+    totalScore += pts;
+    const passedTests = Number(r?.passed ?? 0);
+    const totalTests = Number(r?.total ?? 0);
+    const scorePercent = Number(r?.scorePercent ?? 0);
+    const ok = r?.status === 'passed' || scorePercent >= 100;
+    problemResults.push({
+      position: idx + 1,
+      title: p?.title ?? `Problem ${idx + 1}`,
+      earned: pts,
+      marks: DSA_HARD_OPEN_POINTS,
+      percent: scorePercent,
+      passedTests,
+      totalTests,
+      status: r ? String(r.status ?? (ok ? 'passed' : 'failed')) : 'skipped',
+    });
+  });
+
+  const maxScore = DSA_HARD_OPEN_PICK * DSA_HARD_OPEN_POINTS;
+  const fromResults = totalScore;
+  const fromColumn = Number(attempt.total_score ?? 0);
+  const earned =
+    fromResults > 0
+      ? fromResults
+      : fromColumn > 0
+        ? fromColumn
+        : Number(scorecard.earnedMarks ?? 0);
+  const percentage = maxScore > 0 ? Math.round((earned / maxScore) * 10000) / 100 : 0;
+
+  const sections = (scorecard.sections ?? []).map((s) =>
+    s.sectionId === 'programming'
+      ? {
+          ...s,
+          marks: maxScore,
+          earned,
+          percent: percentage,
+        }
+      : s,
+  );
+
+  return {
+    ...scorecard,
+    totalMarks: maxScore,
+    earnedMarks: earned,
+    percentage,
+    employabilityScore: percentage,
+    technicalRating: percentage,
+    sections: sections.length
+      ? sections
+      : [
+          {
+            sectionId: 'programming',
+            name: 'DSA Hard Coding',
+            marks: maxScore,
+            earned,
+            percent: percentage,
+            correct: problemResults.filter((p) => p.status === 'passed' || p.percent >= 100).length,
+            wrong: problemResults.filter(
+              (p) => p.status !== 'skipped' && p.status !== 'passed' && p.percent < 100,
+            ).length,
+            skipped: problemResults.filter((p) => p.status === 'skipped').length,
+            total: DSA_HARD_OPEN_PICK,
+          },
+        ],
+    problemResults,
+  };
+}
+
+function parseScorecardJson(raw: unknown): PlacementScorecard | null {
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== 'object') return null;
+  return value as PlacementScorecard;
+}
+
 export async function getDsaHardOpenResult(examId: string, userId: string) {
   await ensureDsaHardOpenTables();
   const rows = await prisma.$queryRawUnsafe<AttemptRow[]>(
@@ -704,8 +838,9 @@ export async function getDsaHardOpenResult(examId: string, userId: string) {
   );
   const attempt = rows[0];
   if (!attempt) throw Object.assign(new Error('Attempt not found'), { status: 404 });
-  if (attempt.status === 'submitted' && attempt.scorecard_json) {
-    return attempt.scorecard_json as PlacementScorecard;
+  const stored = parseScorecardJson(attempt.scorecard_json);
+  if (attempt.status === 'submitted' && stored) {
+    return enrichHardOpenScorecard(attempt, stored);
   }
   throw Object.assign(new Error('Attempt not submitted yet. Finish the exam to view results.'), {
     status: 403,
@@ -726,10 +861,11 @@ export async function getDsaHardOpenScorecardByAttemptId(attemptId: string): Pro
   const attempt = rows[0];
   if (!attempt) return { found: false };
 
-  if (attempt.scorecard_json && typeof attempt.scorecard_json === 'object') {
+  const stored = parseScorecardJson(attempt.scorecard_json);
+  if (stored) {
     return {
       found: true,
-      scorecard: attempt.scorecard_json as PlacementScorecard,
+      scorecard: await enrichHardOpenScorecard(attempt, stored),
       attemptId: attempt.id,
       userId: attempt.user_id,
     };
