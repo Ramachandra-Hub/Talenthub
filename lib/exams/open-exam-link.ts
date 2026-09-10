@@ -52,9 +52,11 @@ export async function getOpenExamByToken(token: string): Promise<OpenExamPublicI
       openLinkPassword: true,
       publishedTestId: true,
       status: true,
+      endTime: true,
     },
   });
   if (!exam?.openLinkEnabled || !exam.publishedTestId) return null;
+  if (exam.status === 'ended' || exam.endTime.getTime() <= Date.now()) return null;
   const isDsaHard = isDsaHardOpenPublishedId(exam.publishedTestId);
   return {
     title: exam.title,
@@ -105,10 +107,15 @@ export async function joinOpenExam(input: {
       openLinkPassword: true,
       publishedTestId: true,
       facultyExamRequestId: true,
+      status: true,
+      endTime: true,
     },
   });
   if (!exam?.openLinkEnabled || !exam.publishedTestId) {
     throw new Error('This open exam link is not active.');
+  }
+  if (exam.status === 'ended' || exam.endTime.getTime() <= Date.now()) {
+    throw new Error('This open exam has ended.');
   }
 
   const dsaHard = isDsaHardOpenPublishedId(exam.publishedTestId);

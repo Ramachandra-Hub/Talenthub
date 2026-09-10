@@ -96,9 +96,13 @@ function deleteConfirmMessage(test: AdminTestOverviewItem): string {
     return `Delete "${test.title}" from the student portal?`;
   }
   if (test.kind === 'published_exam') {
-    return `End open-link exam "${test.title}"? It will leave Live / Tests. Student scorecards stay in Test reports.`;
+    return `Remove "${test.title}" from Tests? Prefer End test to close an active open link.`;
   }
   return `Delete "${test.title}" completely? This removes schedules, rosters, and attempts.`;
+}
+
+function endConfirmMessage(test: AdminTestOverviewItem): string {
+  return `End "${test.title}" now? The open link closes immediately and students can no longer join or continue.`;
 }
 
 function AdminTestDetailModalContent({
@@ -121,6 +125,7 @@ function AdminTestDetailModalContent({
   const [reportError, setReportError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<'pdf' | 'csv' | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [ending, setEnding] = useState(false);
   const scorecardModal = useElevateXScorecardModal();
   const fromDashboard = isDashboardOverviewTest(test);
 
@@ -206,6 +211,32 @@ function AdminTestDetailModalContent({
   const targetDepartments =
     test.departments.length > 0 ? test.departments.join(', ') : 'All departments';
   const targetYears = test.years.length > 0 ? test.years.join(', ') : 'All years';
+
+  const endTest = async () => {
+    if (!test.can_end) return;
+    if (!window.confirm(endConfirmMessage(test))) return;
+
+    setEnding(true);
+    try {
+      const res = await fetch('/api/admin/tests-overview/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ overviewId: test.id }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!res.ok) {
+        alert(json.error ?? 'Could not end test');
+        return;
+      }
+      onOpenChange(false);
+      onDeleted?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not end test');
+    } finally {
+      setEnding(false);
+    }
+  };
 
   const deleteTest = async () => {
     if (!window.confirm(deleteConfirmMessage(test))) return;
@@ -460,14 +491,23 @@ function AdminTestDetailModalContent({
             Open full reports
           </Link>
         </Button>
+        {!fromDashboard && test.can_end ? (
+          <Button
+            className="bg-red-700 hover:bg-red-800 text-white"
+            disabled={ending || deleting}
+            onClick={() => void endTest()}
+          >
+            {ending ? 'Ending…' : 'End test'}
+          </Button>
+        ) : null}
         {!fromDashboard ? (
           <Button
             variant="outline"
-            disabled={deleting}
+            disabled={deleting || ending}
             className="text-red-700 border-red-200 hover:bg-red-50"
             onClick={() => void deleteTest()}
           >
-            {deleting ? 'Deleting…' : 'Delete'}
+            {deleting ? 'Deleting…' : test.kind === 'published_exam' ? 'Remove' : 'Delete'}
           </Button>
         ) : null}
         {test.kind === 'faculty_published' || test.kind === 'faculty_schedule' ? (

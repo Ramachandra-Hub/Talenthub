@@ -1,6 +1,5 @@
 import type { DbServiceClient } from '@/lib/db/get-db-service';
 import { deleteExamScheduleById, deleteFacultyExamRequest } from '@/lib/delete-faculty-exam';
-import { prisma } from '@/lib/prisma';
 
 export type ParsedOverviewItemId =
   | { type: 'schedule'; id: string }
@@ -47,27 +46,10 @@ export async function deleteAdminTestOverviewItem(
   }
 
   if (parsed.type === 'exam') {
-    try {
-      const existing = await prisma.exam.findUnique({
-        where: { id: parsed.id },
-        select: { id: true, title: true },
-      });
-      if (!existing) return { error: 'Published exam not found' };
-      await prisma.exam.update({
-        where: { id: parsed.id },
-        data: {
-          status: 'ended',
-          openLinkEnabled: false,
-          endTime: new Date(),
-        },
-      });
-      return {
-        ok: true,
-        message: `Open-link exam "${existing.title}" ended and removed from Tests.`,
-      };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Failed to end published exam' };
-    }
+    const { endOpenLinkExamByOverviewId } = await import('@/lib/admin/end-open-link-exam');
+    const ended = await endOpenLinkExamByOverviewId(overviewId);
+    if ('error' in ended) return { error: ended.error };
+    return { ok: true, message: ended.message };
   }
 
   const result = await deleteFacultyExamRequest(admin, parsed.id);

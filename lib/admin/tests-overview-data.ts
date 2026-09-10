@@ -54,6 +54,8 @@ export type AdminTestOverviewItem = {
   total_attempts: number;
   departments_attempted: DepartmentAttemptStat[];
   avg_score: number | null;
+  /** Open-link / hard-open exams can be ended immediately from Tests. */
+  can_end: boolean;
 };
 
 export type AdminTestsOverviewPayload = {
@@ -144,6 +146,13 @@ function attemptStatsFromAttempts(
     departments_attempted,
     avg_score: scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 100) / 100 : null,
   };
+}
+
+function withCanEnd<T extends object>(
+  item: T,
+  canEnd = false,
+): T & { can_end: boolean } {
+  return { ...item, can_end: canEnd };
 }
 
 function attemptStatsForTest(
@@ -257,6 +266,74 @@ export async function loadAdminTestsOverview(
 
   const facultyWithSchedule = new Set<string>();
 
+  // Open-link / hard-open exams first so they always appear on Tests with End test.
+  const openLinkCoveredTestIds: string[] = [];
+  const openLinkExams = await prisma.exam.findMany({
+    where: {
+      publishedTestId: { not: null },
+      OR: [
+        { openLinkEnabled: true },
+        { publishedTestId: { startsWith: DSA_HARD_OPEN_PREFIX } },
+        { openLinkToken: { not: null }, status: { in: ['published', 'ended'] } },
+      ],
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 400,
+  });
+
+  for (const exam of openLinkExams) {
+    const testId = String(exam.publishedTestId ?? '').trim();
+    if (!testId || testId === 'pending') continue;
+    if (openLinkCoveredTestIds.some((id) => testIdsMatch(id, testId))) continue;
+
+    const isHardOpen = testId.startsWith(DSA_HARD_OPEN_PREFIX);
+    const pseudoSchedule = {
+      status: (exam.status === 'ended' ? 'ended' : 'scheduled') as ExamScheduleRow['status'],
+      starts_at: exam.startTime.toISOString(),
+      ends_at: exam.endTime.toISOString(),
+    };
+    const resolved = resolveExamScheduleStatus(pseudoSchedule, now);
+    const status =
+      exam.status === 'ended' || !exam.openLinkEnabled
+        ? ('ended' as AdminTestBucket)
+        : bucketFromDisplay(resolved.display);
+    const kindLabel = isHardOpen
+      ? 'Hard coding open link'
+      : 'Open exam link';
+
+    items.push(
+      withCanEnd(
+        {
+          id: `exam:${exam.id}`,
+          test_id: testId,
+          title: exam.title?.trim() || kindLabel,
+          kind: 'published_exam' as const,
+          kind_label: kindLabel,
+          status,
+          status_label:
+            status === 'ended'
+              ? 'Ended'
+              : !exam.openLinkEnabled
+                ? 'Link closed'
+                : resolved.label,
+          departments: ['All departments'],
+          years: isHardOpen ? ['IV Year'] : ['All years'],
+          starts_at: exam.startTime.toISOString(),
+          ends_at: exam.endTime.toISOString(),
+          notice: kindLabel,
+          description: exam.description,
+          duration_minutes: exam.duration ?? null,
+          topic: null,
+          slot_number: null,
+          faculty_department: null,
+          ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
+        },
+        Boolean(exam.openLinkEnabled),
+      ),
+    );
+    openLinkCoveredTestIds.push(testId);
+  }
+
   for (const schedule of schedules) {
     const resolved = resolveExamScheduleStatus(schedule, now);
     const status = bucketFromDisplay(resolved.display);
@@ -276,6 +353,10 @@ export async function loadAdminTestsOverview(
           : [];
 
     const testId = schedule.test_id ? String(schedule.test_id) : faculty?.published_test_id ?? null;
+    if (testId && openLinkCoveredTestIds.some((id) => testIdsMatch(id, testId))) {
+      continue;
+    }
+
     const scheduleContext: ScheduleReportContext = {
       starts_at: schedule.starts_at,
       ends_at: schedule.ends_at,
@@ -284,26 +365,28 @@ export async function loadAdminTestsOverview(
       faculty_title: faculty?.title ?? null,
     };
 
-    items.push({
-      id: `schedule:${schedule.id}`,
-      test_id: testId,
-      title: schedule.title,
-      kind: 'faculty_schedule',
-      kind_label: schedule.slot_number ? `Faculty exam · Slot ${schedule.slot_number}` : 'Faculty exam',
-      status,
-      status_label: resolved.label,
-      departments,
-      years: schedule.target_years ?? faculty?.target_years ?? [],
-      starts_at: schedule.starts_at,
-      ends_at: schedule.ends_at,
-      notice: schedule.notice,
-      description: schedule.description,
-      duration_minutes: faculty?.duration_minutes ?? null,
-      topic: faculty?.topic ?? null,
-      slot_number: schedule.slot_number ?? null,
-      faculty_department: faculty?.department ?? null,
-      ...attemptStatsForScheduleWindow(testId, scheduleContext, attempts, studentBranchByUserId),
-    });
+    items.push(
+      withCanEnd({
+        id: `schedule:${schedule.id}`,
+        test_id: testId,
+        title: schedule.title,
+        kind: 'faculty_schedule',
+        kind_label: schedule.slot_number ? `Faculty exam · Slot ${schedule.slot_number}` : 'Faculty exam',
+        status,
+        status_label: resolved.label,
+        departments,
+        years: schedule.target_years ?? faculty?.target_years ?? [],
+        starts_at: schedule.starts_at,
+        ends_at: schedule.ends_at,
+        notice: schedule.notice,
+        description: schedule.description,
+        duration_minutes: faculty?.duration_minutes ?? null,
+        topic: faculty?.topic ?? null,
+        slot_number: schedule.slot_number ?? null,
+        faculty_department: faculty?.department ?? null,
+        ...attemptStatsForScheduleWindow(testId, scheduleContext, attempts, studentBranchByUserId),
+      }),
+    );
   }
 
   const { data: evaloraRows } = await admin
@@ -329,26 +412,28 @@ export async function loadAdminTestsOverview(
       faculty_title: null,
     };
 
-    items.push({
-      id: `evalora:${row.id}`,
-      test_id: testId,
-      title: row.title ?? (elevatex ? 'ElevateX' : row.module_key),
-      kind: 'evalora_module',
-      kind_label: elevatex ? 'ElevateX' : 'Evalora module',
-      status,
-      status_label: resolved.label,
-      departments: row.target_departments?.length ? row.target_departments : ['All departments'],
-      years: row.target_years?.length ? row.target_years : ['All years'],
-      starts_at: row.starts_at,
-      ends_at: row.ends_at,
-      notice: row.notice,
-      description: null,
-      duration_minutes: elevatex ? 60 : null,
-      topic: null,
-      slot_number: null,
-      faculty_department: null,
-      ...attemptStatsForScheduleWindow(testId, scheduleContext, attempts, studentBranchByUserId),
-    });
+    items.push(
+      withCanEnd({
+        id: `evalora:${row.id}`,
+        test_id: testId,
+        title: row.title ?? (elevatex ? 'ElevateX' : row.module_key),
+        kind: 'evalora_module',
+        kind_label: elevatex ? 'ElevateX' : 'Evalora module',
+        status,
+        status_label: resolved.label,
+        departments: row.target_departments?.length ? row.target_departments : ['All departments'],
+        years: row.target_years?.length ? row.target_years : ['All years'],
+        starts_at: row.starts_at,
+        ends_at: row.ends_at,
+        notice: row.notice,
+        description: null,
+        duration_minutes: elevatex ? 60 : null,
+        topic: null,
+        slot_number: null,
+        faculty_department: null,
+        ...attemptStatsForScheduleWindow(testId, scheduleContext, attempts, studentBranchByUserId),
+      }),
+    );
   }
 
   for (const faculty of facultyById.values()) {
@@ -356,40 +441,47 @@ export async function loadAdminTestsOverview(
     if (facultyWithSchedule.has(faculty.id)) continue;
 
     const testId = String(faculty.published_test_id);
-    items.push({
-      id: `faculty:${faculty.id}`,
-      test_id: testId,
-      title: faculty.title,
-      kind: 'faculty_published',
-      kind_label: 'Faculty exam (not scheduled)',
-      status: 'upcoming',
-      status_label: 'Approved · awaiting schedule',
-      departments: departmentsForFacultyRequest(faculty),
-      years: faculty.target_years ?? [],
-      starts_at: null,
-      ends_at: null,
-      notice: null,
-      description: faculty.description,
-      duration_minutes: faculty.duration_minutes,
-      topic: faculty.topic,
-      slot_number: null,
-      faculty_department: faculty.department,
-      ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
-    });
+    if (openLinkCoveredTestIds.some((id) => testIdsMatch(id, testId))) continue;
+
+    items.push(
+      withCanEnd({
+        id: `faculty:${faculty.id}`,
+        test_id: testId,
+        title: faculty.title,
+        kind: 'faculty_published',
+        kind_label: 'Faculty exam (not scheduled)',
+        status: 'upcoming',
+        status_label: 'Approved · awaiting schedule',
+        departments: departmentsForFacultyRequest(faculty),
+        years: faculty.target_years ?? [],
+        starts_at: null,
+        ends_at: null,
+        notice: null,
+        description: faculty.description,
+        duration_minutes: faculty.duration_minutes,
+        topic: faculty.topic,
+        slot_number: null,
+        faculty_department: faculty.department,
+        ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
+      }),
+    );
   }
 
-  // Published Exam rows (open-link / hard coding) that appear on Live dashboard but may lack ExamSchedule.
-  const coveredTestIds = items
-    .map((item) => item.test_id)
-    .filter((id): id is string => Boolean(id?.trim()));
+  // Other published Exam rows (non open-link) still live on the dashboard.
+  const coveredTestIds = [
+    ...openLinkCoveredTestIds,
+    ...items.map((item) => item.test_id).filter((id): id is string => Boolean(id?.trim())),
+  ];
 
   const publishedExams = await prisma.exam.findMany({
     where: {
       status: 'published',
       publishedTestId: { not: null },
+      openLinkEnabled: false,
+      NOT: { publishedTestId: { startsWith: DSA_HARD_OPEN_PREFIX } },
     },
     orderBy: { updatedAt: 'desc' },
-    take: 300,
+    take: 200,
   });
 
   for (const exam of publishedExams) {
@@ -397,14 +489,9 @@ export async function loadAdminTestsOverview(
     if (!testId || testId === 'pending') continue;
     if (coveredTestIds.some((id) => testIdsMatch(id, testId))) continue;
 
-    const isHardOpen = testId.startsWith(DSA_HARD_OPEN_PREFIX);
-    const isOpenLink = exam.openLinkEnabled || isHardOpen;
-    if (!isOpenLink && !isHardOpen) {
-      // Still list in-window published exams that live dashboard would surface.
-      const startMs = exam.startTime.getTime();
-      const endMs = exam.endTime.getTime();
-      if (!(startMs <= now && now <= endMs)) continue;
-    }
+    const startMs = exam.startTime.getTime();
+    const endMs = exam.endTime.getTime();
+    if (!(startMs <= now && now <= endMs)) continue;
 
     const pseudoSchedule = {
       status: 'scheduled' as ExamScheduleRow['status'],
@@ -413,32 +500,29 @@ export async function loadAdminTestsOverview(
     };
     const resolved = resolveExamScheduleStatus(pseudoSchedule, now);
     const status = bucketFromDisplay(resolved.display);
-    const kindLabel = isHardOpen
-      ? 'Hard coding open link'
-      : exam.openLinkEnabled
-        ? 'Open exam link'
-        : 'Published exam';
 
-    items.push({
-      id: `exam:${exam.id}`,
-      test_id: testId,
-      title: exam.title?.trim() || kindLabel,
-      kind: 'published_exam',
-      kind_label: kindLabel,
-      status,
-      status_label: resolved.label,
-      departments: ['All departments'],
-      years: isHardOpen ? ['IV Year'] : ['All years'],
-      starts_at: exam.startTime.toISOString(),
-      ends_at: exam.endTime.toISOString(),
-      notice: kindLabel,
-      description: exam.description,
-      duration_minutes: exam.duration ?? null,
-      topic: null,
-      slot_number: null,
-      faculty_department: null,
-      ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
-    });
+    items.push(
+      withCanEnd({
+        id: `exam:${exam.id}`,
+        test_id: testId,
+        title: exam.title?.trim() || 'Published exam',
+        kind: 'published_exam',
+        kind_label: 'Published exam',
+        status,
+        status_label: resolved.label,
+        departments: ['All departments'],
+        years: ['All years'],
+        starts_at: exam.startTime.toISOString(),
+        ends_at: exam.endTime.toISOString(),
+        notice: null,
+        description: exam.description,
+        duration_minutes: exam.duration ?? null,
+        topic: null,
+        slot_number: null,
+        faculty_department: null,
+        ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
+      }),
+    );
     coveredTestIds.push(testId);
   }
 

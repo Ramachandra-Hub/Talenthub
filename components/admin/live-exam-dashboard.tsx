@@ -130,6 +130,7 @@ async function downloadSlotReport(meta: EndedReportMeta, testTitle: string): Pro
     total_attempts: 0,
     departments_attempted: [],
     avg_score: null,
+    can_end: false,
   };
 
   downloadTestReportPdf({

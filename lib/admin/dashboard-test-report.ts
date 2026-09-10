@@ -65,6 +65,7 @@ export function buildDashboardTestOverviewItem(row: {
     total_attempts: row.attempts,
     departments_attempted: [],
     avg_score: row.avgScore,
+    can_end: false,
   };
 }
 

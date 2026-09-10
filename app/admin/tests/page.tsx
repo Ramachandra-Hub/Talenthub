@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { AdminTestDetailModal } from '@/components/admin/admin-test-detail-modal';
 import type {
@@ -44,6 +45,7 @@ export default function AdminTestsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTest, setSelectedTest] = useState<AdminTestOverviewItem | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [endingId, setEndingId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -100,6 +102,41 @@ export default function AdminTestsPage() {
     setModalOpen(true);
   };
 
+  const endOpenLinkTest = async (test: AdminTestOverviewItem) => {
+    if (!test.can_end) return;
+    if (
+      !window.confirm(
+        `End "${test.title}" now? The open link closes immediately and the test leaves Live.`,
+      )
+    ) {
+      return;
+    }
+
+    setEndingId(test.id);
+    try {
+      const res = await fetch('/api/admin/tests-overview/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ overviewId: test.id }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!res.ok) {
+        alert(json.error ?? 'Could not end test');
+        return;
+      }
+      await load();
+      if (selectedTest?.id === test.id) {
+        setModalOpen(false);
+        setSelectedTest(null);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not end test');
+    } finally {
+      setEndingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
@@ -119,7 +156,7 @@ export default function AdminTestsPage() {
     <div>
       <AdminPageHeader
         title="Tests"
-        description="All faculty exams, ElevateX modules, and scheduled assessments — live, upcoming, and ended."
+        description="All faculty exams, open-link challenges, ElevateX modules, and scheduled assessments — live, upcoming, and ended."
       />
 
       {loadError ? (
@@ -192,12 +229,13 @@ export default function AdminTestsPage() {
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Writing</th>
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Submitted</th>
                 <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Total</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredTests.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-gray-500">
+                  <td colSpan={9} className="text-center py-10 text-gray-500">
                     No tests match the current filters.
                   </td>
                 </tr>
@@ -241,6 +279,22 @@ export default function AdminTestsPage() {
                     </td>
                     <td className="py-3 px-4 text-sm text-right font-semibold text-[#1e3a5f]">
                       {test.students_attempted}
+                    </td>
+                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                      {test.can_end ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs text-red-700 border-red-200 hover:bg-red-50"
+                          disabled={endingId === test.id}
+                          onClick={() => void endOpenLinkTest(test)}
+                        >
+                          {endingId === test.id ? 'Ending…' : 'End test'}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))

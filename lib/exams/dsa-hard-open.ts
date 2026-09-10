@@ -271,6 +271,9 @@ export async function startOrResumeDsaHardOpenAttempt(examId: string, userId: st
   if (!exam?.openLinkEnabled || !isDsaHardOpenTestId(exam.publishedTestId)) {
     throw Object.assign(new Error('Open coding exam not found'), { status: 404 });
   }
+  if (exam.status === 'ended' || exam.endTime.getTime() <= Date.now()) {
+    throw Object.assign(new Error('This open coding exam has ended.'), { status: 403 });
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -323,6 +326,9 @@ export async function getDsaHardOpenBrief(examId: string, userId: string) {
   const exam = await prisma.exam.findUnique({ where: { id: examId } });
   if (!exam?.openLinkEnabled || !isDsaHardOpenTestId(exam.publishedTestId)) {
     throw Object.assign(new Error('Open coding exam not found'), { status: 404 });
+  }
+  if (exam.status === 'ended' || exam.endTime.getTime() <= Date.now()) {
+    throw Object.assign(new Error('This open coding exam has ended.'), { status: 403 });
   }
 
   const user = await prisma.user.findUnique({
