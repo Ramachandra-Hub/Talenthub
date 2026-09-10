@@ -33,6 +33,12 @@ export function parseTestCases(raw: unknown): DsaTestCase[] {
   return out;
 }
 
+function clip(text: string, max = 220): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max)}…`;
+}
+
 export async function gradeDsaSource(input: {
   language: string;
   sourceCode: string;
@@ -54,20 +60,32 @@ export async function gradeDsaSource(input: {
   for (const testCase of cases) {
     const result = await executeCode(language, input.sourceCode, testCase.input);
     runtimeMs += result.runtimeMs;
-    const ok =
-      result.exitCode === 0 &&
-      !result.stderr.trim() &&
-      outputsMatch(result.stdout, testCase.expectedOutput);
-    if (result.exitCode !== 0 || /error/i.test(result.stderr)) compileOk = compileOk && result.exitCode === 0;
+    const matched = outputsMatch(result.stdout ?? '', testCase.expectedOutput);
+    // Same rule as ElevateX programming grading: exit 0 + matching stdout.
+    // Do NOT require empty stderr — Java sandboxes often print harmless JVM notes.
+    const ok = result.exitCode === 0 && matched;
+
+    if (result.exitCode !== 0) compileOk = false;
     if (ok) passed += 1;
     else {
       stderr = result.stderr || stderr;
       stdout = result.stdout || stdout;
     }
     if (!testCase.hidden) {
+      let failMsg: string | undefined;
+      if (!ok) {
+        if (result.exitCode !== 0) {
+          failMsg = clip(result.stderr || result.stdout || 'Runtime / compile error');
+        } else {
+          failMsg = `Wrong answer. Expected: ${clip(testCase.expectedOutput, 80)} · Got: ${clip(
+            result.stdout || '(empty)',
+            80,
+          )}`;
+        }
+      }
       publicResults.push({
         passed: ok,
-        stderr: ok ? undefined : (result.stderr || 'Wrong answer on a sample test').slice(0, 400),
+        stderr: failMsg,
       });
     }
   }

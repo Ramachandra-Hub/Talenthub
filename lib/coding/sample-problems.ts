@@ -8,13 +8,17 @@ export type ProgrammingTestCase = {
 export type ProgrammingProblem = {
   id: string;
   title: string;
-  difficulty: 'Easy' | 'Medium';
+  difficulty: 'Easy' | 'Medium' | 'Hard';
   statement: string;
   inputFormat: string;
   outputFormat: string;
   sampleInput: string;
   sampleOutput: string;
   hint?: string;
+  /** Prefill in the student editor so they can Run immediately. */
+  starterCode?: string;
+  /** Language students should use (exam UI can lock to this). */
+  defaultLanguage?: 'c' | 'python' | 'java';
   /** Plain-language guide shown in ElevateX technical coding. */
   studentGuide?: string;
   /** What skill this problem evaluates in the exam. */
@@ -24,11 +28,33 @@ export type ProgrammingProblem = {
 };
 
 function normalizeOutput(text: string): string {
-  return text.replace(/\r\n/g, '\n').trim();
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .trim();
 }
 
+/** True when outputs are equal after whitespace normalization (OJ-style). */
 export function outputsMatch(actual: string, expected: string): boolean {
-  return normalizeOutput(actual) === normalizeOutput(expected);
+  const a = normalizeOutput(actual);
+  const b = normalizeOutput(expected);
+  if (a === b) return true;
+
+  // Token compare so "22\n" vs "22", or "1  2" vs "1 2", still pass.
+  const tokensA = a.split(/\s+/).filter(Boolean);
+  const tokensB = b.split(/\s+/).filter(Boolean);
+  if (tokensA.length === 0 || tokensA.length !== tokensB.length) return false;
+
+  return tokensA.every((tok, i) => {
+    const exp = tokensB[i]!;
+    if (tok === exp) return true;
+    const n1 = Number(tok);
+    const n2 = Number(exp);
+    return Number.isFinite(n1) && Number.isFinite(n2) && n1 === n2;
+  });
 }
 
 export const PROGRAMMING_SAMPLE_PROBLEMS: ProgrammingProblem[] = [
