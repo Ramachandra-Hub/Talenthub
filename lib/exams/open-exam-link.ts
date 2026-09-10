@@ -229,6 +229,7 @@ export async function joinOpenExam(input: {
     }
   }
 
+  // Use inlined helpers only — never re-import dsa-hard-open here (circular import + duplicate bindings).
   const hardExamId = examIdFromDsaHardPublishedId(exam.publishedTestId);
 
   return {
