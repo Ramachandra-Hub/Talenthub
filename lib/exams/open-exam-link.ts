@@ -70,6 +70,9 @@ export type JoinOpenExamResult = {
   takeUrl: string;
   rollNumber: string;
   userId: string;
+  /** Set for DSA hard open-link exams so the join API can lock the session. */
+  openCodingExamId?: string;
+  durationMinutes?: number;
 };
 
 export async function joinOpenExam(input: {
@@ -97,6 +100,7 @@ export async function joinOpenExam(input: {
     select: {
       id: true,
       title: true,
+      duration: true,
       openLinkEnabled: true,
       openLinkPassword: true,
       publishedTestId: true,
@@ -233,6 +237,8 @@ export async function joinOpenExam(input: {
         : studentTakeUrlForTestId(exam.publishedTestId),
     rollNumber,
     userId: user.id,
+    openCodingExamId: hardExamId ?? undefined,
+    durationMinutes: exam.duration,
   };
 }
 

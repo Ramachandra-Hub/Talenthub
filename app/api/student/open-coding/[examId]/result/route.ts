@@ -4,10 +4,16 @@ import {
   finalizeDsaHardOpenAttempt,
   getDsaHardOpenResult,
 } from '@/lib/exams/dsa-hard-open';
+import { clearOpenCodingLockCookieHeader } from '@/lib/exams/open-coding-lock';
 
 export const runtime = 'nodejs';
 
 type Ctx = { params: Promise<{ examId: string }> };
+
+function withLockCleared(res: NextResponse) {
+  res.headers.append('Set-Cookie', clearOpenCodingLockCookieHeader());
+  return res;
+}
 
 export async function GET(request: Request, ctx: Ctx) {
   const auth = await requireAuth(['student'], request);
@@ -15,7 +21,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const { examId } = await ctx.params;
   try {
     const scorecard = await getDsaHardOpenResult(examId, auth.ctx.user.id);
-    return NextResponse.json({ scorecard });
+    return withLockCleared(NextResponse.json({ scorecard }));
   } catch (err) {
     const status = (err as Error & { status?: number }).status ?? 500;
     return NextResponse.json(
@@ -31,7 +37,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const { examId } = await ctx.params;
   try {
     const scorecard = await finalizeDsaHardOpenAttempt(examId, auth.ctx.user.id);
-    return NextResponse.json({ scorecard });
+    return withLockCleared(NextResponse.json({ scorecard }));
   } catch (err) {
     const status = (err as Error & { status?: number }).status ?? 500;
     return NextResponse.json(

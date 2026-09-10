@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { CodeLabShell } from '@/components/student/portal/coding/code-lab-shell';
 import {
@@ -14,8 +13,11 @@ import type {
   CodeLabSubmitSnapshot,
   PublicTestRow,
 } from '@/components/student/portal/coding/code-lab-types';
+import { ExamProctorPanel } from '@/components/proctor/exam-proctor-panel';
+import { useExamProctoring } from '@/hooks/use-exam-proctoring';
 import { isCodingLanguageId, type CodingLanguageId } from '@/lib/coding/languages';
 import { runCodingOnServer } from '@/lib/coding/run-client';
+import { PROCTOR_MAX_VIOLATIONS } from '@/lib/exam-v2/proctoring-config';
 
 type LabProblem = CodeLabProblem & {
   category?: string | null;
@@ -33,6 +35,7 @@ type LabPayload = {
     id: string;
     status: string;
     startedAt: string;
+    endsAt?: string;
     solvedCount: number;
     maxScore: number;
   };
@@ -43,6 +46,13 @@ function starterFor(problem: LabProblem | null, language: CodingLanguageId): str
   if (!problem) return '';
   const map = problem.starterCode ?? {};
   return map[language] || map.java || map.python || '';
+}
+
+function formatRemain(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
 }
 
 export default function OpenCodingLabPage() {
@@ -62,6 +72,12 @@ export default function OpenCodingLabPage() {
   const [consoleTab, setConsoleTab] = useState<CodeLabConsoleTab>('output');
   const [missionResult, setMissionResult] = useState<MissionResultData | null>(null);
   const [missionResultOpen, setMissionResultOpen] = useState(false);
+  const [remainSec, setRemainSec] = useState<number | null>(null);
+  const [proctorReady, setProctorReady] = useState(false);
+
+  const proctorVideoRef = useRef<HTMLVideoElement>(null);
+  const attemptIdRef = useRef<string | null>(null);
+  const finishingRef = useRef(false);
 
   const loadLab = useCallback(async () => {
     const res = await fetch(`/api/student/open-coding/${encodeURIComponent(examId)}/lab`, {
@@ -69,18 +85,24 @@ export default function OpenCodingLabPage() {
       cache: 'no-store',
     });
     const json = await res.json();
+    if (res.status === 410) {
+      router.replace(`/open-coding/${examId}/result`);
+      return null;
+    }
     if (!res.ok) {
       setError(json.error ?? 'Failed to load coding lab');
       return null;
     }
     return json as LabPayload;
-  }, [examId]);
+  }, [examId, router]);
 
   useEffect(() => {
     const boot = async () => {
       const payload = await loadLab();
       if (!payload) return;
       setData(payload);
+      attemptIdRef.current = payload.attempt.id;
+      setProctorReady(true);
       const initial: Record<string, string> = {};
       for (const p of payload.problems) {
         initial[`${p.id}:java`] = starterFor(p, 'java');
@@ -90,6 +112,66 @@ export default function OpenCodingLabPage() {
     };
     void boot();
   }, [loadLab]);
+
+  const finish = useCallback(async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setBusy('finish');
+    try {
+      const res = await fetch(`/api/student/open-coding/${encodeURIComponent(examId)}/result`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error ?? 'Could not finish exam');
+        finishingRef.current = false;
+        return;
+      }
+      router.replace(`/open-coding/${examId}/result`);
+    } finally {
+      setBusy(null);
+    }
+  }, [examId, router]);
+
+  useEffect(() => {
+    if (!data?.attempt.endsAt) return;
+    const ends = new Date(data.attempt.endsAt).getTime();
+    const tick = () => {
+      const left = Math.ceil((ends - Date.now()) / 1000);
+      setRemainSec(left);
+      if (left <= 0) void finish();
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [data?.attempt.endsAt, finish]);
+
+  const proctorSessionId = data?.attempt.id ?? '';
+  const {
+    violationCount,
+    tabSwitchCount,
+    cameraReady,
+    cameraError,
+    faceNotVisible,
+    autoSubmitTriggered,
+    enterFullscreen,
+    startCamera,
+  } = useExamProctoring({
+    testId: `dsa_hard_open:${examId}`,
+    sessionId: proctorSessionId,
+    enabled: proctorReady && Boolean(proctorSessionId),
+    requireCamera: true,
+    videoRef: proctorVideoRef,
+    attemptIdRef,
+    onMaxViolations: () => {
+      void finish();
+    },
+  });
+
+  useEffect(() => {
+    if (autoSubmitTriggered) void finish();
+  }, [autoSubmitTriggered, finish]);
 
   const problem = data?.problems[activeIdx] ?? null;
   const codeKey = problem ? `${problem.id}:${language}` : '';
@@ -103,9 +185,7 @@ export default function OpenCodingLabPage() {
     [codeKey],
   );
 
-  const clearMissionResult = () => {
-    setMissionResultOpen(false);
-  };
+  const clearMissionResult = () => setMissionResultOpen(false);
 
   const onLanguageChange = (id: CodingLanguageId) => {
     setLanguage(id);
@@ -170,6 +250,10 @@ export default function OpenCodingLabPage() {
         },
       );
       const json = await res.json();
+      if (res.status === 410) {
+        router.replace(`/open-coding/${examId}/result`);
+        return;
+      }
       if (!res.ok) {
         setRunOut(json.error ?? 'Submit failed');
         setConsoleTab('errors');
@@ -179,7 +263,7 @@ export default function OpenCodingLabPage() {
       const passed = Number(json.passed ?? 0);
       const total = Number(json.total ?? 0);
       const status = String(json.status ?? 'failed');
-      const snapshot: CodeLabSubmitSnapshot = {
+      setLastSubmit({
         passed,
         total,
         status,
@@ -187,16 +271,15 @@ export default function OpenCodingLabPage() {
         scorePercent: json.scorePercent,
         language: json.language,
         publicResults: json.publicResults,
-      };
-      setLastSubmit(snapshot);
+      });
       setPublicResults(Array.isArray(json.publicResults) ? json.publicResults : null);
       if (json.publicResults?.length) setConsoleTab('tests');
-      if (json.compileOk === false) {
-        setRunOut(`Compilation issue · ${passed}/${total} tests passed.`);
-        setConsoleTab('errors');
-      } else {
-        setRunOut(`Submitted · ${passed}/${total} tests passed.`);
-      }
+      setRunOut(
+        json.compileOk === false
+          ? `Compilation issue · ${passed}/${total} tests passed.`
+          : `Submitted · ${passed}/${total} tests passed.`,
+      );
+      if (json.compileOk === false) setConsoleTab('errors');
 
       setMissionResult({
         problemId: problem.id,
@@ -216,25 +299,6 @@ export default function OpenCodingLabPage() {
     } catch (err) {
       setRunOut(err instanceof Error ? err.message : 'Submit failed');
       setConsoleTab('errors');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const finish = async () => {
-    setBusy('finish');
-    try {
-      const res = await fetch(`/api/student/open-coding/${encodeURIComponent(examId)}/result`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(json.error ?? 'Could not finish exam');
-        return;
-      }
-      clearMissionResult();
-      router.push(`/open-coding/${examId}/result`);
     } finally {
       setBusy(null);
     }
@@ -274,9 +338,6 @@ export default function OpenCodingLabPage() {
     return (
       <div className="code-lab flex min-h-[100dvh] flex-col items-center justify-center gap-3 p-6">
         <p className="text-sm text-rose-300">{error}</p>
-        <Link href={`/open-coding/${examId}`} className="code-lab-btn code-lab-btn-ghost">
-          ← Back to challenge brief
-        </Link>
       </div>
     );
   }
@@ -284,21 +345,38 @@ export default function OpenCodingLabPage() {
   if (!data) {
     return (
       <div className="code-lab flex min-h-[100dvh] items-center justify-center text-sm text-slate-400">
-        Loading Code Lab…
+        Loading locked Code Lab…
       </div>
     );
   }
 
   return (
     <div className="code-lab min-h-screen pb-8">
+      <ExamProctorPanel
+        videoRef={proctorVideoRef}
+        violationCount={violationCount}
+        maxViolations={PROCTOR_MAX_VIOLATIONS}
+        tabSwitchCount={tabSwitchCount}
+        cameraReady={cameraReady}
+        cameraError={cameraError}
+        faceNotVisible={faceNotVisible}
+        autoSubmitTriggered={autoSubmitTriggered}
+        onEnterFullscreen={() => void enterFullscreen()}
+        onVideoMount={() => {
+          void startCamera().catch(() => {
+            /* handled inside hook */
+          });
+        }}
+      />
+
       <MissionResult
         open={missionResultOpen}
         result={missionResult}
         onBackToCodeLab={clearMissionResult}
-        onReturnToArena={() => router.push(`/open-coding/${examId}`)}
+        onReturnToArena={() => clearMissionResult()}
         showFinishDay
         finishDayDisabled={busy != null}
-        finishDayLabel={busy === 'finish' ? 'Finishing…' : 'Finish Challenge & view result'}
+        finishDayLabel={busy === 'finish' ? 'Submitting…' : 'Finish exam & view result'}
         onFinishDay={() => void finish()}
       />
 
@@ -309,26 +387,29 @@ export default function OpenCodingLabPage() {
         <div className="code-lab-panel code-lab-mission-bar rounded-sm">
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
-              Hard Challenge · {data.exam.durationMinutes} min · Code Lab
+              Open-link exam · Proctored · {data.exam.durationMinutes} min
             </p>
             <p className="mt-0.5 truncate text-[13px] font-semibold text-white">{data.exam.title}</p>
             <p className="mt-0.5 text-[11px] text-slate-400">
               Code {solvedCount}/5 · Problem {activeIdx + 1} of {shellProblems.length}
             </p>
           </div>
-          <Link
-            href={`/open-coding/${examId}`}
-            className="text-[11px] font-semibold text-cyan-300/80 hover:text-cyan-200"
+          <div
+            className={`rounded-sm border px-2.5 py-1 font-mono text-sm tabular-nums ${
+              remainSec != null && remainSec <= 300
+                ? 'border-rose-400/40 bg-rose-500/15 text-rose-100'
+                : 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100'
+            }`}
           >
-            Challenge brief →
-          </Link>
+            {remainSec == null ? '--:--' : formatRemain(remainSec)}
+          </div>
           <button
             type="button"
             className="code-lab-btn code-lab-btn-primary"
             disabled={busy === 'finish'}
             onClick={() => void finish()}
           >
-            {busy === 'finish' ? 'Finishing…' : 'Finish Challenge'}
+            {busy === 'finish' ? 'Submitting…' : 'Finish exam'}
           </button>
         </div>
 
@@ -336,10 +417,10 @@ export default function OpenCodingLabPage() {
 
         <CodeLabShell
           dayTitle={data.exam.title}
-          weekLabel="Hard Coding Challenge"
+          weekLabel="Open-link Hard Coding"
           kind="official"
           backHref={`/open-coding/${examId}`}
-          backLabel="Back to challenge brief"
+          backLabel="Challenge questions"
           problems={shellProblems}
           activeProblemIdx={activeIdx}
           onSelectProblem={onSelectProblem}
@@ -361,15 +442,6 @@ export default function OpenCodingLabPage() {
           minCoding={5}
           expandProblemDocument
         />
-
-        <button
-          type="button"
-          className="code-lab-btn code-lab-btn-ghost w-full py-2.5 text-sm"
-          disabled={busy != null}
-          onClick={() => void finish()}
-        >
-          {busy === 'finish' ? 'Finishing…' : 'Finish Challenge & open ElevateX scorecard'}
-        </button>
       </div>
     </div>
   );

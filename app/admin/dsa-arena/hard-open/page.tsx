@@ -91,7 +91,7 @@ export default function AdminDsaHardOpenPage() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          durationMinutes: 90,
+          durationMinutes: 60,
           password: DEFAULT_EXAM_STUDENT_PASSWORD,
         }),
       });

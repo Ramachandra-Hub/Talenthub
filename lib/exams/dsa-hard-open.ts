@@ -137,13 +137,13 @@ export async function createAndPublishDsaHardOpenExam(input: {
   const password = resolveOpenLinkPassword(input.password ?? DEFAULT_EXAM_STUDENT_PASSWORD);
   const now = new Date();
   const end = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 30);
-  const duration = Math.max(30, Math.min(180, input.durationMinutes ?? 90));
+  const duration = Math.max(30, Math.min(180, input.durationMinutes ?? 60));
 
   const exam = await prisma.exam.create({
     data: {
       title,
       description:
-        'DSA Hard open-link coding exam. Pool: 50 contest-bank Java/Python problems. Draw: 5 jumbled. IV Year only.',
+        'DSA Hard open-link coding exam (locked mode). Pool: contest-bank Java/Python. Draw: 5 jumbled. 60 min timer. ElevateX-style proctor + results. IV Year only.',
       duration,
       totalMarks: DSA_HARD_OPEN_PICK * DSA_HARD_OPEN_POINTS,
       passingMarks: Math.round(DSA_HARD_OPEN_PICK * DSA_HARD_OPEN_POINTS * 0.4),
@@ -379,10 +379,33 @@ export async function startDsaHardOpenChallenge(examId: string, userId: string) 
   };
 }
 
+function attemptEndsAt(startedAt: Date, durationMinutes: number): Date {
+  return new Date(startedAt.getTime() + durationMinutes * 60_000);
+}
+
+async function finalizeIfTimedOut(
+  examId: string,
+  userId: string,
+  attempt: AttemptRow,
+  durationMinutes: number,
+): Promise<boolean> {
+  if (attempt.status === 'submitted') return false;
+  const ends = attemptEndsAt(new Date(attempt.started_at), durationMinutes);
+  if (Date.now() <= ends.getTime()) return false;
+  await finalizeDsaHardOpenAttempt(examId, userId);
+  return true;
+}
+
 export async function getDsaHardOpenLabPayload(examId: string, userId: string) {
   const { attempt, exam } = await startOrResumeDsaHardOpenAttempt(examId, userId);
   if (attempt.status === 'submitted') {
     throw Object.assign(new Error('Attempt already submitted'), { status: 403 });
+  }
+  if (await finalizeIfTimedOut(examId, userId, attempt, exam.duration)) {
+    throw Object.assign(new Error('Time is up. Your exam was auto-submitted.'), {
+      status: 410,
+      code: 'TIME_UP',
+    });
   }
   const ids = asStringArray(attempt.problem_ids_json);
   const problems = await prisma.dsaProblem.findMany({
@@ -439,6 +462,7 @@ export async function getDsaHardOpenLabPayload(examId: string, userId: string) {
       id: attempt.id,
       status: attempt.status,
       startedAt: attempt.started_at,
+      endsAt: attemptEndsAt(new Date(attempt.started_at), exam.duration).toISOString(),
       totalScore: attempt.total_score,
       maxScore: attempt.max_score,
       solvedCount: attempt.solved_count,
@@ -462,6 +486,19 @@ export async function submitDsaHardOpenCode(input: {
   const { attempt } = await startOrResumeDsaHardOpenAttempt(input.examId, input.userId);
   if (attempt.status === 'submitted') {
     throw Object.assign(new Error('Attempt already submitted'), { status: 403 });
+  }
+  const exam = await prisma.exam.findUnique({
+    where: { id: input.examId },
+    select: { duration: true },
+  });
+  if (
+    exam &&
+    (await finalizeIfTimedOut(input.examId, input.userId, attempt, exam.duration))
+  ) {
+    throw Object.assign(new Error('Time is up. Your exam was auto-submitted.'), {
+      status: 410,
+      code: 'TIME_UP',
+    });
   }
   const ids = asStringArray(attempt.problem_ids_json);
   if (!ids.includes(input.problemId)) {

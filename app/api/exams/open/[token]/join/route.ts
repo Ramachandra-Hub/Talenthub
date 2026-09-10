@@ -6,6 +6,7 @@ import {
 } from '@/lib/auth/student-sign-in-core';
 import { guardLoginAttempt } from '@/lib/auth/login-rate-limit';
 import { DEFAULT_EXAM_STUDENT_PASSWORD } from '@/lib/roster-credentials-export';
+import { openCodingLockCookieHeader } from '@/lib/exams/open-coding-lock';
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -57,8 +58,16 @@ export async function POST(request: NextRequest, context: Params) {
     const json = NextResponse.json({
       ok: true,
       takeUrl: joined.takeUrl,
+      lockedOpenCoding: Boolean(joined.openCodingExamId),
     });
-    return copyAuthSessionCookiesToResponse(json, signed.sessionId);
+    const withSession = copyAuthSessionCookiesToResponse(json, signed.sessionId);
+    if (joined.openCodingExamId) {
+      withSession.headers.append(
+        'Set-Cookie',
+        openCodingLockCookieHeader(joined.openCodingExamId, joined.durationMinutes ?? 60),
+      );
+    }
+    return withSession;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not join exam';
     return NextResponse.json({ error: message }, { status: 400 });

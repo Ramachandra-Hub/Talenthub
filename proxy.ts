@@ -8,12 +8,21 @@ import {
 } from '@/lib/roles';
 import { isSetupRoutesEnabled } from '@/lib/setup/is-setup-enabled';
 
+import {
+  isOpenCodingLockAllowedApi,
+  isOpenCodingLockAllowedPage,
+  isOpenCodingLockBlockedPage,
+  OPEN_CODING_LOCK_COOKIE,
+} from '@/lib/exams/open-coding-lock';
+
 const PROTECTED_PREFIXES = [
   '/exams',
   '/home',
   '/dashboard',
   '/placement',
   '/dsa',
+  '/dsa-arena',
+  '/open-coding',
   '/tests/rmset',
   '/tests/take',
   '/tests/programming',
@@ -21,6 +30,10 @@ const PROTECTED_PREFIXES = [
   '/tests/department',
   '/admin',
   '/profile',
+  '/learning',
+  '/contests',
+  '/leaderboard',
+  '/achievements',
   '/checkout',
   '/ai',
   '/tests/competitive-exam',
@@ -29,6 +42,10 @@ const PROTECTED_PREFIXES = [
 ];
 
 function isProtectedPath(pathname: string): boolean {
+  // Never gate static assets (e.g. /dsa/*.png would otherwise match /dsa)
+  if (/\.(png|jpe?g|gif|webp|svg|ico|css|js|map|woff2?|ttf|txt|csv)$/i.test(pathname)) {
+    return false;
+  }
   return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
@@ -53,7 +70,6 @@ function applyRoleRedirects(
     if (
       pathname === '/dashboard' ||
       pathname.startsWith('/dashboard/') ||
-      pathname === '/profile' ||
       pathname.startsWith('/ai/')
     ) {
       return NextResponse.redirect(new URL('/home', request.url));
@@ -98,6 +114,29 @@ async function proxyAws(request: NextRequest): Promise<NextResponse> {
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  const lockExamId = request.cookies.get(OPEN_CODING_LOCK_COOKIE)?.value?.trim() || null;
+  if (lockExamId) {
+    if (pathname.startsWith('/api/')) {
+      if (!isOpenCodingLockAllowedApi(pathname)) {
+        return NextResponse.json(
+          {
+            error:
+              'Open-link hard coding exam is in progress. Only the challenge Code Lab is available.',
+          },
+          { status: 403 },
+        );
+      }
+      return NextResponse.next({ request: { headers: request.headers } });
+    }
+
+    if (
+      isOpenCodingLockBlockedPage(pathname) ||
+      (pathname.startsWith('/open-coding/') && !isOpenCodingLockAllowedPage(pathname, lockExamId))
+    ) {
+      return NextResponse.redirect(new URL(`/open-coding/${lockExamId}`, request.url));
+    }
+  }
 
   if (
     (pathname.startsWith('/api/setup') ||
