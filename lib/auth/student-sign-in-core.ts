@@ -5,7 +5,6 @@ import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
 import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { getAuthSetupErrors } from '@/lib/auth/config-check';
 import { prisma } from '@/lib/prisma';
-import { claimStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 import { createStudentSessionId } from '@/lib/student-session-cookie';
 import { hashPassword } from '@/lib/password';
 import { COLLEGE } from '@/lib/college-brand';
@@ -154,6 +153,25 @@ export async function runStudentCredentialSignIn(
   } catch (err) {
     console.error('[student signin] signIn failed:', err);
     const message = err instanceof Error ? err.message : String(err);
+    const isCredentials =
+      (err as { type?: string; code?: string } | null)?.type === 'CredentialsSignin' ||
+      (err as { code?: string } | null)?.code === 'credentials' ||
+      /credentialssignin/i.test(message);
+    if (isCredentials) {
+      if (openJoinProof) {
+        return { error: 'Could not start the open-link exam session. Try joining again.' };
+      }
+      if (isIvYear) {
+        return {
+          error:
+            'Invalid password for this roll number. If you just registered, use the same password you set.',
+        };
+      }
+      return {
+        error:
+          'Invalid roll number or password. IV Year students: select IV Year to create your account on first login.',
+      };
+    }
     if (message.includes('schema') || message.includes('Database tables')) {
       return { error: message };
     }
@@ -204,15 +222,14 @@ export async function runStudentCredentialSignIn(
   }
 
   const sessionId = createStudentSessionId();
-  let lock = await claimStudentSessionPrisma(rollNumber, user.id, sessionId);
-  if (!lock.lockActive && input.forceClaimSession) {
-    const { forceClaimStudentSessionPrisma } = await import('@/lib/student-session-lock-prisma');
-    lock = await forceClaimStudentSessionPrisma(rollNumber, user.id, sessionId);
-  }
+  // Password already verified — always take over any prior lock for this roll.
+  // Blocking re-login after a closed tab / cleared cookies caused false 401s.
+  const { forceClaimStudentSessionPrisma } = await import('@/lib/student-session-lock-prisma');
+  const lock = await forceClaimStudentSessionPrisma(rollNumber, user.id, sessionId);
   if (!lock.lockActive) {
     return {
       error:
-        'This roll number already has an active login session. Please sign out from the other device first.',
+        'Could not start your session. Wait a moment and try signing in again.',
     };
   }
 
