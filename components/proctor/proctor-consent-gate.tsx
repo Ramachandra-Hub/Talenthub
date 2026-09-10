@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { PROCTOR_MAX_VIOLATIONS } from '@/lib/exam-v2/proctoring-config';
-import { installPlayAbortGuard, safeVideoPlay } from '@/lib/media/safe-video-play';
+import { installPlayAbortGuard, safeVideoPlay, clearVideoStream } from '@/lib/media/safe-video-play';
 
 type Props = {
   onReady: () => void;
@@ -13,10 +13,7 @@ type Props = {
 function releasePreview(video: HTMLVideoElement | null) {
   const stream = video?.srcObject as MediaStream | null;
   stream?.getTracks().forEach((t) => t.stop());
-  if (!video) return;
-  // Avoid pause() / load() — both can race in-flight play() and log AbortError.
-  video.srcObject = null;
-  video.removeAttribute('src');
+  clearVideoStream(video);
 }
 
 export function ProctorConsentGate({ onReady, onCancel }: Props) {
@@ -84,7 +81,6 @@ export function ProctorConsentGate({ onReady, onCancel }: Props) {
           className="h-full w-full object-cover scale-x-[-1]"
           playsInline
           muted
-          autoPlay
           aria-label="Camera check preview"
         />
         {!cameraOk ? (

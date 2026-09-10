@@ -32,7 +32,15 @@ function AdminLoginForm() {
       cache: 'no-store',
     });
     if (verifyRes.status === 401) {
-      await new Promise((r) => window.setTimeout(r, 250));
+      await new Promise((r) => window.setTimeout(r, 400));
+      verifyRes = await fetch('/api/admin/verify', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+    }
+    if (verifyRes.status === 401) {
+      await new Promise((r) => window.setTimeout(r, 600));
       verifyRes = await fetch('/api/admin/verify', {
         method: 'POST',
         credentials: 'include',
@@ -56,7 +64,7 @@ function AdminLoginForm() {
 
     if (verifyRes.status === 401) {
       throw new Error(
-        'Sign-in succeeded but the session cookie was not saved. Use http://localhost:3000 (not the Vercel URL), then try again.',
+        'Sign-in succeeded but the session cookie was not saved. Refresh the page, clear site cookies for this domain, and try again.',
       );
     }
 

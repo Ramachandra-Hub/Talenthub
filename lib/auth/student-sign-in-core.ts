@@ -1,5 +1,4 @@
 import { signIn } from '@/auth';
-import { NextResponse } from 'next/server';
 import { studentAuthEmail, validatePassword, validateRollNumber } from '@/lib/college-auth';
 import { normalizeRoll } from '@/lib/exam-schedule-slots';
 import { ensureSchemaForAuth } from '@/lib/db/ensure-schema-for-auth';
@@ -8,10 +7,11 @@ import { getAuthSetupErrors } from '@/lib/auth/config-check';
 import { prisma } from '@/lib/prisma';
 import { claimStudentSessionPrisma } from '@/lib/student-session-lock-prisma';
 import { createStudentSessionId } from '@/lib/student-session-cookie';
-import { cookies } from 'next/headers';
 import { hashPassword } from '@/lib/password';
 import { COLLEGE } from '@/lib/college-brand';
 import { isFourthYearForDsa } from '@/lib/dsa/roster';
+
+export { copyAuthSessionCookiesToResponse } from '@/lib/auth/copy-auth-session-cookies';
 
 export type StudentSignInInput = {
   rollNumber: string;
@@ -229,35 +229,4 @@ export async function runStudentCredentialSignIn(
   }
 
   return { userId: user.id, email: user.email, sessionId };
-}
-
-/** Attach NextAuth session cookies to a Route Handler JSON response. */
-export async function copyAuthSessionCookiesToResponse(
-  response: Response,
-  studentSessionId?: string,
-  extraSetCookies?: string[],
-): Promise<NextResponse> {
-  const jar = await cookies();
-  const isProd = process.env.NODE_ENV === 'production';
-  const headers = new Headers(response.headers);
-  for (const c of jar.getAll()) {
-    if (!c.name.includes('authjs') && !c.name.includes('next-auth')) continue;
-    headers.append(
-      'Set-Cookie',
-      `${c.name}=${encodeURIComponent(c.value)}; Path=/; HttpOnly; SameSite=Lax${isProd ? '; Secure' : ''}`,
-    );
-  }
-  if (studentSessionId) {
-    const { studentSessionCookieHeader } = await import('@/lib/student-session-cookie');
-    headers.append('Set-Cookie', studentSessionCookieHeader(studentSessionId));
-  }
-  for (const cookie of extraSetCookies ?? []) {
-    if (cookie?.trim()) headers.append('Set-Cookie', cookie);
-  }
-  const bodyText = await response.text();
-  return new NextResponse(bodyText, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { scanVideoFrame, type FaceScanStatus } from '@/lib/exam-v2/face-detector';
 import { PROCTOR_FACE_CHECK_MS, PROCTOR_FACE_ABSENT_SEC } from '@/lib/exam-v2/proctoring-config';
-import { safeVideoPlay, installPlayAbortGuard } from '@/lib/media/safe-video-play';
+import { safeVideoPlay, installPlayAbortGuard, clearVideoStream } from '@/lib/media/safe-video-play';
 
 type Options = {
   enabled: boolean;
@@ -29,15 +29,8 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
   useEffect(() => installPlayAbortGuard(), []);
 
   const detachVideo = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
     // Do not call pause() — it races in-flight play() and surfaces AbortError.
-    try {
-      video.srcObject = null;
-    } catch {
-      /* ignore */
-    }
-    video.removeAttribute('src');
+    clearVideoStream(videoRef.current);
   }, [videoRef]);
 
   const stopCamera = useCallback(() => {

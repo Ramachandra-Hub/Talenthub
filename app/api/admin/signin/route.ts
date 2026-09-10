@@ -14,6 +14,7 @@ import { classifyDatabaseError } from '@/lib/db/rds-connectivity';
 import { prisma } from '@/lib/prisma';
 import { guardLoginAttempt } from '@/lib/auth/login-rate-limit';
 import { safeAuthHint } from '@/lib/auth/safe-auth-hint';
+import { copyAuthSessionCookiesToResponse } from '@/lib/auth/copy-auth-session-cookies';
 
 export async function POST(request: NextRequest) {
   const loginDenied = guardLoginAttempt(request, 'admin');
@@ -155,11 +156,13 @@ export async function POST(request: NextRequest) {
       await ensureAdminUser(user.id);
     }
 
-    return NextResponse.json({
+    const json = NextResponse.json({
       success: true,
       email: user?.email ?? normalizedEmail,
       userId: user?.id,
     });
+    // Ensure session cookies are on this response (NextAuth signIn alone can miss them).
+    return copyAuthSessionCookiesToResponse(json);
   } catch (err) {
     console.error('[admin signin] post-auth lookup failed:', err);
     const message = err instanceof Error ? err.message : String(err);
