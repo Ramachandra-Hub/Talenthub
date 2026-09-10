@@ -26,15 +26,17 @@ export function CodeLabTests({
   hasRunOutput = false,
 }: Props) {
   const rows = publicResults;
-  const summary = lastSubmit ?? (best ? { passed: best.passed, total: best.total, status: best.status } : null);
+  const summary =
+    lastSubmit ?? (best ? { passed: best.passed, total: best.total, status: best.status } : null);
+  const allPassed = summary?.status === 'passed' || (summary != null && summary.passed === summary.total && summary.total > 0);
+  const hasResults = Boolean(rows && rows.length > 0) || Boolean(summary);
 
-  let statusText = 'Not executed';
-  if (busy === 'run') statusText = 'Running…';
-  else if (busy === 'submit') statusText = 'Submitting…';
-  else if (summary?.status === 'passed') statusText = 'Passed';
-  else if (summary?.status === 'failed') statusText = 'Failed';
-  else if (rows && rows.length) statusText = 'Results ready';
-  else if (hasRunOutput) statusText = 'Sample run complete';
+  let statusText = 'Not submitted yet — click Submit Solution to grade.';
+  if (busy === 'run') statusText = 'Running sample…';
+  else if (busy === 'submit') statusText = 'Grading test cases…';
+  else if (summary && allPassed) statusText = 'All test cases PASSED';
+  else if (summary) statusText = 'Test case(s) FAILED';
+  else if (hasRunOutput) statusText = 'Sample run complete (not graded — submit to grade)';
 
   return (
     <div className="code-lab-panel flex h-full min-h-0 flex-col overflow-hidden rounded-sm">
@@ -66,12 +68,22 @@ export function CodeLabTests({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold tabular-nums">
-                      Test {String(i + 1).padStart(2, '0')}
+                      Test case {String(i + 1).padStart(2, '0')}
                     </span>
-                    <span className="text-[11px] font-semibold">
+                    <span
+                      className={cn(
+                        'rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                        row.passed
+                          ? 'bg-emerald-500/25 text-emerald-50'
+                          : 'bg-rose-500/25 text-rose-50',
+                      )}
+                    >
                       {row.passed ? 'Passed' : 'Failed'}
                     </span>
                   </div>
+                  <p className="mt-0.5 text-[11px]">
+                    {row.passed ? 'Test case passed' : 'Test case failed'}
+                  </p>
                   {!row.passed && row.stderr ? (
                     <p className="mt-1 break-words font-mono text-[10px] text-rose-100/80">{row.stderr}</p>
                   ) : null}
@@ -115,16 +127,24 @@ export function CodeLabTests({
 
       <div className="shrink-0 border-t border-white/[0.06] px-2.5 py-2">
         <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">Status</p>
-        <p className="mt-0.5 text-[12px] font-semibold text-slate-200">{statusText}</p>
+        <p
+          className={cn(
+            'mt-0.5 text-[12px] font-bold',
+            !hasResults && 'text-slate-300',
+            hasResults && allPassed && 'text-emerald-300',
+            hasResults && !allPassed && 'text-rose-300',
+          )}
+        >
+          {statusText}
+        </p>
         {summary ? (
           <p
             className={cn(
-              'mt-1 text-[12px] font-semibold',
-              summary.status === 'passed' ? 'text-emerald-300' : 'text-slate-300',
+              'mt-1 text-[12px] font-semibold tabular-nums',
+              allPassed ? 'text-emerald-200' : 'text-rose-200',
             )}
           >
-            {summary.passed} / {summary.total}{' '}
-            {summary.status === 'passed' ? 'PASSED' : 'passed'}
+            {summary.passed}/{summary.total} test cases — {allPassed ? 'PASSED' : 'FAILED'}
           </p>
         ) : null}
       </div>

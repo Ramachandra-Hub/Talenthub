@@ -15,14 +15,23 @@ export type DsaGradeResult = {
 };
 
 export function parseTestCases(raw: unknown): DsaTestCase[] {
-  if (!Array.isArray(raw)) return [];
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
   const out: DsaTestCase[] = [];
-  for (const row of raw) {
+  for (const row of value) {
     if (!row || typeof row !== 'object') continue;
     const r = row as Record<string, unknown>;
     const input = String(r.input ?? '');
     const expectedOutput = String(r.expectedOutput ?? r.expected_output ?? '');
-    if (!expectedOutput && !input) continue;
+    // Need a real expected answer — empty expected would auto-pass empty programs.
+    if (!expectedOutput.trim()) continue;
     out.push({
       input,
       expectedOutput,
@@ -47,9 +56,26 @@ export async function gradeDsaSource(input: {
   const language: CodingLanguageId = isCodingLanguageId(input.language)
     ? input.language
     : 'java';
-  const cases = input.testCases.length
-    ? input.testCases
-    : [{ input: '', expectedOutput: '', hidden: false }];
+  const cases = input.testCases;
+
+  if (!cases.length) {
+    return {
+      passed: 0,
+      total: 1,
+      fraction: 0,
+      compileOk: false,
+      runtimeMs: 0,
+      stderr: 'No test cases configured for this problem.',
+      stdout: '',
+      publicResults: [
+        {
+          passed: false,
+          stderr: 'No test cases configured for this problem.',
+        },
+      ],
+    };
+  }
+
   let passed = 0;
   let compileOk = true;
   let runtimeMs = 0;
@@ -61,8 +87,7 @@ export async function gradeDsaSource(input: {
     const result = await executeCode(language, input.sourceCode, testCase.input);
     runtimeMs += result.runtimeMs;
     const matched = outputsMatch(result.stdout ?? '', testCase.expectedOutput);
-    // Same rule as ElevateX programming grading: exit 0 + matching stdout.
-    // Do NOT require empty stderr — Java sandboxes often print harmless JVM notes.
+    // exit 0 + matching stdout. Ignore benign JVM stderr noise.
     const ok = result.exitCode === 0 && matched;
 
     if (result.exitCode !== 0) compileOk = false;
@@ -88,6 +113,17 @@ export async function gradeDsaSource(input: {
         stderr: failMsg,
       });
     }
+  }
+
+  // Always surface at least one public result row so the UI can show Passed/Failed.
+  if (publicResults.length === 0 && cases.length > 0) {
+    publicResults.push({
+      passed: passed === cases.length,
+      stderr:
+        passed === cases.length
+          ? undefined
+          : clip(stderr || stdout || 'One or more hidden tests failed'),
+    });
   }
 
   const total = cases.length;

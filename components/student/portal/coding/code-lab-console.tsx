@@ -21,7 +21,7 @@ export function CodeLabConsole({
   lastSubmit,
 }: Props) {
   const hasOutput = Boolean(runOut?.trim()) || busy === 'run' || busy === 'submit';
-  const hasTests = Boolean(publicResults && publicResults.length);
+  const hasTests = Boolean((publicResults && publicResults.length) || lastSubmit);
   const errorText = deriveErrorText(runOut, lastSubmit);
   const hasErrors = Boolean(errorText);
 
@@ -31,20 +31,34 @@ export function CodeLabConsole({
     { id: 'errors', label: 'Errors', show: hasErrors },
   ];
 
-  let body = 'Idle — Run Code to execute the first sample.';
+  let body = 'Idle — type your code, then Run Code or Submit Solution.';
   if (busy === 'run') body = 'Running…';
-  else if (busy === 'submit') body = 'Submitting…';
+  else if (busy === 'submit') body = 'Grading test cases…';
   else if (tab === 'output') body = runOut?.trim() || body;
   else if (tab === 'errors') body = errorText || 'No errors reported.';
-  else if (tab === 'tests' && publicResults) {
-    body = publicResults
-      .map(
-        (r, i) =>
-          `Test ${String(i + 1).padStart(2, '0')}: ${r.passed ? 'Passed' : 'Failed'}${
-            r.stderr ? ` — ${r.stderr}` : ''
-          }`,
-      )
-      .join('\n');
+  else if (tab === 'tests') {
+    if (publicResults && publicResults.length) {
+      body = publicResults
+        .map(
+          (r, i) =>
+            `Test case ${String(i + 1).padStart(2, '0')}: ${r.passed ? 'PASSED' : 'FAILED'}${
+              r.stderr ? `\n  ${r.stderr}` : ''
+            }`,
+        )
+        .join('\n\n');
+      if (lastSubmit) {
+        const allOk = lastSubmit.status === 'passed';
+        body += `\n\n———\n${lastSubmit.passed}/${lastSubmit.total} test cases — ${
+          allOk ? 'ALL PASSED' : 'FAILED'
+        }`;
+      }
+    } else if (lastSubmit) {
+      body = `${lastSubmit.passed}/${lastSubmit.total} test cases — ${
+        lastSubmit.status === 'passed' ? 'ALL PASSED' : 'FAILED'
+      }`;
+    } else {
+      body = 'Submit Solution to see test case results.';
+    }
   }
 
   const statusLabel = deriveStatusLabel(busy, runOut, lastSubmit);
@@ -116,8 +130,8 @@ function deriveStatusLabel(
   if (busy === 'run') return { text: 'Running', tone: 'busy' };
   if (busy === 'submit') return { text: 'Submitting', tone: 'busy' };
   if (lastSubmit?.compileOk === false) return { text: 'Compile error', tone: 'err' };
-  if (lastSubmit?.status === 'passed') return { text: 'Passed', tone: 'ok' };
-  if (lastSubmit?.status === 'failed') return { text: 'Failed', tone: 'err' };
+  if (lastSubmit?.status === 'passed') return { text: 'Test cases PASSED', tone: 'ok' };
+  if (lastSubmit?.status === 'failed') return { text: 'Test cases FAILED', tone: 'err' };
   if (runOut && /timeout/i.test(runOut)) return { text: 'Timeout', tone: 'err' };
   if (runOut && /error|exception|failed/i.test(runOut)) return { text: 'Error', tone: 'err' };
   if (runOut) return { text: 'Output', tone: 'idle' };

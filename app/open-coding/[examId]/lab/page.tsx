@@ -51,10 +51,9 @@ type LabPayload = {
   problems: LabProblem[];
 };
 
-function starterFor(problem: LabProblem | null, language: CodingLanguageId): string {
-  if (!problem) return '';
-  const map = problem.starterCode ?? {};
-  return map[language] || map.java || map.python || '';
+function starterFor(_problem: LabProblem | null, _language: CodingLanguageId): string {
+  // Open-link hard exam: blank editor — students type their own solution.
+  return '';
 }
 
 function formatRemain(sec: number): string {
@@ -245,6 +244,11 @@ export default function OpenCodingLabPage() {
 
   const onSubmit = async () => {
     if (!problem || !data) return;
+    if (!code.trim()) {
+      setRunOut('Write your solution in the editor before submitting.');
+      setConsoleTab('errors');
+      return;
+    }
     setBusy('submit');
     setConsoleTab('tests');
     try {
@@ -287,10 +291,13 @@ export default function OpenCodingLabPage() {
       if (json.publicResults?.length) setConsoleTab('tests');
       setRunOut(
         json.compileOk === false
-          ? `Compilation issue · ${passed}/${total} tests · ${points} marks`
-          : `Submitted · ${passed}/${total} tests · ${points} marks (exam ${totalScore}/${maxScore})`,
+          ? `Compilation issue · ${passed}/${total} test cases · ${points} marks`
+          : status === 'passed'
+            ? `ALL TEST CASES PASSED · ${passed}/${total} · ${points} marks (exam ${totalScore}/${maxScore})`
+            : `TEST CASES FAILED · ${passed}/${total} passed · ${points} marks (exam ${totalScore}/${maxScore})`,
       );
       if (json.compileOk === false) setConsoleTab('errors');
+      else setConsoleTab('tests');
 
       setMissionResult({
         problemId: problem.id,
@@ -441,6 +448,7 @@ export default function OpenCodingLabPage() {
           backLabel="Challenge questions"
           hideBackLink
           problemTabsBesideLanguage
+          disablePaste
           problems={shellProblems}
           activeProblemIdx={activeIdx}
           onSelectProblem={onSelectProblem}

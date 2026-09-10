@@ -50,6 +50,8 @@ type Props = {
   /** Contest / exam: show full problem document without nested scroll clip. */
   expandProblemDocument?: boolean;
   hideMissionChrome?: boolean;
+  /** Block paste in the Monaco editor (proctored open-link exams). */
+  disablePaste?: boolean;
 };
 
 export function CodeLabShell({
@@ -81,6 +83,7 @@ export function CodeLabShell({
   minCoding,
   expandProblemDocument = false,
   hideMissionChrome = false,
+  disablePaste = false,
 }: Props) {
   const problem = problems[activeProblemIdx] ?? null;
   const missionMeta = [
@@ -205,6 +208,11 @@ export function CodeLabShell({
                     {id}
                   </button>
                 ))}
+                {disablePaste ? (
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-amber-200/80">
+                    Paste disabled
+                  </span>
+                ) : null}
                 {problemTabsBesideLanguage && problemTabs ? (
                   <>
                     <span
@@ -226,6 +234,7 @@ export function CodeLabShell({
                   fill
                   fontSize={17}
                   className="code-lab-monaco-host"
+                  disablePaste={disablePaste}
                 />
               </div>
             </div>

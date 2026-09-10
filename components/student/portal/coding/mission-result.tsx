@@ -86,13 +86,13 @@ export function MissionResult({
               )}
             >
               {passed
-                ? 'Mission complete'
+                ? 'All test cases PASSED'
                 : compileFail
                   ? 'Compilation error'
-                  : 'Mission incomplete'}
+                  : 'Test case(s) FAILED'}
             </p>
             <p className="mt-1 text-[12px] tabular-nums text-slate-300">
-              {result.passed} / {result.total} tests passed
+              {result.passed}/{result.total} test cases passed
               {typeof result.points === 'number'
                 ? ` · ${result.points}/${result.maxPoints ?? result.points} marks`
                 : ''}
@@ -122,13 +122,16 @@ export function MissionResult({
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold tabular-nums">
-                          Test {String(i + 1).padStart(2, '0')}
-                        </span>
-                        <span className="text-[11px] font-semibold uppercase tracking-wide">
-                          {row.passed ? 'Passed' : 'Failed'}
-                        </span>
-                      </div>
+                    <span className="font-semibold tabular-nums">
+                      Test case {String(i + 1).padStart(2, '0')}
+                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wide">
+                      {row.passed ? 'Passed' : 'Failed'}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] opacity-90">
+                    {row.passed ? 'Test case passed' : 'Test case failed'}
+                  </p>
                       {!row.passed && row.stderr ? (
                         <p className="mt-1 break-words font-mono text-[10px] text-rose-100/75">
                           {row.stderr}
