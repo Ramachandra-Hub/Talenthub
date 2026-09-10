@@ -9,6 +9,11 @@ import { createStudentSessionId } from '@/lib/student-session-cookie';
 import { hashPassword } from '@/lib/password';
 import { COLLEGE } from '@/lib/college-brand';
 import { isFourthYearForDsa } from '@/lib/dsa/roster';
+import {
+  ensureRosterStudentAccount,
+  isSampleStudentPassword,
+  isRollOnExamRoster,
+} from '@/lib/auth/student-roster-gate';
 
 export { copyAuthSessionCookiesToResponse } from '@/lib/auth/copy-auth-session-cookies';
 
@@ -28,8 +33,8 @@ export type StudentSignInResult =
   | { userId: string; email: string; sessionId: string };
 
 /**
- * IV Year (4th year) students may self-provision on first login.
- * No admin DSA roster upload is required for them.
+ * IV Year (4th year) students may self-provision on first login with the sample password.
+ * No exam roster upload is required for them.
  */
 async function ensureIvYearStudentAccount(input: {
   rollNumber: string;
@@ -121,23 +126,52 @@ export async function runStudentCredentialSignIn(
 
   const isIvYear = isFourthYearForDsa(year);
 
-  if (isIvYear && !openJoinProof) {
-    try {
-      const provisioned = await ensureIvYearStudentAccount({
-        rollNumber,
-        password,
-        department,
-        year,
-      });
-      if (provisioned.error) return { error: provisioned.error };
-    } catch (err) {
-      console.error('[student signin] IV Year provision failed:', err);
-      const message = err instanceof Error ? err.message : String(err);
-      if (/unique|duplicate/i.test(message)) {
-        // Race: account created between lookup and insert — continue to sign-in.
-      } else {
-        const { remediation } = classifyDatabaseError(message);
-        return { error: remediation[0] ?? 'Could not create student account.' };
+  if (!openJoinProof) {
+    if (isIvYear) {
+      // IV Year: sample password (Exam2026) or any valid password — self-provision allowed.
+      try {
+        const provisioned = await ensureIvYearStudentAccount({
+          rollNumber,
+          password,
+          department,
+          year,
+        });
+        if (provisioned.error) return { error: provisioned.error };
+      } catch (err) {
+        console.error('[student signin] IV Year provision failed:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/unique|duplicate/i.test(message)) {
+          const { remediation } = classifyDatabaseError(message);
+          return { error: remediation[0] ?? 'Could not create student account.' };
+        }
+      }
+    } else {
+      // Non-IV: must be on exam roster. Sample password alone is not enough.
+      if (isSampleStudentPassword(password)) {
+        const onRoster = await isRollOnExamRoster(rollNumber);
+        if (!onRoster) {
+          return {
+            error:
+              'Sample password login is only for IV Year (4th year). Select IV Year, or ask faculty to add your roll to the exam roster.',
+          };
+        }
+      }
+
+      try {
+        const rostered = await ensureRosterStudentAccount({
+          rollNumber,
+          password,
+          department,
+          year,
+        });
+        if (rostered.error) return { error: rostered.error };
+      } catch (err) {
+        console.error('[student signin] roster provision failed:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/unique|duplicate/i.test(message)) {
+          const { remediation } = classifyDatabaseError(message);
+          return { error: remediation[0] ?? 'Could not verify exam roster.' };
+        }
       }
     }
   }
@@ -164,12 +198,12 @@ export async function runStudentCredentialSignIn(
       if (isIvYear) {
         return {
           error:
-            'Invalid password for this roll number. If you just registered, use the same password you set.',
+            'Invalid password. IV Year students may use the sample password Exam2026 on first login.',
         };
       }
       return {
         error:
-          'Invalid roll number or password. IV Year students: select IV Year to create your account on first login.',
+          'Invalid roll number or password. Non–IV Year students must be on the exam roster.',
       };
     }
     if (message.includes('schema') || message.includes('Database tables')) {
@@ -185,12 +219,12 @@ export async function runStudentCredentialSignIn(
     if (isIvYear) {
       return {
         error:
-          'Invalid password for this roll number. If you just registered, use the same password you set.',
+          'Invalid password. IV Year students may use the sample password Exam2026 on first login.',
       };
     }
     return {
       error:
-        'Invalid roll number or password. IV Year students: select IV Year to create your account on first login.',
+        'Invalid roll number or password. Non–IV Year students must be on the exam roster.',
     };
   }
 
@@ -216,20 +250,17 @@ export async function runStudentCredentialSignIn(
   if (!user) {
     return {
       error: isIvYear
-        ? 'Could not create your IV Year account. Try again.'
-        : 'Account not found. Select IV Year on login to self-register, or ask faculty to provision your roll.',
+        ? 'Could not create your IV Year account. Try again with the sample password Exam2026.'
+        : 'Account not found. Ask faculty to add your roll to the exam roster.',
     };
   }
 
   const sessionId = createStudentSessionId();
-  // Password already verified — always take over any prior lock for this roll.
-  // Blocking re-login after a closed tab / cleared cookies caused false 401s.
   const { forceClaimStudentSessionPrisma } = await import('@/lib/student-session-lock-prisma');
   const lock = await forceClaimStudentSessionPrisma(rollNumber, user.id, sessionId);
   if (!lock.lockActive) {
     return {
-      error:
-        'Could not start your session. Wait a moment and try signing in again.',
+      error: 'Could not start your session. Wait a moment and try signing in again.',
     };
   }
 
