@@ -9,6 +9,18 @@ import { studentTakeUrlForTestId } from '@/lib/exam-builder/elevatex-exam';
 import { academicYearsMatch } from '@/lib/academic-year-match';
 import * as XLSX from 'xlsx';
 
+/** Keep in sync with `DSA_HARD_OPEN_PREFIX` in dsa-hard-open.ts (no circular import). */
+const DSA_HARD_OPEN_PREFIX = 'dsa_hard_open:';
+
+function isDsaHardOpenPublishedId(testId: string | null | undefined): boolean {
+  return Boolean(testId && testId.startsWith(DSA_HARD_OPEN_PREFIX));
+}
+
+function examIdFromDsaHardPublishedId(testId: string): string | null {
+  if (!isDsaHardOpenPublishedId(testId)) return null;
+  return testId.slice(DSA_HARD_OPEN_PREFIX.length) || null;
+}
+
 export function newOpenLinkToken(): string {
   return randomBytes(16).toString('hex');
 }
@@ -43,7 +55,7 @@ export async function getOpenExamByToken(token: string): Promise<OpenExamPublicI
     },
   });
   if (!exam?.openLinkEnabled || !exam.publishedTestId) return null;
-  const isDsaHard = exam.publishedTestId.startsWith('dsa_hard_open:');
+  const isDsaHard = isDsaHardOpenPublishedId(exam.publishedTestId);
   return {
     title: exam.title,
     duration: exam.duration,
@@ -95,8 +107,7 @@ export async function joinOpenExam(input: {
     throw new Error('This open exam link is not active.');
   }
 
-  const { isDsaHardOpenTestId } = await import('@/lib/exams/dsa-hard-open');
-  const dsaHard = isDsaHardOpenTestId(exam.publishedTestId);
+  const dsaHard = isDsaHardOpenPublishedId(exam.publishedTestId);
   if (dsaHard && !academicYearsMatch(year, 'IV Year')) {
     throw new Error('This coding open link is for IV Year (4th year) students only.');
   }
@@ -213,11 +224,7 @@ export async function joinOpenExam(input: {
     }
   }
 
-  const { isDsaHardOpenTestId, examIdFromDsaHardOpenTestId } = await import(
-    '@/lib/exams/dsa-hard-open'
-  );
-  const dsaHard = isDsaHardOpenTestId(exam.publishedTestId);
-  const hardExamId = dsaHard ? examIdFromDsaHardOpenTestId(exam.publishedTestId) : null;
+  const hardExamId = examIdFromDsaHardPublishedId(exam.publishedTestId);
 
   return {
     takeUrl:
