@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { scanVideoFrame, type FaceScanStatus } from '@/lib/exam-v2/face-detector';
 import { PROCTOR_FACE_CHECK_MS, PROCTOR_FACE_ABSENT_SEC } from '@/lib/exam-v2/proctoring-config';
+import { safeVideoPlay } from '@/lib/media/safe-video-play';
 
 type Options = {
   enabled: boolean;
@@ -23,64 +24,72 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
   const absentSinceRef = useRef<number | null>(null);
   const scanningRef = useRef(false);
   const playGenRef = useRef(0);
+  const attachInFlightRef = useRef<Promise<boolean> | null>(null);
+
+  const detachVideo = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    // Do not call pause() — it races in-flight play() and surfaces AbortError.
+    try {
+      video.srcObject = null;
+    } catch {
+      /* ignore */
+    }
+    video.removeAttribute('src');
+    try {
+      video.load();
+    } catch {
+      /* ignore */
+    }
+  }, [videoRef]);
 
   const stopCamera = useCallback(() => {
     playGenRef.current += 1;
+    attachInFlightRef.current = null;
+
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    const video = videoRef.current;
-    if (video) {
-      try {
-        video.pause();
-      } catch {
-        /* ignore */
-      }
-      video.removeAttribute('src');
-      video.srcObject = null;
-      try {
-        video.load();
-      } catch {
-        /* ignore */
-      }
-    }
+    detachVideo();
+
     setCameraReady(false);
     setFaceStatus('absent');
     setFaceNotVisible(false);
-  }, [videoRef]);
+  }, [detachVideo]);
 
   const attachStreamToVideo = useCallback(async (): Promise<boolean> => {
-    const stream = streamRef.current;
-    const video = videoRef.current;
-    if (!stream || !video) return false;
-
-    if (video.srcObject !== stream) {
-      video.srcObject = stream;
-      video.muted = true;
-      video.playsInline = true;
-      video.setAttribute('playsinline', 'true');
+    if (attachInFlightRef.current) {
+      return attachInFlightRef.current;
     }
 
-    const gen = ++playGenRef.current;
-    try {
-      if (video.paused) {
-        // Never leave an unhandled rejection if pause() interrupts play().
-        await video.play().catch((err: unknown) => {
-          const interrupted =
-            err instanceof DOMException &&
-            (err.name === 'AbortError' || /interrupted/i.test(err.message));
-          if (!interrupted) throw err;
-        });
+    const run = async (): Promise<boolean> => {
+      const stream = streamRef.current;
+      const video = videoRef.current;
+      if (!stream || !video || !video.isConnected) return false;
+
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
       }
+
+      const gen = playGenRef.current;
+      const played = await safeVideoPlay(video);
       if (gen !== playGenRef.current) return false;
-      setCameraReady(true);
-      setCameraError(null);
-      return true;
-    } catch {
-      if (gen !== playGenRef.current) return false;
-      // Stream is attached even if autoplay was interrupted.
-      setCameraReady(Boolean(video.srcObject));
-      return Boolean(video.srcObject);
-    }
+      if (!video.isConnected) return false;
+
+      const ready = played || Boolean(video.srcObject);
+      if (ready) {
+        setCameraReady(true);
+        setCameraError(null);
+      }
+      return ready;
+    };
+
+    const pending = run().finally(() => {
+      if (attachInFlightRef.current === pending) {
+        attachInFlightRef.current = null;
+      }
+    });
+    attachInFlightRef.current = pending;
+    return pending;
   }, [videoRef]);
 
   const startCamera = useCallback(async (): Promise<boolean> => {
@@ -95,6 +104,7 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
         return attachStreamToVideo();
       }
 
+      const genAtRequest = playGenRef.current;
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
@@ -104,12 +114,15 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
         },
         audio: false,
       });
+
+      // Unmounted / disabled while the permission prompt was open.
+      if (genAtRequest !== playGenRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return false;
+      }
+
       streamRef.current = stream;
-
-      if (await attachStreamToVideo()) return true;
-
-      setCameraError(null);
-      return true;
+      return attachStreamToVideo();
     } catch {
       setCameraError(
         'Camera access is required for proctored exams. Allow camera permission and retry.',
@@ -124,32 +137,13 @@ export function useCameraProctoring({ enabled, videoRef }: Options) {
       stopCamera();
       return;
     }
-    void startCamera();
+    void startCamera().catch(() => {
+      /* startCamera handles errors internally */
+    });
     return () => {
       stopCamera();
     };
   }, [enabled, startCamera, stopCamera]);
-
-  useEffect(() => {
-    if (!enabled || !streamRef.current) return;
-
-    let cancelled = false;
-    let tries = 0;
-    const maxTries = 40;
-
-    const attemptBind = async () => {
-      if (cancelled) return;
-      tries += 1;
-      const ok = await attachStreamToVideo();
-      if (ok || cancelled || tries >= maxTries) return;
-      window.setTimeout(() => void attemptBind(), 150);
-    };
-
-    void attemptBind();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, attachStreamToVideo]);
 
   // Local face check for on-screen hint only — never sent to the server.
   useEffect(() => {

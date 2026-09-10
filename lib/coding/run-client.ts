@@ -71,11 +71,22 @@ export async function runCodingOnServer(
   }
 }
 
+function javaInputHint(stderr: string | undefined): string | null {
+  if (!stderr) return null;
+  if (!/NumberFormatException/i.test(stderr)) return null;
+  if (!/For input string:\s*"[^"]*\s[^"]*"/.test(stderr)) return null;
+  return (
+    'hint:\nThat sample line has several integers separated by spaces (e.g. "3 1 2"). ' +
+    'Read them with nextInt() three times — do not Integer.parseInt(the whole line).'
+  );
+}
+
 export function formatCodingRunOutput(data: CodingRunResponse): string {
   const body = [
     data.stdout != null && String(data.stdout).length > 0 ? `stdout:\n${data.stdout}` : null,
     data.stderr ? `stderr:\n${data.stderr}` : null,
     data.error && !data.stderr ? `error:\n${data.error}` : null,
+    javaInputHint(data.stderr ?? data.error),
   ]
     .filter(Boolean)
     .join('\n\n');

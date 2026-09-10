@@ -28,7 +28,10 @@ import java.util.*;
 public class Main {
   public static void main(String[] args) throws Exception {
     FastScanner fs = new FastScanner(System.in);
-    // TODO: parse input and print the result
+    // First line is often several ints on ONE line, e.g. "3 1 2":
+    //   int n = fs.nextInt(), r = fs.nextInt(), m = fs.nextInt();
+    // Do NOT use Integer.parseInt(sc.nextLine()) — that throws NumberFormatException on "3 1 2".
+    // TODO: parse input with fs.nextInt() / fs.next() and print the result
   }
 
   static class FastScanner {

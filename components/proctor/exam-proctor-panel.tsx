@@ -66,6 +66,7 @@ export function ExamProctorPanel({
             className="h-full w-full object-cover scale-x-[-1]"
             playsInline
             muted
+            autoPlay
             aria-hidden
           />
           {!cameraReady ? (

@@ -1,19 +1,39 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { PROCTOR_MAX_VIOLATIONS } from '@/lib/exam-v2/proctoring-config';
+import { safeVideoPlay } from '@/lib/media/safe-video-play';
 
 type Props = {
   onReady: () => void;
   onCancel: () => void;
 };
 
+function releasePreview(video: HTMLVideoElement | null) {
+  const stream = video?.srcObject as MediaStream | null;
+  stream?.getTracks().forEach((t) => t.stop());
+  if (!video) return;
+  // Avoid pause() — it races in-flight play() and logs AbortError.
+  video.srcObject = null;
+  try {
+    video.load();
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ProctorConsentGate({ onReady, onCancel }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraOk, setCameraOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      releasePreview(videoRef.current);
+    };
+  }, []);
 
   const enableCamera = async () => {
     setLoading(true);
@@ -23,6 +43,7 @@ export function ProctorConsentGate({ onReady, onCancel }: Props) {
         setError('Camera is not supported in this browser.');
         return;
       }
+      releasePreview(videoRef.current);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
@@ -30,14 +51,7 @@ export function ProctorConsentGate({ onReady, onCancel }: Props) {
       const video = videoRef.current;
       if (video) {
         video.srcObject = stream;
-        video.muted = true;
-        video.playsInline = true;
-        await video.play().catch((err: unknown) => {
-          const interrupted =
-            err instanceof DOMException &&
-            (err.name === 'AbortError' || /interrupted/i.test(err.message));
-          if (!interrupted) throw err;
-        });
+        await safeVideoPlay(video);
       }
       setCameraOk(true);
     } catch {
@@ -48,10 +62,7 @@ export function ProctorConsentGate({ onReady, onCancel }: Props) {
   };
 
   const handleStart = () => {
-    const video = videoRef.current;
-    const stream = video?.srcObject as MediaStream | null;
-    stream?.getTracks().forEach((t) => t.stop());
-    if (video) video.srcObject = null;
+    releasePreview(videoRef.current);
     onReady();
   };
 
@@ -73,6 +84,7 @@ export function ProctorConsentGate({ onReady, onCancel }: Props) {
           className="h-full w-full object-cover scale-x-[-1]"
           playsInline
           muted
+          autoPlay
           aria-label="Camera check preview"
         />
         {!cameraOk ? (
