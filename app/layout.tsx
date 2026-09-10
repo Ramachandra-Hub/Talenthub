@@ -6,6 +6,7 @@ import GlobalBackButton from '@/components/global-back-button'
 import AppSessionBar from '@/components/app-session-bar'
 import CollegeSiteHeader from '@/components/college-site-header'
 import { StudentSessionHeartbeat } from '@/components/student-session-heartbeat'
+import { PlayAbortGuard } from '@/components/media/play-abort-guard'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -41,6 +42,7 @@ export default function RootLayout({
       <body
         className={`${dmSans.className} app-branded font-sans font-medium antialiased bg-background text-foreground min-h-dvh w-full min-w-0 overflow-x-clip`}
       >
+        <PlayAbortGuard />
         <CollegeSiteHeader />
         <GlobalBackButton />
         <StudentSessionHeartbeat />
