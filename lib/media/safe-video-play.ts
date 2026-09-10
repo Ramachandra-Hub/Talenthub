@@ -10,13 +10,77 @@ export function isPlayInterruptedError(err: unknown): boolean {
   );
 }
 
-type PlayPatchedMedia = HTMLMediaElement & { __thPlayPatched?: boolean };
+type PlayPatchedMedia = typeof HTMLMediaElement.prototype & {
+  __thPlayPatched?: boolean;
+};
+
+const pendingPlays = new WeakMap<HTMLMediaElement, Promise<void>>();
+
+let guardInstalled = false;
+
+/**
+ * Install once for the whole app (never tear down).
+ * Older cleanup un-patched play() while another camera remounted → AbortError.
+ */
+export function ensurePlayAbortGuard(): void {
+  if (typeof window === 'undefined' || guardInstalled) return;
+  guardInstalled = true;
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (isPlayInterruptedError(event.reason)) {
+      event.preventDefault();
+    }
+  });
+
+  const proto = HTMLMediaElement.prototype as PlayPatchedMedia;
+  if (proto.__thPlayPatched) return;
+
+  const originalPlay = proto.play;
+  proto.play = function patchedPlay(
+    this: HTMLMediaElement,
+    ...args: Parameters<HTMLMediaElement['play']>
+  ) {
+    try {
+      const result = originalPlay.apply(this, args);
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        const promise = result as Promise<void>;
+        // Resolve a handled promise in the same turn so Chrome never logs
+        // "Uncaught (in promise) AbortError" when pause()/srcObject races play().
+        const handled = promise.then(
+          () => undefined,
+          (err) => {
+            if (!isPlayInterruptedError(err)) {
+              /* ignore non-abort media errors at the global layer */
+            }
+          },
+        );
+        pendingPlays.set(this, handled);
+        return handled;
+      }
+      return result;
+    } catch (err) {
+      if (isPlayInterruptedError(err)) {
+        return Promise.resolve();
+      }
+      return Promise.reject(err);
+    }
+  };
+  proto.__thPlayPatched = true;
+}
+
+/** @deprecated Prefer ensurePlayAbortGuard — kept for call-site compatibility. */
+export function installPlayAbortGuard(): () => void {
+  ensurePlayAbortGuard();
+  return () => undefined;
+}
 
 /**
  * Start muted inline video playback without surfacing AbortError to the console.
  * Returns true when playback started; false if interrupted, detached, or blocked.
  */
 export async function safeVideoPlay(video: HTMLVideoElement): Promise<boolean> {
+  ensurePlayAbortGuard();
+
   if (typeof document !== 'undefined' && document.hidden) return false;
   if (!video.isConnected) return false;
   if (!video.paused && !video.ended && video.readyState >= 2) return true;
@@ -26,7 +90,6 @@ export async function safeVideoPlay(video: HTMLVideoElement): Promise<boolean> {
   video.playsInline = true;
   video.setAttribute('playsinline', 'true');
   video.setAttribute('muted', '');
-  // Prefer explicit play() — autoPlay attribute races remounts and throws AbortError.
   video.autoplay = false;
   video.removeAttribute('autoplay');
 
@@ -41,14 +104,7 @@ export async function safeVideoPlay(video: HTMLVideoElement): Promise<boolean> {
   if (!video.isConnected || !video.srcObject) return false;
 
   try {
-    const playPromise = video.play();
-    if (playPromise && typeof (playPromise as Promise<void>).then === 'function') {
-      // Attach catch immediately so remount/srcObject clear cannot become uncaught.
-      void playPromise.catch(() => {
-        /* expected when element detaches or srcObject is cleared mid-play */
-      });
-      await playPromise.catch(() => undefined);
-    }
+    await video.play();
     return video.isConnected && Boolean(video.srcObject) && !video.paused;
   } catch (err) {
     if (isPlayInterruptedError(err)) return false;
@@ -56,67 +112,27 @@ export async function safeVideoPlay(video: HTMLVideoElement): Promise<boolean> {
   }
 }
 
-/**
- * Suppress Chrome play/pause AbortError globally:
- * - unhandledrejection listener
- * - patch HTMLMediaElement.play so every call has a rejection handler
- */
-export function installPlayAbortGuard(): () => void {
-  if (typeof window === 'undefined') return () => undefined;
-
-  const onRejection = (event: PromiseRejectionEvent) => {
-    if (isPlayInterruptedError(event.reason)) {
-      event.preventDefault();
-      event.stopPropagation?.();
-    }
-  };
-  window.addEventListener('unhandledrejection', onRejection);
-
-  const proto = HTMLMediaElement.prototype as PlayPatchedMedia;
-  let restorePlay: (() => void) | null = null;
-  if (!proto.__thPlayPatched) {
-    const originalPlay = proto.play;
-    proto.play = function patchedPlay(this: HTMLMediaElement, ...args: Parameters<HTMLMediaElement['play']>) {
-      try {
-        const result = originalPlay.apply(this, args);
-        if (result && typeof (result as Promise<void>).then === 'function') {
-          const promise = result as Promise<void>;
-          void promise.catch(() => {
-            /* swallow AbortError from autoplay / remount races */
-          });
-          return promise;
-        }
-        return result;
-      } catch (err) {
-        if (isPlayInterruptedError(err)) {
-          return Promise.resolve();
-        }
-        return Promise.reject(err);
-      }
-    };
-    proto.__thPlayPatched = true;
-    restorePlay = () => {
-      proto.play = originalPlay;
-      delete proto.__thPlayPatched;
-    };
-  }
-
-  return () => {
-    window.removeEventListener('unhandledrejection', onRejection);
-    restorePlay?.();
-  };
-}
-
-/** Clear camera stream without calling pause() (avoids play/pause AbortError). */
+/** Clear camera stream after any in-flight play() settles (avoids play/pause AbortError). */
 export function clearVideoStream(video: HTMLVideoElement | null | undefined): void {
   if (!video) return;
+  ensurePlayAbortGuard();
   try {
     video.autoplay = false;
     video.removeAttribute('autoplay');
-    if (video.srcObject) {
-      video.srcObject = null;
+    const pending = pendingPlays.get(video);
+    const clear = () => {
+      try {
+        if (video.srcObject) video.srcObject = null;
+        video.removeAttribute('src');
+      } catch {
+        /* ignore */
+      }
+    };
+    if (pending) {
+      void pending.finally(clear);
+    } else {
+      clear();
     }
-    video.removeAttribute('src');
   } catch {
     /* ignore */
   }
