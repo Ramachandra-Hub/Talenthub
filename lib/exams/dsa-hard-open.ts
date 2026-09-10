@@ -275,6 +275,110 @@ export async function startOrResumeDsaHardOpenAttempt(examId: string, userId: st
   return { attempt: rows[0]!, exam, user, resumed: false };
 }
 
+export async function getDsaHardOpenBrief(examId: string, userId: string) {
+  await ensureDsaHardOpenTables();
+  const exam = await prisma.exam.findUnique({ where: { id: examId } });
+  if (!exam?.openLinkEnabled || !isDsaHardOpenTestId(exam.publishedTestId)) {
+    throw Object.assign(new Error('Open coding exam not found'), { status: 404 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { academicYear: true },
+  });
+  if (!academicYearsMatch(user?.academicYear, 'IV Year')) {
+    throw Object.assign(new Error('This open coding exam is for IV Year students only.'), {
+      status: 403,
+    });
+  }
+
+  const existing = await prisma.$queryRawUnsafe<AttemptRow[]>(
+    `SELECT * FROM "dsa_hard_open_attempts" WHERE "exam_id" = $1::uuid AND "user_id" = $2::uuid LIMIT 1`,
+    examId,
+    userId,
+  );
+  const attempt = existing[0] ?? null;
+  let problems: Array<{
+    position: number;
+    title: string;
+    difficulty: string;
+    category: string | null;
+    tags: string[];
+    points: number;
+    progress?: string;
+  }> = [];
+
+  if (attempt) {
+    const ids = asStringArray(attempt.problem_ids_json);
+    const rows = await prisma.dsaProblem.findMany({ where: { id: { in: ids } } });
+    const byId = new Map(rows.map((p) => [p.id, p]));
+    const results =
+      attempt.results_json && typeof attempt.results_json === 'object'
+        ? (attempt.results_json as Record<string, { status?: string; scorePercent?: number }>)
+        : {};
+    problems = ids.map((id, idx) => {
+      const p = byId.get(id);
+      const best = results[id];
+      const rawTags = p?.tagsJson;
+      const tags = Array.isArray(rawTags)
+        ? rawTags.map(String)
+        : rawTags && typeof rawTags === 'object'
+          ? Object.values(rawTags as Record<string, unknown>).map(String)
+          : [];
+      return {
+        position: idx + 1,
+        title: p?.title ?? `Problem ${idx + 1}`,
+        difficulty: p?.difficulty ?? 'Hard',
+        category: p?.categoryLabel ?? null,
+        tags,
+        points: DSA_HARD_OPEN_POINTS,
+        progress:
+          best?.status === 'passed' || Number(best?.scorePercent) >= 100
+            ? 'solved'
+            : best
+              ? 'attempted'
+              : 'not_started',
+      };
+    });
+  }
+
+  return {
+    exam: {
+      id: exam.id,
+      title: exam.title,
+      description: exam.description,
+      durationMinutes: exam.duration,
+      totalMarks: exam.totalMarks,
+      problemCount: DSA_HARD_OPEN_PICK,
+    },
+    attempt: attempt
+      ? {
+          id: attempt.id,
+          status: attempt.status,
+          totalScore: attempt.total_score,
+          maxScore: attempt.max_score,
+          solvedCount: attempt.solved_count,
+        }
+      : null,
+    problems,
+    instructions:
+      'Solve exactly 5 hard coding problems in Java or Python. Problems are drawn from the campus contest bank and jumbled for your attempt.\n\n' +
+      'Same Code Lab as DSA practice: read the statement, constraints, samples, and explanation; run sample input; submit for server-side grading.\n\n' +
+      'When you finish, you get an immediate full ElevateX-style scorecard.',
+  };
+}
+
+export async function startDsaHardOpenChallenge(examId: string, userId: string) {
+  const { attempt, exam, resumed } = await startOrResumeDsaHardOpenAttempt(examId, userId);
+  return {
+    examId: exam.id,
+    attemptId: attempt.id,
+    status: attempt.status,
+    resumed,
+    completed: attempt.status === 'submitted',
+  };
+}
+
 export async function getDsaHardOpenLabPayload(examId: string, userId: string) {
   const { attempt, exam } = await startOrResumeDsaHardOpenAttempt(examId, userId);
   if (attempt.status === 'submitted') {

@@ -3,10 +3,19 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { ContestsPortalFrame } from '@/components/student/portal/contests/contests-portal-frame';
 import { ElevateXScorecardView } from '@/components/placement/elevatex-scorecard-view';
 import type { PlacementScorecard } from '@/lib/placement/types';
 
 export default function OpenCodingResultPage() {
+  return (
+    <ContestsPortalFrame title="HARD CODING" subtitle="ElevateX scorecard">
+      <ResultBody />
+    </ContestsPortalFrame>
+  );
+}
+
+function ResultBody() {
   const params = useParams();
   const examId = String(params.examId ?? '');
   const [scorecard, setScorecard] = useState<PlacementScorecard | null>(null);
@@ -34,42 +43,41 @@ export default function OpenCodingResultPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <p className="text-sm text-rose-600">{error}</p>
-        <Link href={`/open-coding/${examId}/lab`} className="mt-4 inline-block text-sm text-[#1e3a5f] underline">
-          Back to coding lab
+      <div className="space-y-3">
+        <p className="text-sm text-rose-300">{error}</p>
+        <Link href={`/open-coding/${examId}`} className="ex-btn-ghost">
+          ← Back to challenge brief
         </Link>
       </div>
     );
   }
 
   if (!scorecard) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center text-sm text-slate-500">
-        Loading full scorecard…
-      </div>
-    );
+    return <p className="text-sm text-slate-400">Loading full ElevateX scorecard…</p>;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white px-4 py-8">
-      <div className="mx-auto max-w-4xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Hard coding open link · Immediate full result
-            </p>
-            <h1 className="text-xl font-bold text-[#0c2340]">
-              {scorecard.candidate.examName ?? 'Exam scorecard'}
-            </h1>
-          </div>
-          <Link
-            href="/dashboard"
-            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white"
-          >
+    <div className="space-y-4 pb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-400/85">
+            Immediate full result · ElevateX type
+          </p>
+          <h1 className="mt-1 text-xl font-semibold text-white">
+            {scorecard.candidate.examName ?? 'Exam scorecard'}
+          </h1>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/open-coding/${examId}`} className="ex-btn-ghost">
+            Challenge brief
+          </Link>
+          <Link href="/dashboard" className="ex-btn-primary">
             Student dashboard
           </Link>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-white/[0.08] bg-white p-3 sm:p-4">
         <ElevateXScorecardView scorecard={scorecard} />
       </div>
     </div>

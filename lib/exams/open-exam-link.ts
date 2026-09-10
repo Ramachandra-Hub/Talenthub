@@ -229,7 +229,7 @@ export async function joinOpenExam(input: {
   return {
     takeUrl:
       hardExamId != null
-        ? `/open-coding/${hardExamId}/lab`
+        ? `/open-coding/${hardExamId}`
         : studentTakeUrlForTestId(exam.publishedTestId),
     rollNumber,
     userId: user.id,
