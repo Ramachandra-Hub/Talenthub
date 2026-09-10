@@ -9,6 +9,7 @@ import {
   parseElevateXScorecardFromAnswers,
 } from '@/lib/placement/scorecard-payload';
 import { buildExamScorecard, encodeExamScorecardAnswers } from '@/lib/exams/exam-scorecard';
+import { getDsaHardOpenScorecardByAttemptId } from '@/lib/exams/dsa-hard-open';
 import { rollNumberFromUser } from '@/lib/admin/roll-number';
 import type { PlacementScorecard } from '@/lib/placement/types';
 import type { DashboardStatEntry } from '@/lib/student-dashboard-stats';
@@ -106,6 +107,23 @@ export async function fetchElevateXScorecardForAttemptPrisma(
   options?: { rollNumber?: string },
 ): Promise<ElevateXScorecardLookupResult> {
   if (!isPlaceholderAttemptId(attemptId)) {
+    const hardOpen = await getDsaHardOpenScorecardByAttemptId(attemptId);
+    if (hardOpen.found) {
+      if ('scorecard' in hardOpen) {
+        return {
+          scorecard: hardOpen.scorecard,
+          attemptId: hardOpen.attemptId,
+          userId: hardOpen.userId,
+          source: 'dsa_hard_open',
+        };
+      }
+      return {
+        error:
+          'Hard coding open-link exam is still in progress. Full ElevateX-style report is available after the student finishes.',
+        status: 404,
+      };
+    }
+
     const row = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
       select: {

@@ -712,6 +712,48 @@ export async function getDsaHardOpenResult(examId: string, userId: string) {
   });
 }
 
+/** Admin live-dashboard / Full report lookup by hard-open attempt id. */
+export async function getDsaHardOpenScorecardByAttemptId(attemptId: string): Promise<
+  | { found: true; scorecard: PlacementScorecard; attemptId: string; userId: string }
+  | { found: true; inProgress: true; attemptId: string; userId: string }
+  | { found: false }
+> {
+  await ensureDsaHardOpenTables();
+  const rows = await prisma.$queryRawUnsafe<AttemptRow[]>(
+    `SELECT * FROM "dsa_hard_open_attempts" WHERE "id" = $1::uuid LIMIT 1`,
+    attemptId,
+  );
+  const attempt = rows[0];
+  if (!attempt) return { found: false };
+
+  if (attempt.scorecard_json && typeof attempt.scorecard_json === 'object') {
+    return {
+      found: true,
+      scorecard: attempt.scorecard_json as PlacementScorecard,
+      attemptId: attempt.id,
+      userId: attempt.user_id,
+    };
+  }
+
+  const submitted = attempt.status === 'submitted' || Boolean(attempt.submitted_at);
+  if (submitted) {
+    const scorecard = await finalizeDsaHardOpenAttempt(attempt.exam_id, attempt.user_id);
+    return {
+      found: true,
+      scorecard,
+      attemptId: attempt.id,
+      userId: attempt.user_id,
+    };
+  }
+
+  return {
+    found: true,
+    inProgress: true,
+    attemptId: attempt.id,
+    userId: attempt.user_id,
+  };
+}
+
 export async function listDsaHardOpenAttemptsForAdmin(examId: string) {
   await ensureDsaHardOpenTables();
   const rows = await prisma.$queryRawUnsafe<
