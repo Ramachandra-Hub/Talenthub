@@ -896,41 +896,63 @@ export async function getDsaHardOpenScorecardByAttemptId(attemptId: string): Pro
   | { found: true; inProgress: true; attemptId: string; userId: string }
   | { found: false }
 > {
-  await ensureDsaHardOpenTables();
-  const rows = await prisma.$queryRawUnsafe<AttemptRow[]>(
-    `SELECT * FROM "dsa_hard_open_attempts" WHERE "id" = $1::uuid LIMIT 1`,
-    attemptId,
-  );
-  const attempt = rows[0];
-  if (!attempt) return { found: false };
+  const id = String(attemptId ?? '').trim();
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return { found: false };
+  }
 
-  const stored = parseScorecardJson(attempt.scorecard_json);
-  if (stored) {
+  try {
+    await ensureDsaHardOpenTables();
+    const rows = await prisma.$queryRawUnsafe<AttemptRow[]>(
+      `SELECT * FROM "dsa_hard_open_attempts" WHERE "id" = $1::uuid LIMIT 1`,
+      id,
+    );
+    const attempt = rows[0];
+    if (!attempt) return { found: false };
+
+    const stored = parseScorecardJson(attempt.scorecard_json);
+    if (stored) {
+      try {
+        return {
+          found: true,
+          scorecard: await enrichHardOpenScorecard(attempt, stored),
+          attemptId: attempt.id,
+          userId: attempt.user_id,
+        };
+      } catch {
+        return {
+          found: true,
+          scorecard: stored,
+          attemptId: attempt.id,
+          userId: attempt.user_id,
+        };
+      }
+    }
+
+    const submitted = attempt.status === 'submitted' || Boolean(attempt.submitted_at);
+    if (submitted) {
+      try {
+        const scorecard = await finalizeDsaHardOpenAttempt(attempt.exam_id, attempt.user_id);
+        return {
+          found: true,
+          scorecard,
+          attemptId: attempt.id,
+          userId: attempt.user_id,
+        };
+      } catch {
+        return { found: false };
+      }
+    }
+
     return {
       found: true,
-      scorecard: await enrichHardOpenScorecard(attempt, stored),
+      inProgress: true,
       attemptId: attempt.id,
       userId: attempt.user_id,
     };
+  } catch {
+    return { found: false };
   }
-
-  const submitted = attempt.status === 'submitted' || Boolean(attempt.submitted_at);
-  if (submitted) {
-    const scorecard = await finalizeDsaHardOpenAttempt(attempt.exam_id, attempt.user_id);
-    return {
-      found: true,
-      scorecard,
-      attemptId: attempt.id,
-      userId: attempt.user_id,
-    };
-  }
-
-  return {
-    found: true,
-    inProgress: true,
-    attemptId: attempt.id,
-    userId: attempt.user_id,
-  };
 }
 
 export async function listDsaHardOpenAttemptsForAdmin(examId: string) {

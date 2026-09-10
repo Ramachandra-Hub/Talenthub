@@ -107,21 +107,25 @@ export async function fetchElevateXScorecardForAttemptPrisma(
   options?: { rollNumber?: string },
 ): Promise<ElevateXScorecardLookupResult> {
   if (!isPlaceholderAttemptId(attemptId)) {
-    const hardOpen = await getDsaHardOpenScorecardByAttemptId(attemptId);
-    if (hardOpen.found) {
-      if ('scorecard' in hardOpen) {
+    try {
+      const hardOpen = await getDsaHardOpenScorecardByAttemptId(attemptId);
+      if (hardOpen.found) {
+        if ('scorecard' in hardOpen) {
+          return {
+            scorecard: hardOpen.scorecard,
+            attemptId: hardOpen.attemptId,
+            userId: hardOpen.userId,
+            source: 'dsa_hard_open',
+          };
+        }
         return {
-          scorecard: hardOpen.scorecard,
-          attemptId: hardOpen.attemptId,
-          userId: hardOpen.userId,
-          source: 'dsa_hard_open',
+          error:
+            'Hard coding open-link exam is still in progress. Full ElevateX-style report is available after the student finishes.',
+          status: 404,
         };
       }
-      return {
-        error:
-          'Hard coding open-link exam is still in progress. Full ElevateX-style report is available after the student finishes.',
-        status: 404,
-      };
+    } catch {
+      // Not a hard-open attempt (or lookup failed) — fall through to test_attempts.
     }
 
     const row = await prisma.testAttempt.findUnique({

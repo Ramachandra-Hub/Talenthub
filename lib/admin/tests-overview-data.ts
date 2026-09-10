@@ -11,12 +11,17 @@ import {
   loadAdminStudentsPrisma,
   loadAllAttemptsRollupPrisma,
 } from '@/lib/admin/attempts-rollup-prisma';
+import { loadHardOpenAttemptsForTestReports } from '@/lib/admin/hard-open-reports';
 import { isCompletedAttemptStatus, isInProgressStatus } from '@/lib/attempt-status';
 import {
   filterRollupAttemptsForSchedule,
   latestAttemptPerUser,
   type ScheduleReportContext,
 } from '@/lib/admin/schedule-report-filter';
+import { DSA_HARD_OPEN_PREFIX } from '@/lib/exams/dsa-hard-open-constants';
+import { prisma } from '@/lib/prisma';
+import { testIdsMatch } from '@/lib/test-attempts';
+
 export type AdminTestBucket = 'live' | 'upcoming' | 'ended';
 
 export type DepartmentAttemptStat = {
@@ -28,7 +33,7 @@ export type AdminTestOverviewItem = {
   id: string;
   test_id: string | null;
   title: string;
-  kind: 'faculty_schedule' | 'evalora_module' | 'faculty_published';
+  kind: 'faculty_schedule' | 'evalora_module' | 'faculty_published' | 'published_exam';
   kind_label: string;
   status: AdminTestBucket;
   status_label: string;
@@ -220,10 +225,12 @@ export async function loadAdminTestsOverview(
   const now = Date.now();
   const items: AdminTestOverviewItem[] = [];
 
-  const [{ attempts }, students] = await Promise.all([
+  const [{ attempts: baseAttempts }, students, hardOpen] = await Promise.all([
     loadAllAttemptsRollupPrisma(),
     loadAdminStudentsPrisma(),
+    loadHardOpenAttemptsForTestReports(),
   ]);
+  const attempts = [...baseAttempts, ...hardOpen.attempts];
 
   const studentBranchByUserId = new Map(students.map((s) => [s.id, s.branch]));
 
@@ -369,6 +376,70 @@ export async function loadAdminTestsOverview(
       faculty_department: faculty.department,
       ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
     });
+  }
+
+  // Published Exam rows (open-link / hard coding) that appear on Live dashboard but may lack ExamSchedule.
+  const coveredTestIds = items
+    .map((item) => item.test_id)
+    .filter((id): id is string => Boolean(id?.trim()));
+
+  const publishedExams = await prisma.exam.findMany({
+    where: {
+      status: 'published',
+      publishedTestId: { not: null },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 300,
+  });
+
+  for (const exam of publishedExams) {
+    const testId = String(exam.publishedTestId ?? '').trim();
+    if (!testId || testId === 'pending') continue;
+    if (coveredTestIds.some((id) => testIdsMatch(id, testId))) continue;
+
+    const isHardOpen = testId.startsWith(DSA_HARD_OPEN_PREFIX);
+    const isOpenLink = exam.openLinkEnabled || isHardOpen;
+    if (!isOpenLink && !isHardOpen) {
+      // Still list in-window published exams that live dashboard would surface.
+      const startMs = exam.startTime.getTime();
+      const endMs = exam.endTime.getTime();
+      if (!(startMs <= now && now <= endMs)) continue;
+    }
+
+    const pseudoSchedule = {
+      status: 'scheduled' as ExamScheduleRow['status'],
+      starts_at: exam.startTime.toISOString(),
+      ends_at: exam.endTime.toISOString(),
+    };
+    const resolved = resolveExamScheduleStatus(pseudoSchedule, now);
+    const status = bucketFromDisplay(resolved.display);
+    const kindLabel = isHardOpen
+      ? 'Hard coding open link'
+      : exam.openLinkEnabled
+        ? 'Open exam link'
+        : 'Published exam';
+
+    items.push({
+      id: `exam:${exam.id}`,
+      test_id: testId,
+      title: exam.title?.trim() || kindLabel,
+      kind: 'published_exam',
+      kind_label: kindLabel,
+      status,
+      status_label: resolved.label,
+      departments: ['All departments'],
+      years: isHardOpen ? ['IV Year'] : ['All years'],
+      starts_at: exam.startTime.toISOString(),
+      ends_at: exam.endTime.toISOString(),
+      notice: kindLabel,
+      description: exam.description,
+      duration_minutes: exam.duration ?? null,
+      topic: null,
+      slot_number: null,
+      faculty_department: null,
+      ...attemptStatsForTest(testId, attempts, studentBranchByUserId),
+    });
+    coveredTestIds.push(testId);
   }
 
   const tests = sortTests(items);

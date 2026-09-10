@@ -95,6 +95,9 @@ function deleteConfirmMessage(test: AdminTestOverviewItem): string {
   if (test.kind === 'evalora_module') {
     return `Delete "${test.title}" from the student portal?`;
   }
+  if (test.kind === 'published_exam') {
+    return `End open-link exam "${test.title}"? It will leave Live / Tests. Student scorecards stay in Test reports.`;
+  }
   return `Delete "${test.title}" completely? This removes schedules, rosters, and attempts.`;
 }
 

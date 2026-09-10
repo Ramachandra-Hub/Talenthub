@@ -52,11 +52,14 @@ export function useElevateXScorecardModal() {
         rollNumber: next.rollNumber,
       });
       if ('error' in result) {
-        const backfilled = await tryBackfillScorecard(next.attemptId, next.rollNumber);
-        if (backfilled) {
-          result = await fetchElevateXScorecardForAdmin(next.attemptId, {
-            rollNumber: next.rollNumber,
-          });
+        const skipBackfill = /hard coding|open-link|in progress/i.test(result.error);
+        if (!skipBackfill) {
+          const backfilled = await tryBackfillScorecard(next.attemptId, next.rollNumber);
+          if (backfilled) {
+            result = await fetchElevateXScorecardForAdmin(next.attemptId, {
+              rollNumber: next.rollNumber,
+            });
+          }
         }
       }
       if ('error' in result) {

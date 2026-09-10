@@ -7,6 +7,8 @@ import { formatCollegeDateTime } from '@/lib/college-timezone';
 import { isElevateXModule } from '@/lib/elevatex';
 import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import type { EvaloraModuleScheduleRow } from '@/lib/evalora/module-schedule';
+import { DSA_HARD_OPEN_PREFIX } from '@/lib/exams/dsa-hard-open-constants';
+import { prisma } from '@/lib/prisma';
 import { testIdsMatch } from '@/lib/test-attempts';
 
 export type ReportScheduleOption = {
@@ -123,6 +125,37 @@ export async function loadReportScheduleOptions(
       ends_at: row.ends_at,
       exam_type: examTypeForScheduleTest(testId, title),
     });
+  }
+
+  // Open-link / hard-open published exams (no ExamSchedule row).
+  const published = await prisma.exam.findMany({
+    where: {
+      status: 'published',
+      publishedTestId: { not: null },
+      OR: [{ openLinkEnabled: true }, { publishedTestId: { startsWith: DSA_HARD_OPEN_PREFIX } }],
+    },
+    orderBy: { startTime: 'desc' },
+    take: 200,
+  });
+  const existingTestIds = new Set(
+    options.map((o) => o.test_id).filter((id): id is string => Boolean(id)),
+  );
+  for (const exam of published) {
+    const testId = String(exam.publishedTestId ?? '').trim();
+    if (!testId || testId === 'pending') continue;
+    if ([...existingTestIds].some((id) => testIdsMatch(id, testId))) continue;
+    const title = exam.title?.trim() || 'Open exam link';
+    options.push({
+      id: `exam:${exam.id}`,
+      test_id: testId,
+      title,
+      slot_number: null,
+      attempt_round: 1,
+      starts_at: exam.startTime.toISOString(),
+      ends_at: exam.endTime.toISOString(),
+      exam_type: examTypeForScheduleTest(testId, title),
+    });
+    existingTestIds.add(testId);
   }
 
   return options.sort(

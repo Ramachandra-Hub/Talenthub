@@ -3,11 +3,15 @@ import type { ExamScheduleRow } from '@/lib/exam-schedule';
 import type { EvaloraModuleScheduleRow } from '@/lib/evalora/module-schedule';
 import { isElevateXModule } from '@/lib/elevatex';
 import type { AdminExamType } from '@/lib/admin/exam-type';
+import { classifyExamAttempt } from '@/lib/admin/exam-type';
+import { DSA_HARD_OPEN_PREFIX } from '@/lib/exams/dsa-hard-open-constants';
+import { prisma } from '@/lib/prisma';
+import { isUuidAttemptId } from '@/lib/db/resolve-test-id-for-insert';
 
 export type LoadedScheduleForReport = {
   schedule: ExamScheduleRow;
   faculty_title: string | null;
-  source: 'exam_schedules' | 'evalora_module_schedules';
+  source: 'exam_schedules' | 'evalora_module_schedules' | 'published_exam';
   exam_type: AdminExamType;
 };
 
@@ -41,6 +45,13 @@ function examTypeForSchedule(schedule: ExamScheduleRow, source: LoadedScheduleFo
     if (/\brmset\b/i.test(testId) || /\brmset\b/i.test(schedule.title)) return 'rmset';
     return 'all';
   }
+  if (source === 'published_exam') {
+    return classifyExamAttempt({
+      test_id: testId,
+      test_name: schedule.title,
+      category_slug: null,
+    });
+  }
   return 'department';
 }
 
@@ -48,6 +59,41 @@ export async function loadScheduleForReport(
   admin: DbServiceClient,
   scheduleId: string,
 ): Promise<LoadedScheduleForReport | null> {
+  if (scheduleId.startsWith('exam:')) {
+    const examId = scheduleId.slice('exam:'.length);
+    if (!isUuidAttemptId(examId)) return null;
+    const exam = await prisma.exam.findUnique({ where: { id: examId } });
+    if (!exam?.publishedTestId) return null;
+    const testId = String(exam.publishedTestId).trim();
+    const isHardOpen = testId.startsWith(DSA_HARD_OPEN_PREFIX);
+    const schedule: ExamScheduleRow = {
+      id: scheduleId,
+      title: exam.title?.trim() || (isHardOpen ? 'Hard Coding Open Link' : 'Open exam link'),
+      description: exam.description ?? null,
+      notice: exam.openLinkEnabled
+        ? isHardOpen
+          ? 'Hard coding open link'
+          : 'Open exam link'
+        : null,
+      faculty_exam_request_id: exam.facultyExamRequestId ?? null,
+      test_id: testId,
+      status: exam.status === 'published' ? 'live' : 'ended',
+      starts_at: exam.startTime.toISOString(),
+      ends_at: exam.endTime.toISOString(),
+      target_departments: [],
+      target_years: isHardOpen ? ['IV Year'] : [],
+      slot_number: null,
+      created_at: exam.createdAt.toISOString(),
+      updated_at: exam.updatedAt.toISOString(),
+    };
+    return {
+      schedule,
+      faculty_title: null,
+      source: 'published_exam',
+      exam_type: examTypeForSchedule(schedule, 'published_exam'),
+    };
+  }
+
   const { data: examRow } = await admin
     .from('exam_schedules')
     .select('*')

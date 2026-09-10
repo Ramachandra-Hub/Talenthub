@@ -2,6 +2,7 @@ import { isElevateXModule } from '@/lib/elevatex';
 import type { AdminExamType } from '@/lib/admin/exam-type';
 import type { AdminTestOverviewItem } from '@/lib/admin/tests-overview-data';
 import { formatCollegeDateTime } from '@/lib/college-timezone';
+import { DSA_HARD_OPEN_PREFIX } from '@/lib/exams/dsa-hard-open-constants';
 
 /** Map an admin Tests overview row to the report tab + test filter for PDF/CSV export. */
 export function reportFiltersForTestOverview(test: AdminTestOverviewItem): {
@@ -21,6 +22,15 @@ export function reportFiltersForTestOverview(test: AdminTestOverviewItem): {
     return { examType: 'all', testId: test.test_id ?? undefined, scheduleId };
   }
 
+  if (test.kind === 'published_exam') {
+    const testId = test.test_id ?? undefined;
+    const examType: AdminExamType =
+      testId?.startsWith(DSA_HARD_OPEN_PREFIX) || /hard coding|open link/i.test(test.kind_label)
+        ? 'programming'
+        : 'all';
+    return { examType, testId, scheduleId };
+  }
+
   // Scope by test + schedule window only — exam-type buckets can drop rows the overview already counted.
   if (test.kind === 'faculty_schedule' || test.kind === 'faculty_published') {
     return { examType: 'all', testId: test.test_id ?? undefined, scheduleId };
@@ -32,6 +42,7 @@ export function reportFiltersForTestOverview(test: AdminTestOverviewItem): {
 export function overviewScheduleId(test: AdminTestOverviewItem): string | undefined {
   if (test.id.startsWith('schedule:')) return test.id.slice('schedule:'.length);
   if (test.id.startsWith('evalora:')) return test.id.slice('evalora:'.length);
+  if (test.id.startsWith('exam:')) return test.id; // loadScheduleForReport resolves exam:{uuid}
   return undefined;
 }
 
