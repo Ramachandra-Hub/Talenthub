@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AppModal, AppModalPanel } from '@/components/ui/app-modal';
 import { DsaContestTournamentDashboard } from '@/components/admin/dsa-contest-tournament-dashboard';
+import { DsaContestAnalyticsModal } from '@/components/admin/dsa-contest-analytics-modal';
 import { buildContestAnalyticsExportWorkbook } from '@/lib/dsa/contest/contest-analytics-export';
 import { downloadXlsxWorkbook } from '@/lib/reports/xlsx-workbook';
 
@@ -200,6 +201,10 @@ export default function AdminDsaContestsPage() {
   const openContest = async (contest: ContestRow) => {
     setSelected(contest.id);
     setSelectedTitle(contest.title);
+    setSummary(null);
+    setStudents([]);
+    setProblems([]);
+    setSubmissions([]);
     setAnalyticsLoading(true);
     setError(null);
     try {
@@ -225,6 +230,16 @@ export default function AdminDsaContestsPage() {
     } finally {
       setAnalyticsLoading(false);
     }
+  };
+
+  const closeAnalytics = () => {
+    setSelected(null);
+    setSelectedTitle('');
+    setSummary(null);
+    setStudents([]);
+    setProblems([]);
+    setSubmissions([]);
+    setAnalyticsLoading(false);
   };
 
   const openStudentReport = async (attemptId: string) => {
@@ -318,11 +333,6 @@ export default function AdminDsaContestsPage() {
     }
     return [...map.entries()];
   }, [bank]);
-
-  const problemColumns = useMemo(() => {
-    const first = students.find((s) => s.problemResults?.length);
-    return first?.problemResults ?? [];
-  }, [students]);
 
   const exportContestExcel = async () => {
     if (!students.length) return;
@@ -509,150 +519,22 @@ export default function AdminDsaContestsPage() {
         </div>
       </section>
 
-      {selected ? (
-        <div className="space-y-4">
-          <section className="rounded-lg border bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Student results · ElevateX-style feedback
-                </p>
-                <h2 className="text-lg font-semibold text-slate-900">{selectedTitle}</h2>
-              </div>
-              {summary ? (
-                <div className="flex flex-wrap gap-3 text-xs text-slate-600">
-                  <span>
-                    Participants <strong>{summary.totalParticipants}</strong>
-                  </span>
-                  <span>
-                    Completed <strong>{summary.completedAttempts}</strong>
-                  </span>
-                  <span>
-                    Avg score <strong>{summary.averageScorePercent}%</strong>
-                  </span>
-                  <span>
-                    Avg time{' '}
-                    <strong>{formatDuration(summary.averageCompletionSeconds)}</strong>
-                  </span>
-                </div>
-              ) : null}
-            </div>
-
-            {analyticsLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading student analytics…</p>
-            ) : !students.length ? (
-              <p className="mt-4 text-sm text-slate-500">
-                No student attempts yet for this contest.
-              </p>
-            ) : (
-              <div className="mt-4 overflow-x-auto max-h-[min(70vh,560px)]">
-                <table className="w-full min-w-[980px] text-left text-xs sm:text-sm">
-                  <thead className="sticky top-0 z-10 border-b bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-2 py-2">#</th>
-                      <th className="px-2 py-2">Roll</th>
-                      <th className="px-2 py-2">Name</th>
-                      <th className="px-2 py-2">Dept / Year</th>
-                      <th className="px-2 py-2">Solved</th>
-                      <th className="px-2 py-2">Score</th>
-                      {problemColumns.map((p) => (
-                        <th key={p.problemId} className="px-2 py-2">
-                          P{p.position}
-                        </th>
-                      ))}
-                      <th className="px-2 py-2">Lang</th>
-                      <th className="px-2 py-2">Time</th>
-                      <th className="px-2 py-2">Status</th>
-                      <th className="px-2 py-2">Report</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {students.map((s) => (
-                      <tr key={s.attemptId} className="border-t hover:bg-slate-50/80">
-                        <td className="px-2 py-2 tabular-nums text-slate-500">{s.rank}</td>
-                        <td className="px-2 py-2">
-                          <button
-                            type="button"
-                            className="font-semibold text-cyan-700 hover:underline"
-                            onClick={() => void openStudentReport(s.attemptId)}
-                          >
-                            {s.rollNumber || '—'}
-                          </button>
-                        </td>
-                        <td className="px-2 py-2 font-medium text-slate-900">
-                          {s.name || '—'}
-                        </td>
-                        <td className="px-2 py-2 text-slate-600">
-                          {[s.department, s.academicYear].filter(Boolean).join(' · ') || '—'}
-                        </td>
-                        <td className="px-2 py-2 tabular-nums">
-                          {s.solvedCount}/3
-                        </td>
-                        <td className="px-2 py-2 tabular-nums font-semibold">
-                          {s.percentage}%
-                          <div className="text-[10px] font-normal text-slate-500">
-                            {s.totalScore}/{s.maxScore}
-                          </div>
-                        </td>
-                        {(s.problemResults ?? []).map((p) => (
-                          <td key={p.problemId} className="px-2 py-2">
-                            <span className={statusBadge(p.status)}>
-                              {p.status === 'solved'
-                                ? '✓'
-                                : p.status === 'failed'
-                                  ? '✗'
-                                  : '—'}
-                            </span>
-                          </td>
-                        ))}
-                        <td className="px-2 py-2 text-slate-600">
-                          J{s.javaAttempts}/P{s.pythonAttempts}
-                        </td>
-                        <td className="px-2 py-2 tabular-nums">
-                          {formatDuration(s.durationSeconds)}
-                        </td>
-                        <td className="px-2 py-2">
-                          <span className={statusBadge(s.status)}>{s.status}</span>
-                        </td>
-                        <td className="px-2 py-2">
-                          <button
-                            type="button"
-                            className="rounded border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-100"
-                            onClick={() => void openStudentReport(s.attemptId)}
-                          >
-                            Full report
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <Section title="Problem analytics" rows={problems} />
-          <Section
-            title="Submission history (source visible to admin)"
-            rows={submissions.map((s) => ({
-              id: s.id,
-              student: s.studentName,
-              roll: s.rollNumber,
-              problem: s.problemTitle,
-              language: s.language,
-              status: s.status,
-              score: s.scorePercent,
-              passed: `${s.passed}/${s.total}`,
-              runtimeMs: s.runtimeMs,
-              submittedAt: s.submittedAt,
-            }))}
-          />
-        </div>
-      ) : null}
-
       <Link href="/admin/dashboard" className="text-sm text-cyan-700 hover:underline">
         ← Admin dashboard
       </Link>
+
+      <DsaContestAnalyticsModal
+        open={Boolean(selected)}
+        onClose={closeAnalytics}
+        title={selectedTitle}
+        loading={analyticsLoading}
+        summary={summary}
+        students={students}
+        problems={problems}
+        submissions={submissions}
+        onOpenStudentReport={(attemptId) => void openStudentReport(attemptId)}
+        onExportExcel={() => void exportContestExcel()}
+      />
 
       <AppModal
         open={reportLoading || Boolean(report) || Boolean(reportError)}
@@ -661,6 +543,7 @@ export default function AdminDsaContestsPage() {
           setReportError(null);
           setReportLoading(false);
         }}
+        zIndexClass="z-[230]"
       >
         <AppModalPanel maxWidthClass="max-w-5xl">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
@@ -914,57 +797,4 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{value}</p>
     </div>
   );
-}
-
-function Section({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: Record<string, unknown>[];
-}) {
-  if (!rows.length) {
-    return (
-      <section className="rounded-lg border bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="mt-2 text-sm text-slate-500">No rows yet.</p>
-      </section>
-    );
-  }
-  const keys = Object.keys(rows[0]!).slice(0, 12);
-  return (
-    <section className="rounded-lg border bg-white p-4 shadow-sm overflow-x-auto">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <table className="mt-3 w-full min-w-[800px] text-left text-xs">
-        <thead className="uppercase text-slate-500">
-          <tr>
-            {keys.map((k) => (
-              <th key={k} className="py-1 pr-2">
-                {k}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-t align-top">
-              {keys.map((k) => (
-                <td key={k} className="py-1.5 pr-2">
-                  {formatCell(row[k])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
-function formatCell(value: unknown): string {
-  if (value == null) return '—';
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  return JSON.stringify(value);
 }
