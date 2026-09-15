@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Trophy, X, Zap } from 'lucide-react';
+import { FileSpreadsheet, Search, Trophy, X, Zap } from 'lucide-react';
+import { downloadXlsxWorkbook } from '@/lib/reports/xlsx-workbook';
 import {
   ReportBarCard,
   ReportChartGrid,
@@ -158,6 +159,32 @@ export function DsaContestTournamentDashboard({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailKey, setDetailKey] = useState<DetailKey>(null);
   const [mounted, setMounted] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const downloadExcelReport = async () => {
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const q = new URLSearchParams();
+      if (yearFilter !== 'all') q.set('year', yearFilter);
+      if (branchFilter !== 'all') q.set('branch', branchFilter);
+      const qs = q.toString();
+      const res = await fetch(
+        `/api/admin/dsa/contests?view=export${qs ? `&${qs}` : ''}`,
+        { credentials: 'include', cache: 'no-store' },
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Export failed');
+      }
+      await downloadXlsxWorkbook(json);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   useEffect(() => setMounted(true), []);
 
@@ -428,19 +455,29 @@ export function DsaContestTournamentDashboard({
                         </p>
                         <p className="text-3xl font-black tabular-nums">{detailMeta.heroValue}</p>
                       </div>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="text-white hover:bg-white/10"
-                        onClick={() => setDetailKey(null)}
-                        aria-label="Close"
-                      >
-                        <X className="h-5 w-5" />
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={exportBusy}
+                      className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-500"
+                      onClick={() => void downloadExcelReport()}
+                    >
+                      <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                      Excel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="text-white hover:bg-white/10"
+                      onClick={() => setDetailKey(null)}
+                      aria-label="Close"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
                   </div>
-                  <div className="relative mt-5 flex flex-wrap gap-2">
+                </div>
+                <div className="relative mt-5 flex flex-wrap gap-2">
                     <select
                       value={yearFilter}
                       onChange={(e) => setYearFilter(e.target.value)}
@@ -623,8 +660,21 @@ export function DsaContestTournamentDashboard({
                   className="h-9 w-[11rem] border-white/15 bg-[#0b1118]/80 pl-8 text-white placeholder:text-white/35"
                 />
               </div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={exportBusy}
+                className="h-9 gap-1.5 bg-emerald-600 text-white hover:bg-emerald-500"
+                onClick={() => void downloadExcelReport()}
+              >
+                <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                {exportBusy ? 'Exporting…' : 'Download Excel'}
+              </Button>
             </div>
           </div>
+          {exportError ? (
+            <p className="mt-3 text-sm text-rose-300">{exportError}</p>
+          ) : null}
 
           <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-wide">
             <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-emerald-200">

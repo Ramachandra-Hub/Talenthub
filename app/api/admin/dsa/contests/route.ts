@@ -5,6 +5,7 @@ import {
   adminListContests,
 } from '@/lib/dsa/contest/admin-analytics';
 import { adminContestTournament } from '@/lib/dsa/contest/admin-tournament';
+import { adminContestTournamentExport } from '@/lib/dsa/contest/admin-tournament-export';
 import {
   adminCreateContest,
   adminListContestBankProblems,
@@ -23,6 +24,13 @@ export async function GET(request: Request) {
     }
     if (view === 'tournament') {
       return NextResponse.json(await adminContestTournament());
+    }
+    if (view === 'export') {
+      const year = url.searchParams.get('year');
+      const branch = url.searchParams.get('branch');
+      return NextResponse.json(
+        await adminContestTournamentExport({ year, branch }),
+      );
     }
     if (view === 'bank') {
       return NextResponse.json({ problems: await adminListContestBankProblems() });

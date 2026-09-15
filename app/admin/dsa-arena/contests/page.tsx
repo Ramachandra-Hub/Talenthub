@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AppModal, AppModalPanel } from '@/components/ui/app-modal';
 import { DsaContestTournamentDashboard } from '@/components/admin/dsa-contest-tournament-dashboard';
+import { buildContestAnalyticsExportWorkbook } from '@/lib/dsa/contest/contest-analytics-export';
+import { downloadXlsxWorkbook } from '@/lib/reports/xlsx-workbook';
 
 type ContestRow = {
   id: string;
@@ -321,6 +323,12 @@ export default function AdminDsaContestsPage() {
     const first = students.find((s) => s.problemResults?.length);
     return first?.problemResults ?? [];
   }, [students]);
+
+  const exportContestExcel = async () => {
+    if (!students.length) return;
+    const workbook = buildContestAnalyticsExportWorkbook(selectedTitle, students);
+    await downloadXlsxWorkbook(workbook);
+  };
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
