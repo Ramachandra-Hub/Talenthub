@@ -569,11 +569,10 @@ export function AdminDashboard() {
     filteredStudents,
     allAttempts,
   );
-  const attendancePreviewRows = useMemo(() => {
-    const attended = attendanceDayRows.filter((r) => r.status === 'Attended');
-    const absent = attendanceDayRows.filter((r) => r.status === 'Absent');
-    return [...attended, ...absent].slice(0, 5);
-  }, [attendanceDayRows]);
+  // Keep as plain values (not useMemo) — this block runs after loading early-returns.
+  const attendanceAttendedRows = attendanceDayRows.filter((r) => r.status === 'Attended');
+  const attendanceAbsentRows = attendanceDayRows.filter((r) => r.status === 'Absent');
+  const attendancePreviewRows = [...attendanceAttendedRows, ...attendanceAbsentRows].slice(0, 5);
   const attendanceHiddenCount = Math.max(
     0,
     attendanceDayRows.length - attendancePreviewRows.length,
