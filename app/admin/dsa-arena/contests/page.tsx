@@ -3,20 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AppModal, AppModalPanel } from '@/components/ui/app-modal';
-
-type Overview = {
-  totalContests: number;
-  publishedContests: number;
-  studentsParticipated: number;
-  totalSubmissions: number;
-  totalProblemsSolved: number;
-  averageScorePercent: number;
-  averageRuntimeMs: number | null;
-  javaAttempts: number;
-  pythonAttempts: number;
-  javaSuccessRate: number;
-  pythonSuccessRate: number;
-};
+import { DsaContestTournamentDashboard } from '@/components/admin/dsa-contest-tournament-dashboard';
 
 type ContestRow = {
   id: string;
@@ -167,7 +154,6 @@ function statusBadge(status: string) {
 }
 
 export default function AdminDsaContestsPage() {
-  const [overview, setOverview] = useState<Overview | null>(null);
   const [contests, setContests] = useState<ContestRow[]>([]);
   const [bank, setBank] = useState<BankProblem[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -185,24 +171,24 @@ export default function AdminDsaContestsPage() {
   const [report, setReport] = useState<StudentReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [tournamentTick, setTournamentTick] = useState(0);
 
   const reload = useCallback(async () => {
-    const [oRes, cRes, bRes] = await Promise.all([
-      fetch('/api/admin/dsa/contests?view=overview', { credentials: 'include' }),
+    const [cRes, bRes] = await Promise.all([
       fetch('/api/admin/dsa/contests', { credentials: 'include' }),
       fetch('/api/admin/dsa/contests?view=bank', { credentials: 'include' }),
     ]);
-    if (!oRes.ok || !cRes.ok) {
+    if (!cRes.ok) {
       setError('Failed to load admin contest data');
       return;
     }
-    setOverview(await oRes.json());
     const cJson = await cRes.json();
     setContests(cJson.contests ?? []);
     if (bRes.ok) {
       const bJson = await bRes.json();
       setBank(bJson.problems ?? []);
     }
+    setTournamentTick((t) => t + 1);
   }, []);
 
   useEffect(() => {
@@ -359,25 +345,24 @@ export default function AdminDsaContestsPage() {
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
 
-      {overview ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['Contests', overview.totalContests],
-            ['Published', overview.publishedContests],
-            ['Participants', overview.studentsParticipated],
-            ['Submissions', overview.totalSubmissions],
-            ['Problems solved', overview.totalProblemsSolved],
-            ['Avg score %', overview.averageScorePercent],
-            ['Java attempts', overview.javaAttempts],
-            ['Python attempts', overview.pythonAttempts],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-lg border bg-white p-3 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase text-slate-500">{label}</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <DsaContestTournamentDashboard
+        key={tournamentTick}
+        onOpenContestAnalytics={(contestId, title) => {
+          const row = contests.find((c) => c.id === contestId);
+          void openContest(
+            row ?? {
+              id: contestId,
+              slug: '',
+              title,
+              status: 'published',
+              isPublished: true,
+              problemCount: 0,
+              attemptCount: 0,
+              submissionCount: 0,
+            },
+          );
+        }}
+      />
 
       <section className="rounded-lg border bg-white p-4 shadow-sm space-y-3">
         <h2 className="text-sm font-semibold text-slate-800">Create contest</h2>

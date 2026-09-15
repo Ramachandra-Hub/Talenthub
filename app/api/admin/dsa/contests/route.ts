@@ -4,6 +4,7 @@ import {
   adminContestOverview,
   adminListContests,
 } from '@/lib/dsa/contest/admin-analytics';
+import { adminContestTournament } from '@/lib/dsa/contest/admin-tournament';
 import {
   adminCreateContest,
   adminListContestBankProblems,
@@ -19,6 +20,9 @@ export async function GET(request: Request) {
   try {
     if (view === 'overview') {
       return NextResponse.json(await adminContestOverview());
+    }
+    if (view === 'tournament') {
+      return NextResponse.json(await adminContestTournament());
     }
     if (view === 'bank') {
       return NextResponse.json({ problems: await adminListContestBankProblems() });
