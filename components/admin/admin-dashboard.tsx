@@ -569,6 +569,15 @@ export function AdminDashboard() {
     filteredStudents,
     allAttempts,
   );
+  const attendancePreviewRows = useMemo(() => {
+    const attended = attendanceDayRows.filter((r) => r.status === 'Attended');
+    const absent = attendanceDayRows.filter((r) => r.status === 'Absent');
+    return [...attended, ...absent].slice(0, 5);
+  }, [attendanceDayRows]);
+  const attendanceHiddenCount = Math.max(
+    0,
+    attendanceDayRows.length - attendancePreviewRows.length,
+  );
 
   const openAttendanceReport = (dateKey?: string) => {
     if (dateKey) setAttendanceDateKey(dateKey);
@@ -1019,122 +1028,155 @@ export function AdminDashboard() {
             </table>
         </Card>
 
-        <Card className="p-6 mb-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-[#0c2340]">Student attendance and performance report</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                Date-wise attendance (IST) · {formatDateKeyLabel(attendanceDateKey)} ·{' '}
-                <span className="font-semibold text-emerald-700">
-                  {formatScorePercentLabel(attendanceDaySummary.attendanceRate)} present
-                </span>{' '}
-                ({attendanceDaySummary.attendedCount}/{attendanceDaySummary.totalStudents})
-              </p>
+        <Card className="mb-8 overflow-hidden border-slate-200/80 shadow-sm">
+          <div className="bg-gradient-to-br from-[#0c2340] via-[#143456] to-[#1a4a6e] px-6 py-5 text-white">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+                  Attendance snapshot
+                </p>
+                <h2 className="mt-1 text-xl font-bold tracking-tight">
+                  Student attendance & performance
+                </h2>
+                <p className="mt-1.5 text-sm text-white/75">
+                  {formatDateKeyLabel(attendanceDateKey)} (IST) · showing top{' '}
+                  {Math.min(5, attendanceDayRows.length)} of {attendanceDayRows.length}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  value={attendanceDateKey}
+                  max={getTodayDateKeyInIST()}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) setAttendanceDateKey(v);
+                  }}
+                  className="h-9 w-[11.5rem] border-white/20 bg-white/10 text-white placeholder:text-white/50 [color-scheme:dark]"
+                  aria-label="Attendance date"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => setAttendanceDateKey(getTodayDateKeyInIST())}
+                >
+                  Today
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 bg-white text-[#0c2340] hover:bg-slate-100"
+                  onClick={() => openAttendanceReport()}
+                >
+                  Open full report
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2 items-center shrink-0">
-              <Input
-                type="date"
-                value={attendanceDateKey}
-                max={getTodayDateKeyInIST()}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) setAttendanceDateKey(v);
-                }}
-                className="w-[11.5rem]"
-                aria-label="Attendance date"
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setAttendanceDateKey(getTodayDateKeyInIST())}
-              >
-                Today
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="bg-[#0c2340] hover:bg-[#16304f]"
-                onClick={() => openAttendanceReport()}
-              >
-                View & download report
-              </Button>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-sm">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-white/60">Present</p>
+                <p className="mt-0.5 text-2xl font-bold tabular-nums text-emerald-300">
+                  {attendanceDaySummary.attendedCount}
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-sm">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-white/60">Absent</p>
+                <p className="mt-0.5 text-2xl font-bold tabular-nums text-amber-200">
+                  {attendanceDaySummary.absentCount}
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/10 px-3 py-2.5 backdrop-blur-sm">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-white/60">Rate</p>
+                <p className="mt-0.5 text-2xl font-bold tabular-nums text-sky-200">
+                  {formatScorePercentLabel(attendanceDaySummary.attendanceRate)}
+                </p>
+              </div>
             </div>
           </div>
-          <p className="text-sm text-slate-500 mb-4">
-            Showing {filteredStudents.length} of {allStudents.length} students ·{' '}
-            {attendanceDaySummary.attemptsOnDate} attempts on selected date
-          </p>
-          <table className="admin-table">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Student</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Status (date)</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Attempts on date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Tests on date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Lifetime avg</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Lifetime highest</th>
-                  <th className="text-right py-3 px-4 font-semibold text-slate-700">Report</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStudents.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-8 text-slate-500">
-                      No students matched your filters.
-                    </td>
-                  </tr>
-                ) : (
-                  attendanceDayRows.map((row) => {
-                    const student = filteredStudents.find((s) => s.id === row.studentId);
-                    if (!student) return null;
-                    return (
-                      <tr
-                        key={row.studentId}
-                        className="border-b border-slate-100 hover:bg-gray-50 cursor-pointer"
+
+          <div className="bg-white">
+            {filteredStudents.length === 0 ? (
+              <p className="px-6 py-10 text-center text-sm text-slate-500">
+                No students matched your filters.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {attendancePreviewRows.map((row) => {
+                  const student = filteredStudents.find((s) => s.id === row.studentId);
+                  if (!student) return null;
+                  return (
+                    <li key={row.studentId}>
+                      <button
+                        type="button"
                         onClick={() => openAttendanceReport()}
+                        className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition hover:bg-slate-50/90"
                       >
-                        <td className="py-3 px-4">
-                          <p className="font-medium text-[#0c2340]">{student.full_name || student.email}</p>
-                          <p className="text-xs text-slate-500">{student.email}</p>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={cn(
-                              'inline-flex rounded-full px-2 py-0.5 text-xs font-semibold',
-                              row.status === 'Attended'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-slate-100 text-slate-600',
-                            )}
-                          >
-                            {row.status}
+                        <span
+                          className={cn(
+                            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                            row.status === 'Attended'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-100 text-slate-500',
+                          )}
+                          aria-hidden
+                        >
+                          {(student.full_name || student.email || '?').slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-[#0c2340]">
+                            {student.full_name || student.email}
                           </span>
-                        </td>
-                        <td className="py-3 px-4 text-[#0c2340]">{row.attemptsOnDate}</td>
-                        <td className="py-3 px-4 text-slate-700 max-w-[200px] truncate" title={row.testsOnDate}>
-                          {row.testsOnDate}
-                        </td>
-                        <td className="py-3 px-4 text-[#0c2340]">{formatScorePercentLabel(student.avgScore)}</td>
-                        <td className="py-3 px-4 text-[#0c2340]">{formatScorePercentLabel(student.highestScore)}</td>
-                        <td className="py-3 px-4 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openAttendanceReport();
-                            }}
-                          >
-                            Details
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                          <span className="mt-0.5 block truncate text-xs text-slate-500">
+                            {row.roll !== '—' ? row.roll : student.email}
+                            {row.attemptsOnDate > 0
+                              ? ` · ${row.attemptsOnDate} attempt${row.attemptsOnDate === 1 ? '' : 's'} today`
+                              : ' · no attempt on this date'}
+                          </span>
+                        </span>
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                            row.status === 'Attended'
+                              ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80'
+                              : 'bg-slate-50 text-slate-600 ring-1 ring-slate-200/80',
+                          )}
+                        >
+                          {row.status}
+                        </span>
+                        <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[#0c2340] sm:inline">
+                          {formatScorePercentLabel(student.avgScore)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <div className="border-t border-slate-100 bg-slate-50/80 px-5 py-3.5">
+              <button
+                type="button"
+                onClick={() => openAttendanceReport()}
+                className="group flex w-full items-center justify-between gap-3 rounded-lg px-1 py-1 text-left"
+              >
+                <span className="text-sm text-slate-600">
+                  {attendanceHiddenCount > 0 ? (
+                    <>
+                      <span className="font-semibold text-[#0c2340]">+{attendanceHiddenCount} more</span>
+                      {' '}students — open the full attendance dashboard
+                    </>
+                  ) : (
+                    <>View charts, filters, and downloadable attendance report</>
+                  )}
+                </span>
+                <span className="shrink-0 text-sm font-semibold text-[#1e3a5f] group-hover:underline">
+                  View all →
+                </span>
+              </button>
+            </div>
+          </div>
         </Card>
 
         <div className="grid md:grid-cols-3 gap-6">
